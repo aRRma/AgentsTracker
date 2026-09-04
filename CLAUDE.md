@@ -56,7 +56,8 @@ Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.
 `BotCommandsCatalog` (кнопка «Меню») и в тексте `HelpCommandHandler`.
 
 Новый экран настроек: класс с `ISettingsScreen` в `Features/Settings/Screens/`, регистрация
-в `SettingsModule`, кнопка на него — в `RootScreen`.
+в `SettingsModule`, кнопка на него — в `RootScreen`. `RenderAsync(ct)` асинхронный ради
+лимитов; экрану без сети хватает `Task.FromResult(Render())` поверх приватного `Render()`.
 
 Новая фича: папка в `Features/` с `*Module` и запись в списке модулей в `Program.cs`.
 `ChatModule` там остаётся последним.
@@ -94,7 +95,6 @@ src/AgentsTracker.Gateway/
 Правила разложения: в `Domain` ничего не открывает файлы и не ходит по сети; `Infrastructure`
 не знает о фичах (кроме контрактов `Dispatch`); фича зависит от другой фичи только через её
 публичный сервис (`Settings` → `ChatWorker.IsBusy`, `Approvals` → `SettingsMenuCoordinator.CallbackPrefix`).
-Новая фича = папка в `Features/` с `*Module`, добавленным в список в `Program.cs`.
 
 ### Диспетчер Telegram
 
@@ -182,7 +182,7 @@ CLI зовёт инструмент с `{"tool_name":…,"input":{…},"tool_use
 и переносит файл в папку данных. `publish\` секретов не содержит.
 
 Почти всё настраиваемое живёт в двух слоях: `SessionStore` (выбор из чата) поверх `GatewayOptions`
-(конфиг) — `EffectiveModel`, `EffectivePermissionMode`, `Effort`. Значение, совпадающее с
+(конфиг) — `EffectiveModel`, `EffectivePermissionMode`, `EffectiveEffort`. Значение, совпадающее с
 конфигом, сохраняется как `null`, чтобы правка конфига не оказалась молча перекрыта старым выбором.
 
 Сессии Claude Code ключуются **нормализованным путём проекта** (`ProjectCatalog.Normalize`):
