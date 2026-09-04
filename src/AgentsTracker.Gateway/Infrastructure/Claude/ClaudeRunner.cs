@@ -177,7 +177,7 @@ public sealed class ClaudeRunner(
         yield return "--mcp-config";
         yield return mcpConfig.Path;
 
-        var model = store.Model ?? _options.Model;
+        var model = store.EffectiveModel;
         if (model is { Length: > 0 })
         {
             yield return "--model";

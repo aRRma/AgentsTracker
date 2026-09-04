@@ -58,16 +58,18 @@ $env:Gateway__ProjectPath = 'C:\tmp\test'; $env:Gateway__AllowedUserIds__0 = '1'
 
 ```
 src/AgentsTracker.Gateway/
-  Program.cs            явный список IFeatureModule → AddGatewayInfrastructure → ValidateStartup → MapFeatures
+  Program.cs            явный список IFeatureModule → AddGatewayConfiguration → AddGatewayInfrastructure
+                        → ValidateStartup → MapFeatures
   GlobalUsings.cs       Domain, Infrastructure, .Configuration, .State, IOptions — доступны везде
   Domain/               чистые модели и правила без I/O и DI: PermissionModes, EffortLevels,
                         ClaudeRunResult, GatewayState (state.json), AuditEvent
-  Infrastructure/       техническая часть, общая для фич:
+  Infrastructure/       техническая часть, общая для фич (AppPaths, GatewayInfrastructure — в корне):
     Configuration/      GatewayOptions (+Validate), ProjectCatalog (Normalize/Same — ключ сессий)
     Claude/             ClaudeRunner (процесс claude -p), ClaudeCliLocator, ClaudeLimits, ClaudeCliJson
     Mcp/                McpConfigFile — mcp-gateway.json, токен в заголовке, RoutePattern = /mcp
     State/              SessionStore — state.json под Lock, атомарная запись
-    Telegram/           TelegramBotService (роутер), TelegramFormatter, DisplayFormat, BotCommandsCatalog,
+    Telegram/           TelegramBotService (роутер), TelegramClientFactory, TelegramFormatter,
+                        DisplayFormat, BotCommandsCatalog,
                         Dispatch/ — ITelegramCommandHandler / ITelegramCallbackHandler / ITelegramTextHandler
     Audit/              IAuditLog, JsonlAuditLog — журнал «кто, куда, что»
     Security/           DPAPI-шифрование конфига, ACL папки данных, команда protect-secrets
@@ -239,5 +241,9 @@ Id новой сессии выдаёт **шлюз** (`--session-id <uuid>`) и 
   побочный эффект при создании (запись/чтение файла), который должен случиться один раз до старта.
 - Диагностика C#-LSP не подхватывает `GlobalUsings.cs` после перемещения файлов и сыплет ложными
   `CS0246`. Источник правды — `dotnet build`.
+- `JsonElement.TryGetDouble`/`TryGetInt64` не спасают от `null`: на элементе не-числе они бросают
+  `InvalidOperationException`. Поля недокументированного ответа лимитов читаются через
+  `ClaudeLimits.Number` с проверкой `ValueKind`, иначе `utilization: null` возвращается
+  пользователю как «Внутренняя ошибка шлюза».
 - Комментарии объясняют не что делает код, а какой отказ он предотвращает: «иначе `/stop` уйдёт
   в ожидающий свободный ответ». Комментарий-пересказ строки здесь лишний.
