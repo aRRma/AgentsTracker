@@ -1,4 +1,4 @@
-using AgentsTracker.Gateway.Infrastructure.Audit;
+﻿using AgentsTracker.Gateway.Infrastructure.Audit;
 using AgentsTracker.Gateway.Infrastructure.Telegram.Dispatch;
 using Telegram.Bot;
 using Telegram.Bot.Polling;
@@ -198,11 +198,16 @@ public sealed class TelegramBotService(
             return false;
         }
 
-        if (chat is { Type: not ChatType.Private })
+        // Проверка «не личный чат» перевёрнута в «не является личным»: у callback-а Telegram
+        // может не прислать сообщение (оно старое или недоступно боту), и тогда тип чата
+        // неизвестен. Пропускать такое обновление нельзя — иначе кнопку из группы нажали бы
+        // в обход проверки, которую сообщения проходят.
+        if (chat is not { Type: ChatType.Private })
         {
-            logger.LogWarning("Отклонено сообщение из группового чата {ChatId} ({Type}): шлюз работает только в личке.",
-                chat.Id, chat.Type);
-            audit.Write(AuditEvent.Now(AuditKinds.AccessRejected, $"групповой чат ({chat.Type})", userId, chat.Id, outcome: "rejected"));
+            var type = chat is null ? "чат неизвестен" : $"групповой чат ({chat.Type})";
+            logger.LogWarning("Отклонено обновление: {Reason}, чат {ChatId}. Шлюз работает только в личке.",
+                type, chat?.Id);
+            audit.Write(AuditEvent.Now(AuditKinds.AccessRejected, type, userId, chat?.Id, outcome: "rejected"));
             return false;
         }
 
