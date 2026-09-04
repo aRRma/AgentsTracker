@@ -45,7 +45,7 @@ public sealed class ChatCommandHandler(
         return $"""
             📁 {store.ProjectPath}
             🧠 {store.EffectiveModel ?? "модель по умолчанию"}
-            🎚 Effort: {store.Effort ?? "по умолчанию"}
+            🎚 Effort: {store.EffectiveEffort ?? "по умолчанию"}{(state.Effort is null ? " (из конфига)" : "")}
             🔐 Доступ: {store.EffectivePermissionMode}{(state.PermissionMode is null ? " (из конфига)" : "")}
             🧵 Сессия: {store.SessionId ?? "новая (ещё не создана)"}
             ⚙️ {(worker.IsBusy ? "выполняется" : "простаивает")}, в очереди: {worker.QueueLength}

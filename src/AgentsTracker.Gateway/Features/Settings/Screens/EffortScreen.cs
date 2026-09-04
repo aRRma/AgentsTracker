@@ -23,7 +23,7 @@ public sealed class EffortScreen(SessionStore store, IAuditLog audit) : ISetting
 
     public (string Html, InlineKeyboardMarkup Keyboard) Render()
     {
-        var current = store.Effort;
+        var current = store.EffectiveEffort;
 
         var html = $"""
             🎚 <b>Effort</b> — сколько модели думать

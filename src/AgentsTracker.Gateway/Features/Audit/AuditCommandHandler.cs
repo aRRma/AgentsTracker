@@ -16,6 +16,9 @@ public sealed class AuditCommandHandler(ITelegramBotClient bot, IAuditLog audit)
     /// <summary>Бюджет на одну строку: длинные Summary в чате только мешают, полный текст — в файле.</summary>
     private const int LineBudget = 160;
 
+    /// <summary>Запас под заголовок и строку «…и ещё N», которые дописываются после набора списка.</summary>
+    private const int HeaderBudget = 120;
+
     public IReadOnlyCollection<string> Commands { get; } = ["/audit"];
 
     public async Task HandleAsync(TelegramCommandContext context, CancellationToken ct)
@@ -29,17 +32,25 @@ public sealed class AuditCommandHandler(ITelegramBotClient bot, IAuditLog audit)
             return;
         }
 
-        var text = new StringBuilder();
-        text.Append("📜 <b>Последние ").Append(entries.Count).Append(" записей</b>\n");
+        // Сначала набираем строки по бюджету, и только потом пишем заголовок: иначе он обещал бы
+        // столько записей, сколько нашлось, а показывалось бы столько, сколько влезло.
+        var body = new StringBuilder();
+        var shown = 0;
 
-        foreach (var entry in entries)
+        // Идём от свежих к старым: обрезать нужно самое старое, а не последнее.
+        foreach (var entry in entries.Reverse())
         {
-            var line = $"{Line(entry)}";
-            if (text.Length + line.Length + 1 > TelegramFormatter.MaxMessageLength) break;
-            text.Append('\n').Append(line);
+            var line = Line(entry);
+            if (HeaderBudget + body.Length + line.Length + 1 > TelegramFormatter.MaxMessageLength) break;
+
+            body.Insert(0, '\n').Insert(1, line);
+            shown++;
         }
 
-        await bot.SendMessage(context.ChatId, text.ToString(), ParseMode.Html, cancellationToken: ct);
+        var tail = shown < entries.Count ? $"\n<i>…и ещё {entries.Count - shown} — смотрите файл журнала.</i>" : "";
+        var text = $"📜 <b>Последние {shown} записей</b>\n{body}{tail}";
+
+        await bot.SendMessage(context.ChatId, text, ParseMode.Html, cancellationToken: ct);
     }
 
     /// <summary>«12:41 approval allow · Bash(git status) · 3813…»</summary>

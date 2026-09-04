@@ -43,6 +43,16 @@ public static class ProtectSecretsCommand
         }
 
         var target = AppPaths.LocalSettings;
+        var moving = !string.Equals(Path.GetFullPath(source), Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase);
+
+        // Боевой конфиг молча не затираем: устаревший файл рядом с проектом иначе снёс бы
+        // рабочий токен. Перенос — только когда в папке данных ещё ничего нет.
+        if (moving && File.Exists(target))
+        {
+            output.WriteLine($"В {target} уже есть конфиг — он и используется. Чтобы заменить его файлом {source}, удалите или переименуйте целевой.");
+            return 1;
+        }
+
         DataDirectoryAcl.Restrict(AppPaths.DataDirectory);
 
         File.WriteAllText(target, root.ToJsonString(new JsonSerializerOptions
@@ -51,7 +61,7 @@ public static class ProtectSecretsCommand
             Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         }));
 
-        if (!string.Equals(Path.GetFullPath(source), Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase))
+        if (moving)
         {
             File.Delete(source);
             output.WriteLine($"Конфиг перенесён: {source} → {target}");

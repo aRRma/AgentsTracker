@@ -108,7 +108,7 @@ public sealed partial class ChatWorker(
         var thread = session is { Length: > 0 } ? session.ShortId : "новая сессия";
 
         Audit(prompt, AuditKinds.RunStart,
-            $"{store.EffectiveModel ?? "модель по умолчанию"}, {store.EffectivePermissionMode}, effort {store.Effort ?? "—"}",
+            $"{store.EffectiveModel ?? "модель по умолчанию"}, {store.EffectivePermissionMode}, effort {store.EffectiveEffort ?? "—"}",
             session);
 
         var status = await bot.SendMessage(

@@ -27,7 +27,7 @@ public sealed class RootScreen(SessionStore store, ChatWorker worker) : ISetting
             📁 <b>{E(Path.GetFileName(project))}</b>
             <code>{E(project)}</code>
             🧠 Модель: <b>{E(store.EffectiveModel ?? "по умолчанию")}</b>
-            🎚 Effort: <b>{E(store.Effort ?? "по умолчанию")}</b>
+            🎚 Effort: <b>{E(store.EffectiveEffort ?? "по умолчанию")}</b>
             🔐 Доступ: <b>{E(store.EffectivePermissionMode)}</b>
             🧵 Сессия: {(session is null ? "<i>новая</i>" : $"<b>{E(session.Title)}</b>")}
             📈 Сегодня (оценка): <b>{E(today)}</b>

@@ -65,8 +65,9 @@ public sealed class ClaudeRunner(
         psi.Environment["DISABLE_EXTRA_USAGE_COMMAND"] = "1";
 
         // Дочерний процесс наследует окружение шлюза целиком. Переопределения конфига через
-        // переменные (Gateway__BotToken и т.п.) агенту видеть незачем.
-        foreach (var name in psi.Environment.Keys.Where(k => k.StartsWith("Gateway__", StringComparison.OrdinalIgnoreCase)).ToArray())
+        // переменные агенту видеть незачем: и «Gateway__BotToken», и «Gateway:BotToken» —
+        // на Windows AddEnvironmentVariables понимает обе формы разделителя.
+        foreach (var name in psi.Environment.Keys.Where(IsGatewaySetting).ToArray())
             psi.Environment.Remove(name);
 
         foreach (var arg in BuildArguments(prompt, resumedSessionId, sessionId))
@@ -183,7 +184,7 @@ public sealed class ClaudeRunner(
             yield return model;
         }
 
-        if (store.Effort is { Length: > 0 } effort && EffortLevels.Resolve(effort) is { } level)
+        if (store.EffectiveEffort is { Length: > 0 } effort && EffortLevels.Resolve(effort) is { } level)
         {
             yield return "--effort";
             yield return level;
@@ -365,6 +366,11 @@ public sealed class ClaudeRunner(
             logger.LogWarning(ex, "Не удалось завершить процесс claude");
         }
     }
+
+    /// <summary>Переменная окружения, перекрывающая секцию Gateway конфига, в любой из двух форм.</summary>
+    private static bool IsGatewaySetting(string name) =>
+        name.StartsWith($"{GatewayOptions.SectionName}__", StringComparison.OrdinalIgnoreCase)
+        || name.StartsWith($"{GatewayOptions.SectionName}:", StringComparison.OrdinalIgnoreCase);
 
     private static string Truncate(string value, int max) =>
         value.Length <= max ? value : value[..max] + "…";

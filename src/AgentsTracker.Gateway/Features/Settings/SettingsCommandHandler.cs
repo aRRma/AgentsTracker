@@ -74,6 +74,8 @@ public sealed class SettingsCommandHandler(
 
         menu.Screen("effort").Apply(argument, userId);
 
+        // Именно выбранный из чата уровень, а не действующий: после reset он null,
+        // и ответ должен говорить про конфиг, а не повторять его значение как выбранное.
         return store.Effort is { } level
             ? $"🎚 {EffortLevels.Describe(level)}. Применится со следующего запуска."
             : $"🎚 Effort: {options.Value.Effort ?? "по умолчанию"} — как в конфиге.";

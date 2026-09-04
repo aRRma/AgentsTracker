@@ -57,8 +57,10 @@ public sealed class JsonlAuditLog(ILogger<JsonlAuditLog> logger) : IAuditLog
             foreach (var file in Files().OrderDescending(StringComparer.Ordinal))
             {
                 string[] lines;
+                // Любая беда с одним файлом (занят, нет прав, исчез) не должна лишать ответа
+                // целиком: пропускаем его и читаем остальные.
                 try { lines = File.ReadAllLines(file); }
-                catch (IOException ex)
+                catch (Exception ex)
                 {
                     logger.LogWarning(ex, "Не удалось прочитать {File}", file);
                     continue;

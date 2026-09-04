@@ -59,7 +59,14 @@ public sealed class SessionStore
         get { lock (_gate) return _state.PermissionMode ?? _options.PermissionMode; }
     }
 
+    /// <summary>Уровень усилий, выбранный из чата. null — не выбирали, действует значение конфига.</summary>
     public string? Effort
+    {
+        get { lock (_gate) return _state.Effort; }
+    }
+
+    /// <summary>Уровень усилий следующего запуска: из чата, иначе из конфига. null — решает CLI.</summary>
+    public string? EffectiveEffort
     {
         get { lock (_gate) return _state.Effort ?? _options.Effort; }
     }
