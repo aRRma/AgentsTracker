@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using AgentsTracker.Gateway.Infrastructure.Audit;
 using AgentsTracker.Gateway.Infrastructure.Claude;
 using AgentsTracker.Gateway.Infrastructure.Mcp;
@@ -74,7 +74,15 @@ public static class GatewayInfrastructure
 
             try
             {
-                app.Services.GetRequiredService<ClaudeCliLocator>().Resolve();
+                var locator = app.Services.GetRequiredService<ClaudeCliLocator>();
+                locator.Resolve();
+
+                // Контракт с CLI держится на его недокументированном поведении, а версия
+                // меняется сама собой: без записи в логе непонятно, чей ответ разбирали.
+                if (locator.TryGetVersion() is { Length: > 0 } version)
+                    logger.LogInformation("Версия CLI: {Version}", version);
+                else
+                    logger.LogWarning("Не удалось получить версию CLI");
             }
             catch (InvalidOperationException ex)
             {
