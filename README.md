@@ -70,6 +70,30 @@ pwsh -File scripts\install-autostart.ps1
 `%LOCALAPPDATA%\AgentsTracker\` и создаст задачу «запускать при входе в систему».
 После этого запускать вручную не нужно.
 
+## Перезапуск после правки настроек
+
+Настройки читаются один раз при запуске. Поправили `appsettings.Local.json` — перезапустите
+шлюз, иначе он продолжит работать со старыми значениями.
+
+Если запускали вручную:
+
+```powershell
+Get-Process AgentsTracker.Gateway | Stop-Process -Force
+dotnet build src\AgentsTracker.Gateway
+Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.exe
+```
+
+Остановить нужно до сборки: запущенный шлюз держит свой `.exe`, и сборка падает с `MSB3021`.
+
+Если настроен автозапуск:
+
+```powershell
+Stop-ScheduledTask -TaskName 'AgentsTracker Gateway'
+Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
+```
+
+Что шлюз поднялся, видно по последней строке журнала — `/audit` в чате покажет `gateway старт`.
+
 ## Команды в чате
 
 | Команда | Что делает |
@@ -131,6 +155,8 @@ pwsh -File scripts\install-autostart.ps1
 | Симптом | Причина |
 |---|---|
 | Бот молчит | не заполнен `AllowedUserIds` или неверный токен |
+| Правка настроек ничего не изменила | нужен перезапуск — см. раздел выше |
+| В меню видно не все репозитории | не задан `ProjectsRoot`; список листается кнопками `◀ ▶` |
 | `claude` не найден | не поставлен CLI (шаг 1) или не открыто новое окно PowerShell |
 | Сборка падает с `MSB3021` | шлюз уже запущен — остановите: `Get-Process AgentsTracker.Gateway \| Stop-Process` |
 | В логе крякозябры | консоль в cp866; смотрите лог в PowerShell |
