@@ -1,0 +1,106 @@
+namespace AgentsTracker.Gateway.Configuration;
+
+public sealed class GatewayOptions
+{
+    public const string SectionName = "Gateway";
+
+    /// <summary>Токен бота от @BotFather.</summary>
+    public string BotToken { get; set; } = "";
+
+    /// <summary>Telegram user id, которым разрешено управлять агентом. Пусто = запрещено всем.</summary>
+    public long[] AllowedUserIds { get; set; } = [];
+
+    /// <summary>Рабочая папка по умолчанию. Из чата её меняет меню «Репозиторий».</summary>
+    public string ProjectPath { get; set; } = "";
+
+    /// <summary>
+    /// Папки, между которыми можно переключаться из чата. Пусто — шлюз сам находит соседей
+    /// <see cref="ProjectPath"/>, похожих на репозиторий (см. ProjectCatalog).
+    /// </summary>
+    public string[] Projects { get; set; } = [];
+
+    /// <summary>Путь к claude.exe. null = автопоиск.</summary>
+    public string? ClaudeExecutable { get; set; }
+
+    /// <summary>Алиас модели (sonnet / opus / haiku) или null для модели по умолчанию.</summary>
+    public string? Model { get; set; }
+
+    /// <summary>Уровень усилий по умолчанию (low…max) или null — как решит CLI. Из чата меняется меню.</summary>
+    public string? Effort { get; set; }
+
+    /// <summary>
+    /// Дневной бюджет шлюза в долларах: когда стоимость запусков за сутки его превысит,
+    /// новые задачи отклоняются. null — без ограничения. Из чата меняется меню «Лимиты».
+    /// </summary>
+    public decimal? DailyBudgetUsd { get; set; }
+
+    /// <summary>Предел стоимости одного запуска (уходит в --max-budget-usd). null — без предела.</summary>
+    public decimal? RunBudgetUsd { get; set; }
+
+    /// <summary>
+    /// Режим разрешений по умолчанию, с которым запускается CLI; из чата его меняет /mode.
+    /// Задаётся явно, потому что иначе действует
+    /// defaultMode из ~/.claude/settings.json: при "auto" решения принимает классификатор,
+    /// кнопки в чате не появляются вовсе. "default" — спрашивать всё, что не разрешено правилами.
+    /// </summary>
+    public string PermissionMode { get; set; } = "default";
+
+    /// <summary>Порт локального MCP-сервера подтверждений (слушает только 127.0.0.1).</summary>
+    public int McpPort { get; set; } = 5099;
+
+    /// <summary>Сколько ждать нажатия кнопки, прежде чем автоматически отклонить.</summary>
+    public int ApprovalTimeoutMinutes { get; set; } = 15;
+
+    /// <summary>Предельная длительность одного запуска claude.</summary>
+    public int RunTimeoutMinutes { get; set; } = 60;
+
+    /// <summary>HTTP-прокси для Telegram API, например "http://127.0.0.1:2080". null = без прокси.</summary>
+    public string? Proxy { get; set; }
+
+    public IReadOnlyList<string> Validate()
+    {
+        var errors = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(BotToken))
+            errors.Add($"{SectionName}:BotToken не задан. Создайте бота у @BotFather и впишите токен в appsettings.Local.json.");
+
+        if (string.IsNullOrWhiteSpace(ProjectPath))
+            errors.Add($"{SectionName}:ProjectPath не задан.");
+        else if (!Directory.Exists(ProjectPath))
+            errors.Add($"{SectionName}:ProjectPath — папки не существует: {ProjectPath}");
+
+        if (AllowedUserIds.Length == 0)
+            errors.Add($"{SectionName}:AllowedUserIds пуст. Запустите шлюз, напишите боту — id появится в логе — и впишите его сюда.");
+
+        if (McpPort is < 1 or > 65535)
+            errors.Add($"{SectionName}:McpPort вне диапазона: {McpPort}");
+
+        // Нуль тут выглядит как «без ограничения», а на деле CancellationTokenSource
+        // с нулевым интервалом срабатывает сразу и убивает каждый запуск.
+        if (RunTimeoutMinutes is < 1 or > 1440)
+            errors.Add($"{SectionName}:RunTimeoutMinutes = {RunTimeoutMinutes}. Допустимо 1..1440 минут.");
+
+        if (ApprovalTimeoutMinutes is < 1 or > 1440)
+            errors.Add($"{SectionName}:ApprovalTimeoutMinutes = {ApprovalTimeoutMinutes}. Допустимо 1..1440 минут.");
+
+        if (!PermissionModes.All.Contains(PermissionMode, StringComparer.Ordinal))
+            errors.Add($"{SectionName}:PermissionMode = '{PermissionMode}'. Допустимо: {string.Join(", ", PermissionModes.All)}.");
+
+        if (Effort is { Length: > 0 } effort && EffortLevels.Resolve(effort) is null)
+            errors.Add($"{SectionName}:Effort = '{effort}'. Допустимо: {string.Join(", ", EffortLevels.All)}.");
+
+        if (DailyBudgetUsd is <= 0)
+            errors.Add($"{SectionName}:DailyBudgetUsd = {DailyBudgetUsd}. Нужна положительная сумма или null.");
+
+        if (RunBudgetUsd is <= 0)
+            errors.Add($"{SectionName}:RunBudgetUsd = {RunBudgetUsd}. Нужна положительная сумма или null.");
+
+        foreach (var project in Projects.Where(p => !Directory.Exists(p)))
+            errors.Add($"{SectionName}:Projects — папки не существует: {project}");
+
+        if (Proxy is { Length: > 0 } && !Uri.TryCreate(Proxy, UriKind.Absolute, out _))
+            errors.Add($"{SectionName}:Proxy — некорректный URI: {Proxy}");
+
+        return errors;
+    }
+}

@@ -1,0 +1,12 @@
+bin/
+obj/
+.vs/
+.idea/
+*.user
+*.suo
+
+# Публикация, которую делает scripts\install-autostart.ps1
+publish/
+
+# Токен бота и список разрешённых пользователей — не в репозиторий.
+appsettings.Local.json
