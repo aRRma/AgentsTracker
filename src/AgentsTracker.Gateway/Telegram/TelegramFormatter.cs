@@ -45,6 +45,9 @@ public static partial class TelegramFormatter
 
             if (result.Length + (entity?.Length ?? 1) > budget)
             {
+                // Обрезка между половинками суррогатной пары (эмодзи) даёт невалидный UTF-16:
+                // Telegram отвергнет сообщение, а карточка подтверждения превратится в отказ.
+                if (result.Length > 0 && char.IsHighSurrogate(result[^1])) result.Length--;
                 result.Append('…');
                 break;
             }
@@ -226,8 +229,9 @@ public static partial class TelegramFormatter
 
         var html = Escape(withPlaceholders);
 
-        html = LinkRegex().Replace(html, m => $"<a href=\"{m.Groups[2].Value}\">{m.Groups[1].Value}</a>");
-        html = BoldRegex().Replace(html, m => $"<b>{(m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value)}</b>");
+        // Кавычка в URL иначе закрыла бы атрибут href и впустила в сообщение произвольный HTML.
+        html = LinkRegex().Replace(html, m => $"<a href=\"{m.Groups[2].Value.Replace("\"", "&quot;")}\">{m.Groups[1].Value}</a>");
+        html = BoldRegex().Replace(html, "<b>$1</b>");
         html = StrikeRegex().Replace(html, "<s>$1</s>");
         html = HeadingRegex().Replace(html, "<b>$1</b>");
 
@@ -284,7 +288,8 @@ public static partial class TelegramFormatter
     [GeneratedRegex(@"\[([^\]\n]+)\]\((https?://[^\s)]+)\)")]
     private static partial Regex LinkRegex();
 
-    [GeneratedRegex(@"\*\*([^\n*]+)\*\*|__([^\n_]+)__")]
+    // Только «**»: вариант с «__» превращал __init__.py в жирный «init», а Claude им не пишет.
+    [GeneratedRegex(@"\*\*([^\n*]+)\*\*")]
     private static partial Regex BoldRegex();
 
     [GeneratedRegex(@"~~([^\n~]+)~~")]

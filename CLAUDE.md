@@ -59,6 +59,11 @@ CLI зовёт инструмент с `{"tool_name":…,"input":{…},"tool_use
 payload — схема может измениться с версией CLI. `AskUserQuestion` приходит в тот же инструмент и
 требует вернуть `updatedInput` с исходным `questions` и собранным `answers`.
 
+Кнопка «Всегда» ведёт себя двояко: если CLI прислал `permission_suggestions` с
+`destination: localSettings`, правило записывает **сам CLI** в `.claude/settings.local.json`
+проекта (обычно префиксное, шире точного совпадения), и `ApprovalCardRenderer` показывает именно
+эти правила; иначе шлюз запоминает точную сигнатуру в `state.json`, и её видно в `/rules`.
+
 `ApprovalBroker` держит вызов MCP открытым на `TaskCompletionSource`, пока пользователь не нажмёт
 кнопку. `WaitAsync` намеренно различает таймаут и отмену: отменённый `/stop` запуск должен бросать
 `OperationCanceledException`, а не выглядеть как «не ответил вовремя».

@@ -24,10 +24,7 @@ public sealed class PermissionTool(
 
     // Бюджеты в символах уже экранированного HTML: сумма с запасом влезает в лимит
     // сообщения Telegram (4096), даже если текст целиком состоит из «&».
-    private const int ToolNameBudget = 200;
-    private const int HighlightBudget = 1200;
-    private const int RawInputBudget = 800;
-    private const int SignatureBudget = 400;
+    private const int HeaderBudget = 200;
     private const int QuestionBudget = 1000;
     private const int OptionLabelBudget = 120;
     private const int OptionDescriptionBudget = 300;
@@ -45,9 +42,10 @@ public sealed class PermissionTool(
     {
         var arguments = context.Params?.Arguments;
 
-        // Точная схема вызова публично не задокументирована — пишем всё, что пришло,
-        // чтобы имена полей можно было сверить по логу.
-        logger.LogInformation("Запрос разрешения: {Payload}",
+        // Точная схема вызова публично не задокументирована — на Debug пишем всё, что пришло,
+        // чтобы имена полей можно было сверить по логу. На Information полный payload не нужен:
+        // для Edit/Write это содержимое файлов, которому в логе не место.
+        logger.LogDebug("Запрос разрешения: {Payload}",
             arguments is null ? "(нет аргументов)" : JsonSerializer.Serialize(arguments));
 
         var toolName = tool_name
@@ -56,6 +54,8 @@ public sealed class PermissionTool(
 
         var toolInput = input ?? Read(arguments, "input", "tool_input", "toolInput");
         var suggestions = Read(arguments, "permission_suggestions", "suggestions", "permissionSuggestions");
+
+        logger.LogInformation("Запрос разрешения: {Tool} {Key}", toolName, Highlight(toolName, toolInput) ?? "");
 
         try
         {
@@ -103,7 +103,8 @@ public sealed class PermissionTool(
             new("reason", "✋ Отклонить с причиной"),
         };
 
-        var key = await broker.AskChoiceAsync(RenderApprovalCard(toolName, input, signature), buttons, ct);
+        var card = ApprovalCardRenderer.Render(toolName, input, signature, persistable, store.ProjectPath);
+        var key = await broker.AskChoiceAsync(card, buttons, ct);
 
         switch (key)
         {
@@ -122,28 +123,6 @@ public sealed class PermissionTool(
             default:
                 return Deny("Пользователь отклонил это действие.");
         }
-    }
-
-    private static string RenderApprovalCard(string toolName, JsonElement? input, string signature)
-    {
-        var card = new StringBuilder();
-        card.Append("🔐 <b>").Append(TelegramFormatter.EscapeCapped(toolName, ToolNameBudget)).Append("</b>\n");
-
-        // Каждый фрагмент режем по длине уже экранированного текста: длинная команда иначе
-        // переполнит сообщение, отправка упадёт, а исключение превратится в отказ.
-        var highlight = Highlight(toolName, input);
-        if (highlight is not null)
-            card.Append("<pre>").Append(TelegramFormatter.EscapeCapped(highlight, HighlightBudget)).Append("</pre>");
-
-        var raw = input?.ToString();
-        if (raw is { Length: > 0 } && raw != "{}" && (highlight is null || raw.Length > highlight.Length + 32))
-            card.Append("<pre>").Append(TelegramFormatter.EscapeCapped(raw, RawInputBudget)).Append("</pre>");
-
-        card.Append("\n<i>«Всегда» запомнит: ")
-            .Append(TelegramFormatter.EscapeCapped(signature, SignatureBudget))
-            .Append("</i>");
-
-        return card.ToString();
     }
 
     /// <summary>Самое важное поле инструмента — команда или путь к файлу.</summary>
@@ -170,7 +149,18 @@ public sealed class PermissionTool(
     private static string BuildSignature(string toolName, JsonElement? input)
     {
         var key = Highlight(toolName, input)?.Trim();
-        return key is { Length: > 0 } ? $"{toolName}({key})" : toolName;
+        if (key is { Length: > 0 }) return $"{toolName}({key})";
+
+        // Ключевого поля нет (WebSearch с query, MCP-инструменты) — берём весь вход целиком.
+        // Голое имя инструмента открыло бы «Всегда» для любых его аргументов.
+        var raw = input is { ValueKind: not JsonValueKind.Undefined and not JsonValueKind.Null } element
+            ? JsonSerializer.Serialize(element)
+            : "";
+
+        // Скобки обязательны даже при пустом входе: по ним отличаются сигнатуры этого формата
+        // от голого имени инструмента, которое писала старая версия (оно разрешало любые
+        // аргументы и вычищается при загрузке state.json).
+        return raw is { Length: > 0 } && raw != "{}" ? $"{toolName}{raw}" : $"{toolName}()";
     }
 
     /// <summary>Отбирает подсказки правил, которые CLI может записать в .claude/settings.local.json.</summary>
@@ -217,7 +207,7 @@ public sealed class PermissionTool(
 
             var card = new StringBuilder("❓ ");
             if (header is { Length: > 0 })
-                card.Append("<b>").Append(TelegramFormatter.EscapeCapped(header, ToolNameBudget)).Append("</b>\n");
+                card.Append("<b>").Append(TelegramFormatter.EscapeCapped(header, HeaderBudget)).Append("</b>\n");
             card.Append(TelegramFormatter.EscapeCapped(text, QuestionBudget));
 
             var buttons = new List<ChoiceOption>();
