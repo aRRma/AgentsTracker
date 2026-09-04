@@ -29,7 +29,16 @@ pwsh -File scripts\install-autostart.ps1        # publish + protect-secrets + AC
 $env:Gateway__ProjectPath = 'C:\tmp\test'; $env:Gateway__AllowedUserIds__0 = '1'
 ```
 
-Два экземпляра шлюза на одной машине не уживаются: общий `mcp-gateway.json` и один бот.
+Разовый прогон без правки конфига: запустить exe с `$env:Gateway__BotToken`,
+`Gateway__AllowedUserIds__0` и **своим** `Gateway__McpPort` — иначе перезапишете
+`mcp-gateway.json` работающего экземпляра, и его следующий `claude -p` упадёт. Два экземпляра
+шлюза на одной машине не уживаются и по другой причине: бот один, `getUpdates` отдаётся 409.
+
+Сборка падает с `MSB3021`, если шлюз запущен: exe заблокирован. Собирайте в другую папку —
+`dotnet build src\AgentsTracker.Gateway -o <временная папка>`.
+
+Консоль отдаёт русский текст в cp866: в оболочке, ожидающей UTF-8, лог выглядит мусором —
+смотрите его в PowerShell либо прогоняйте через `iconv -f cp866 -t utf-8`.
 
 ## Архитектура
 
@@ -216,3 +225,5 @@ Id новой сессии выдаёт **шлюз** (`--session-id <uuid>`) и 
   `NotSupportedException`, и `/status` падает.
 - `McpConfigFile` и `SessionStore` — единственные классы с классическим конструктором: у обоих
   побочный эффект при создании (запись/чтение файла), который должен случиться один раз до старта.
+- Диагностика C#-LSP не подхватывает `GlobalUsings.cs` после перемещения файлов и сыплет ложными
+  `CS0246`. Источник правды — `dotnet build`.
