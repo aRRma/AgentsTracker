@@ -1,4 +1,4 @@
-﻿using AgentsTracker.Gateway.Infrastructure.Audit;
+using AgentsTracker.Gateway.Infrastructure.Audit;
 using AgentsTracker.Gateway.Infrastructure.Telegram.Dispatch;
 using Telegram.Bot;
 using Telegram.Bot.Polling;

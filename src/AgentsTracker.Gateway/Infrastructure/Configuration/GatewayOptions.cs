@@ -14,10 +14,22 @@ public sealed class GatewayOptions
     public string ProjectPath { get; set; } = "";
 
     /// <summary>
-    /// Папки, между которыми можно переключаться из чата. Пусто — шлюз сам находит соседей
-    /// <see cref="ProjectPath"/>, похожих на репозиторий (см. ProjectCatalog).
+    /// Папки, между которыми можно переключаться из чата. Пусто — список собирается обходом
+    /// <see cref="ProjectsRoot"/>, а если и он пуст — из соседей <see cref="ProjectPath"/>
+    /// (см. ProjectCatalog).
     /// </summary>
     public string[] Projects { get; set; } = [];
+
+    /// <summary>
+    /// Корень, под которым искать репозитории для меню: обход идёт вглубь, пока не встретится
+    /// папка, похожая на проект. Нужен, когда репозитории лежат не одной кучей, а по группам
+    /// (source/repos/ГруппаА/Репозиторий): соседей <see cref="ProjectPath"/> тут мало.
+    /// null — искать по-старому, среди соседей.
+    /// </summary>
+    public string? ProjectsRoot { get; set; }
+
+    /// <summary>На сколько уровней вглубь <see cref="ProjectsRoot"/> спускаться.</summary>
+    public int ProjectsRootDepth { get; set; } = 3;
 
     /// <summary>Путь к claude.exe. null = автопоиск.</summary>
     public string? ClaudeExecutable { get; set; }
@@ -98,6 +110,14 @@ public sealed class GatewayOptions
 
         foreach (var project in Projects.Where(p => !Directory.Exists(p)))
             errors.Add($"{SectionName}:Projects — папки не существует: {project}");
+
+        if (ProjectsRoot is { Length: > 0 } root && !Directory.Exists(root))
+            errors.Add($"{SectionName}:ProjectsRoot — папки не существует: {root}");
+
+        // Обход дерева на каждый показ меню: без потолка глубины один неудачный корень
+        // («C:\») подвесил бы отрисовку.
+        if (ProjectsRootDepth is < 1 or > 6)
+            errors.Add($"{SectionName}:ProjectsRootDepth = {ProjectsRootDepth}. Допустимо 1..6.");
 
         if (Proxy is { Length: > 0 } && !Uri.TryCreate(Proxy, UriKind.Absolute, out _))
             errors.Add($"{SectionName}:Proxy — некорректный URI: {Proxy}");

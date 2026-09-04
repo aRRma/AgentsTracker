@@ -199,7 +199,9 @@ usage credits. Пока они включены, шлюз пишет об это
 | `BotToken` | токен от @BotFather |
 | `AllowedUserIds` | Telegram user id, которым можно управлять агентом |
 | `ProjectPath` | рабочая папка по умолчанию для `claude` |
-| `Projects` | папки, между которыми переключает меню; пусто — соседи `ProjectPath` с `.git` или решением |
+| `Projects` | явный список папок для меню; пусто — используется `ProjectsRoot`, иначе соседи `ProjectPath` |
+| `ProjectsRoot` | корень, под которым искать репозитории для меню; удобно, когда они разложены по группам |
+| `ProjectsRootDepth` | на сколько уровней вглубь `ProjectsRoot` спускаться, по умолчанию 3 |
 | `ClaudeExecutable` | путь к `claude.exe`; `null` — автопоиск |
 | `Model` | алиас модели по умолчанию; `null` — как в настройках Claude Code |
 | `Effort` | уровень усилий по умолчанию (`low` … `max`); `null` — как решит Claude Code |

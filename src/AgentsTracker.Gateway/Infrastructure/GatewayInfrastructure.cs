@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using AgentsTracker.Gateway.Infrastructure.Audit;
 using AgentsTracker.Gateway.Infrastructure.Claude;
 using AgentsTracker.Gateway.Infrastructure.Mcp;

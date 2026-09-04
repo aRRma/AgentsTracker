@@ -2,8 +2,8 @@
 namespace AgentsTracker.Gateway.Infrastructure.Configuration;
 
 /// <summary>
-/// Папки, между которыми можно переключаться из чата. Список задаётся ключом Gateway:Projects,
-/// а если он пуст — собирается из соседей Gateway:ProjectPath, похожих на репозиторий.
+/// Папки, между которыми можно переключаться из чата. Список берётся из Gateway:Projects,
+/// иначе — обходом Gateway:ProjectsRoot вглубь, иначе — из соседей Gateway:ProjectPath.
 /// Список пересобирается на каждый показ меню: новый склонированный репозиторий появится в нём
 /// без перезапуска шлюза.
 /// </summary>
@@ -29,7 +29,7 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
     {
         var found = new List<string>();
 
-        foreach (var path in _options.Projects.Length > 0 ? _options.Projects : Discover())
+        foreach (var path in Sources())
         {
             if (!Directory.Exists(path)) continue;
 
@@ -48,7 +48,57 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
         return found;
     }
 
-    private IEnumerable<string> Discover()
+    private IEnumerable<string> Sources()
+    {
+        if (_options.Projects.Length > 0) return _options.Projects;
+        if (_options.ProjectsRoot is { Length: > 0 } root) return Walk(root);
+        return Neighbours();
+    }
+
+    /// <summary>
+    /// Обход дерева под корнем: спуск прекращается на папке, похожей на проект, — внутри
+    /// репозитория искать нечего, а `node_modules` и `bin` дали бы тысячи путей.
+    /// Текущая папка добавляется отдельно: она может лежать вне корня.
+    /// </summary>
+    private IEnumerable<string> Walk(string root)
+    {
+        yield return _options.ProjectPath;
+
+        var queue = new Queue<(string Path, int Depth)>();
+        queue.Enqueue((root, 0));
+
+        while (queue.Count > 0)
+        {
+            var (directory, depth) = queue.Dequeue();
+
+            string[] children;
+            try
+            {
+                children = Directory.GetDirectories(directory);
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Пропускаю {Directory}", directory);
+                continue;
+            }
+
+            foreach (var child in children)
+            {
+                // Скрытые папки — это .git, .vs и прочая служебная кухня, проектов там нет.
+                if (Path.GetFileName(child).StartsWith('.')) continue;
+
+                if (LooksLikeProject(child))
+                {
+                    yield return child;
+                    continue;
+                }
+
+                if (depth + 1 < _options.ProjectsRootDepth) queue.Enqueue((child, depth + 1));
+            }
+        }
+    }
+
+    private IEnumerable<string> Neighbours()
     {
         yield return _options.ProjectPath;
 
