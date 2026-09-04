@@ -48,7 +48,8 @@ public sealed class AuditCommandHandler(ITelegramBotClient bot, IAuditLog audit)
         }
 
         var tail = shown < entries.Count ? $"\n<i>…и ещё {entries.Count - shown} — смотрите файл журнала.</i>" : "";
-        var text = $"📜 <b>Последние {shown} записей</b>\n{body}{tail}";
+        // Перевод строки после заголовка не нужен: каждая строка списка уже начинается с него.
+        var text = $"📜 <b>Последние {shown} записей</b>{body}{tail}";
 
         await bot.SendMessage(context.ChatId, text, ParseMode.Html, cancellationToken: ct);
     }
