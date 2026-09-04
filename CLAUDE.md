@@ -37,6 +37,15 @@ $env:Gateway__ProjectPath = 'C:\tmp\test'; $env:Gateway__AllowedUserIds__0 = '1'
 Сборка падает с `MSB3021`, если шлюз запущен: exe заблокирован. Собирайте в другую папку —
 `dotnet build src\AgentsTracker.Gateway -o <временная папка>`.
 
+Перезапуск работающего экземпляра (задачи Планировщика на машине разработки обычно нет — exe
+запущен вручную из `bin\Debug`, путь покажет `Get-Process AgentsTracker.Gateway`):
+
+```powershell
+Get-Process AgentsTracker.Gateway | Stop-Process -Force   # иначе сборка упадёт с MSB3021
+dotnet build src\AgentsTracker.Gateway
+Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.exe
+```
+
 Консоль отдаёт русский текст в cp866: в оболочке, ожидающей UTF-8, лог выглядит мусором —
 смотрите его в PowerShell либо прогоняйте через `iconv -f cp866 -t utf-8`.
 
@@ -124,6 +133,8 @@ Telegram ──▶ TelegramBotService ──▶ ChatWorker ──▶ ClaudeRunne
 и `--permission-prompt-tool mcp__tg__approve`. Правя одну сторону, проверяйте вторую: имя сервера
 и инструмента — константы `McpConfigFile`, а атрибуту `[McpServerTool]` нужна константа времени
 компиляции — отсюда переприсваивание в `PermissionTool`.
+Ту же схему README пересказывает пользователю (разделы «Как это устроено» и «Безопасность») —
+меняя защиту эндпоинта или папку данных, правьте и его.
 
 ### Контракт подтверждений (проверен на живом CLI, схема входа не задокументирована)
 
@@ -251,5 +262,8 @@ Id новой сессии выдаёт **шлюз** (`--session-id <uuid>`) и 
   `InvalidOperationException`. Поля недокументированного ответа лимитов читаются через
   `ClaudeLimits.Number` с проверкой `ValueKind`, иначе `utilization: null` возвращается
   пользователю как «Внутренняя ошибка шлюза».
+- Правя русские тексты и windows-пути скриптом из Bash, помните про escape-последовательности:
+  `\a` в строке python съел `audit\audit-…` в README, и на глаз это неотличимо от опечатки.
+  Надёжнее Edit/Write, а результат проверять `grep … | cat -v`.
 - Комментарии объясняют не что делает код, а какой отказ он предотвращает: «иначе `/stop` уйдёт
   в ожидающий свободный ответ». Комментарий-пересказ строки здесь лишний.
