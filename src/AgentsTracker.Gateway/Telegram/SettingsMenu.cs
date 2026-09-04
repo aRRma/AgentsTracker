@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using AgentsTracker.Gateway.Configuration;
 using AgentsTracker.Gateway.State;
 using Microsoft.Extensions.Options;
@@ -82,12 +84,11 @@ public sealed class SettingsMenu(
 
     private string? ApplyProject(string argument)
     {
-        var projects = catalog.List(store.ProjectPath);
+        // Ищем по ключу пути, а не по номеру в списке: между отрисовкой и нажатием список
+        // мог измениться (появилась папка-сосед), и номер указал бы на другой проект.
+        var project = catalog.List(store.ProjectPath).FirstOrDefault(p => ProjectKey(p) == argument);
+        if (project is null) return "Папки уже нет в списке";
 
-        if (!int.TryParse(argument, out var index) || index < 0 || index >= projects.Count)
-            return "Папки уже нет в списке";
-
-        var project = projects[index];
         if (ProjectCatalog.Same(project, store.ProjectPath)) return null;
 
         store.SetProjectPath(project);
@@ -150,11 +151,12 @@ public sealed class SettingsMenu(
             return removed == 0 ? "Список и так пуст" : $"Забыто сессий: {removed}";
         }
 
-        var sessions = store.SessionsFor(project);
-        if (!int.TryParse(argument, out var index) || index < 0 || index >= sessions.Count)
-            return "Сессии уже нет в списке";
+        // По началу id, а не по номеру: список упорядочен по активности, и завершившийся
+        // между отрисовкой и нажатием запуск сдвинул бы номера на соседнюю сессию.
+        var session = store.SessionsFor(project).FirstOrDefault(s => SessionKey(s.Id) == argument);
+        if (session is null) return "Сессии уже нет в списке";
 
-        store.SetSessionId(sessions[index].Id);
+        store.SetSessionId(session.Id);
         return worker.IsBusy ? "Сессия сменится со следующего запуска" : "Сессия выбрана";
     }
 
@@ -234,8 +236,8 @@ public sealed class SettingsMenu(
             """;
 
         var buttons = projects
-            .Select((path, i) => Button(
-                $"{(ProjectCatalog.Same(path, current) ? "▶ " : "")}{Path.GetFileName(path)}", $"proj:{i}"))
+            .Select(path => Button(
+                $"{(ProjectCatalog.Same(path, current) ? "▶ " : "")}{Path.GetFileName(path)}", $"proj:{ProjectKey(path)}"))
             .Chunk(2)
             .ToList();
 
@@ -338,7 +340,7 @@ public sealed class SettingsMenu(
             """;
 
         var buttons = sessions
-            .Select((s, i) => Button($"{(s.Id == active ? "▶ " : "")}{i + 1}", $"sess:{i}"))
+            .Select((s, i) => Button($"{(s.Id == active ? "▶ " : "")}{i + 1}", $"sess:{SessionKey(s.Id)}"))
             .Chunk(4)
             .ToList();
 
@@ -402,6 +404,20 @@ public sealed class SettingsMenu(
     private static InlineKeyboardButton BackButton => Button("◀️ Назад", "root");
 
     private static string Marker(bool selected) => selected ? "▶" : "·";
+
+    /// <summary>Начало id сессии — его хватает, чтобы отличить сессии одного проекта.</summary>
+    private static string SessionKey(string sessionId) =>
+        sessionId.Length <= 8 ? sessionId : sessionId[..8];
+
+    /// <summary>
+    /// Короткий ключ пути для callback_data (лимит 64 байта, полный путь не влезает).
+    /// Регистр не учитываем — как и ProjectCatalog при сравнении путей.
+    /// </summary>
+    private static string ProjectKey(string path)
+    {
+        var bytes = Encoding.UTF8.GetBytes(ProjectCatalog.Normalize(path).ToLowerInvariant());
+        return Convert.ToHexStringLower(SHA256.HashData(bytes))[..12];
+    }
 
     private static string E(string text) => TelegramFormatter.Escape(text);
 

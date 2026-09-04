@@ -289,6 +289,7 @@ public sealed partial class ChatWorker(
         public void Dispose()
         {
             if (!_cts.IsCancellationRequested) _cts.Cancel();
+            _cts.Dispose();
         }
     }
 }
