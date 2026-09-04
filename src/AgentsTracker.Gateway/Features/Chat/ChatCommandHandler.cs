@@ -1,4 +1,5 @@
 using AgentsTracker.Gateway.Infrastructure.Audit;
+using AgentsTracker.Gateway.Infrastructure.Claude;
 using AgentsTracker.Gateway.Infrastructure.Telegram.Dispatch;
 using Telegram.Bot;
 
@@ -6,7 +7,11 @@ namespace AgentsTracker.Gateway.Features.Chat;
 
 /// <summary>/new, /stop, /status — управление текущим запуском и сессией.</summary>
 public sealed class ChatCommandHandler(
-    ITelegramBotClient bot, ChatWorker worker, SessionStore store, IAuditLog audit) : ITelegramCommandHandler
+    ITelegramBotClient bot,
+    ChatWorker worker,
+    SessionStore store,
+    ClaudeLimits limits,
+    IAuditLog audit) : ITelegramCommandHandler
 {
     public IReadOnlyCollection<string> Commands { get; } = ["/new", "/stop", "/status"];
 
@@ -16,7 +21,7 @@ public sealed class ChatCommandHandler(
         {
             "/new" => StartNew(context),
             "/stop" => Stop(context),
-            _ => BuildStatus(),
+            _ => await BuildStatusAsync(ct),
         };
 
         await bot.SendMessage(context.ChatId, reply, cancellationToken: ct);
@@ -38,9 +43,13 @@ public sealed class ChatCommandHandler(
         return stopped ? "🛑 Остановлено." : "Сейчас ничего не выполняется.";
     }
 
-    private string BuildStatus()
+    private async Task<string> BuildStatusAsync(CancellationToken ct)
     {
         var state = store.Snapshot();
+
+        // Остаток тарифа, а не потраченные доллары: подписку деньгами не мерить,
+        // а запуск упирается именно в окно лимита.
+        var plan = await limits.ShortSummaryAsync(store.EffectiveModel, ct);
 
         return $"""
             📁 {store.ProjectPath}
@@ -48,6 +57,7 @@ public sealed class ChatCommandHandler(
             🎚 Effort: {store.EffectiveEffort ?? "по умолчанию"}{(state.Effort is null ? " (из конфига)" : "")}
             🔐 Доступ: {store.EffectivePermissionMode}{(state.PermissionMode is null ? " (из конфига)" : "")}
             🧵 Сессия: {store.SessionId ?? "новая (ещё не создана)"}
+            🚦 Осталось: {(plan.Length > 0 ? plan : "—")}
             ⚙️ {(worker.IsBusy ? "выполняется" : "простаивает")}, в очереди: {worker.QueueLength}
             🕔 Последняя активность: {state.LastActivityUtc?.ToLocalTime().ToString("g") ?? "—"}
             ♾ Правил «всегда»: {state.AlwaysAllow.Count}

@@ -21,7 +21,10 @@ public sealed class EffortScreen(SessionStore store, IAuditLog audit) : ISetting
         return $"Effort: {effort ?? "по умолчанию"}";
     }
 
-    public (string Html, InlineKeyboardMarkup Keyboard) Render()
+    public Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(CancellationToken ct) =>
+        Task.FromResult(Render());
+
+    private (string Html, InlineKeyboardMarkup Keyboard) Render()
     {
         var current = store.EffectiveEffort;
 

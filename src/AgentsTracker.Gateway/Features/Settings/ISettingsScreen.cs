@@ -8,7 +8,11 @@ public interface ISettingsScreen
     /// <summary>Ключ экрана в callback_data: «root», «proj», «model», «effort», «mode», «sess», «usage».</summary>
     string Key { get; }
 
-    (string Html, InlineKeyboardMarkup Keyboard) Render();
+    /// <summary>
+    /// Отрисовка асинхронная: сводка тянет остаток тарифных окон, а это поход в сеть
+    /// (с кэшем на три минуты, но всё же).
+    /// </summary>
+    Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(CancellationToken ct);
 
     /// <summary>
     /// Применяет аргумент нажатия (или текстовой команды). Возвращает короткий текст для

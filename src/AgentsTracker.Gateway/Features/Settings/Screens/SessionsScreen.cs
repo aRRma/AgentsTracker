@@ -42,7 +42,10 @@ public sealed class SessionsScreen(SessionStore store, ChatWorker worker, IAudit
         return worker.IsBusy ? "Сессия сменится со следующего запуска" : "Сессия выбрана";
     }
 
-    public (string Html, InlineKeyboardMarkup Keyboard) Render()
+    public Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(CancellationToken ct) =>
+        Task.FromResult(Render());
+
+    private (string Html, InlineKeyboardMarkup Keyboard) Render()
     {
         var project = store.ProjectPath;
         var active = store.SessionId;
@@ -52,7 +55,7 @@ public sealed class SessionsScreen(SessionStore store, ChatWorker worker, IAudit
             ? "<i>Сессий ещё нет — первое сообщение создаст первую.</i>"
             : string.Join("\n", sessions.Select((s, i) =>
                 $"{Marker(s.Id == active)} <b>{i + 1}.</b> {E(s.Title)}\n" +
-                $"   {s.Turns} х · {s.CostUsd.Money} · {E(s.LastActivityUtc.Ago)}"));
+                $"   {s.Turns} х · {E(s.LastActivityUtc.Ago)}"));
 
         var html = $"""
             🧵 <b>Сессии</b> — {E(Path.GetFileName(project))}

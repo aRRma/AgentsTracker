@@ -40,7 +40,10 @@ public sealed class ProjectScreen(
             : $"{Path.GetFileName(project)} — вернулись к её сессии";
     }
 
-    public (string Html, InlineKeyboardMarkup Keyboard) Render()
+    public Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(CancellationToken ct) =>
+        Task.FromResult(Render());
+
+    private (string Html, InlineKeyboardMarkup Keyboard) Render()
     {
         var current = store.ProjectPath;
         var projects = catalog.List(current).Take(MaxShown).ToArray();

@@ -115,6 +115,51 @@ public sealed class ClaudeLimits(IOptions<GatewayOptions> options, ILogger<Claud
     }
 
     /// <summary>
+    /// Остаток окон одной строкой — «5 часов 66% · неделя 88%» — для шапки меню и /status.
+    /// Пусто, если окон нет: показывать нечего, а строка «—» только зашумит сводку.
+    /// </summary>
+    public async Task<string> ShortSummaryAsync(string? model, CancellationToken ct)
+    {
+        var snapshot = await GetAsync(ct);
+        if (snapshot.Error is { } error) return error;
+
+        var parts = Live(snapshot, model).Select(w => $"{Describe(w.Key)} {Left(w.Used)}");
+
+        return string.Join(" · ", parts);
+    }
+
+    /// <summary>
+    /// Остаток окон построчно, со временем сброса — для экрана статистики. Пустой список
+    /// значит, что окон нет; причина неудачного опроса приходит одной строкой.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> RemainingLinesAsync(string? model, CancellationToken ct)
+    {
+        var snapshot = await GetAsync(ct);
+        if (snapshot.Error is { } error) return [error];
+
+        return
+        [
+            .. Live(snapshot, model).Select(w =>
+                w.ResetsAt is { } at
+                    ? $"· {Describe(w.Key)} — осталось {Left(w.Used)}, сброс {Moment(at)}"
+                    : $"· {Describe(w.Key)} — осталось {Left(w.Used)}")
+        ];
+    }
+
+    /// <summary>
+    /// Окна, которые действуют на следующий запуск: без просроченных и без чужих моделей.
+    /// Порядок — по времени сброса, чтобы ближайшее было первым.
+    /// </summary>
+    private static IEnumerable<LimitWindow> Live(LimitsSnapshot snapshot, string? model) =>
+        snapshot.Windows
+            .Where(w => Applies(w.Key, model) && !Passed(w.ResetsAt))
+            .OrderBy(w => w.ResetsAt ?? DateTimeOffset.MaxValue);
+
+    /// <summary>Остаток окна в процентах. Округляем вниз: «1%» честнее, чем обнадёживающий «2%».</summary>
+    private static string Left(double used) =>
+        ((int)Math.Floor(Math.Clamp(1.0 - used, 0.0, 1.0) * 100)).ToString(CultureInfo.InvariantCulture) + "%";
+
+    /// <summary>
     /// Окна без модели в ключе действуют на любой запуск; окно отдельной модели — только когда
     /// запуск пойдёт этой моделью. Сравниваем по вхождению: «fable» ⊂ «claude-fable-5-1».
     /// Когда модель не выбрана, её выбирает CLI — тогда учитываем только общие окна.

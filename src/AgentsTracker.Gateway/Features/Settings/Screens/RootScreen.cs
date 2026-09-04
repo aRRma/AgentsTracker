@@ -1,4 +1,5 @@
 using AgentsTracker.Gateway.Features.Chat;
+using AgentsTracker.Gateway.Infrastructure.Claude;
 using AgentsTracker.Gateway.Infrastructure.Telegram;
 using Telegram.Bot.Types.ReplyMarkups;
 using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
@@ -6,20 +7,20 @@ using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
 
 /// <summary>Корневой экран: сводка и переходы к остальным.</summary>
-public sealed class RootScreen(SessionStore store, ChatWorker worker) : ISettingsScreen
+public sealed class RootScreen(SessionStore store, ChatWorker worker, ClaudeLimits limits) : ISettingsScreen
 {
     public string Key => "root";
 
     public string? Apply(string argument, long userId) => null;
 
-    public (string Html, InlineKeyboardMarkup Keyboard) Render()
+    public async Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(CancellationToken ct)
     {
         var project = store.ProjectPath;
         var session = ActiveSession();
 
-        // Стоимость на подписке — оценка CLI, а не счёт: кредиты шлюз не тратит.
-        var spent = store.SpentToday();
-        var today = store.DailyBudgetUsd is { } cap ? $"{spent.Money} из {cap.Money}" : spent.Money;
+        // Остаток тарифа, а не потраченные доллары: на подписке платить не за что,
+        // а упереться можно только в окно лимита.
+        var plan = await limits.ShortSummaryAsync(store.EffectiveModel, ct);
 
         var html = $"""
             ⚙️ <b>Настройки</b>
@@ -30,7 +31,7 @@ public sealed class RootScreen(SessionStore store, ChatWorker worker) : ISetting
             🎚 Effort: <b>{E(store.EffectiveEffort ?? "по умолчанию")}</b>
             🔐 Доступ: <b>{E(store.EffectivePermissionMode)}</b>
             🧵 Сессия: {(session is null ? "<i>новая</i>" : $"<b>{E(session.Title)}</b>")}
-            📈 Сегодня (оценка): <b>{E(today)}</b>
+            🚦 Осталось: <b>{E(plan.Length > 0 ? plan : "—")}</b>
             ⚙️ {(worker.IsBusy ? "выполняется" : "простаивает")}, в очереди: {worker.QueueLength}
             """;
 

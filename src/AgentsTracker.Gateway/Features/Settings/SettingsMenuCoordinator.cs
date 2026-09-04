@@ -26,7 +26,7 @@ public sealed class SettingsMenuCoordinator(
     /// <summary>Показывает меню новым сообщением. screen — экран, с которого начать.</summary>
     public async Task OpenAsync(long chatId, CancellationToken ct, string screen = "root")
     {
-        var (html, keyboard) = Screen(screen).Render();
+        var (html, keyboard) = await Screen(screen).RenderAsync(ct);
         await bot.SendMessage(chatId, html, ParseMode.Html, replyMarkup: keyboard, cancellationToken: ct);
     }
 
@@ -50,7 +50,7 @@ public sealed class SettingsMenuCoordinator(
 
         if (query.Message is not { } message) return;
 
-        var (html, keyboard) = Screen(screen).Render();
+        var (html, keyboard) = await Screen(screen).RenderAsync(ct);
         await EditQuietlyAsync(message, html, keyboard, ct);
     }
 

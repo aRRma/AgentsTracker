@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
@@ -130,7 +129,7 @@ public sealed partial class ChatWorker(
         }
 
         Audit(prompt, AuditKinds.RunEnd,
-            $"{result.Duration.Elapsed}, {(result.CostUsd ?? 0m).Money}",
+            $"{result.Duration.Elapsed}, ходов {result.Usage?.Turns ?? 0}",
             result.SessionId,
             result switch { { Cancelled: true } => "cancel", { RateLimited: true } => "rate-limit", { Ok: true } => "ok", _ => "error" });
 
@@ -189,8 +188,9 @@ public sealed partial class ChatWorker(
         var spent = store.SpentToday();
         if (spent < budget) return null;
 
-        return $"💳 Дневной бюджет исчерпан: потрачено ${spent.ToString("0.00", CultureInfo.InvariantCulture)} " +
-               $"из ${budget.ToString("0.00", CultureInfo.InvariantCulture)}. " +
+        // Единственное место, где суммы ещё уместны: этот предохранитель включают вручную,
+        // и без цифр непонятно, во что упёрлись.
+        return $"💳 Дневной бюджет исчерпан: потрачено {spent.Money} из {budget.Money}. " +
                "Изменить — ключ Gateway:DailyBudgetUsd в appsettings.Local.json.";
     }
 

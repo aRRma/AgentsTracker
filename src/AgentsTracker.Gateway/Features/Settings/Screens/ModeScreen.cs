@@ -38,7 +38,10 @@ public sealed class ModeScreen(
             : $"Доступ: {mode}";
     }
 
-    public (string Html, InlineKeyboardMarkup Keyboard) Render()
+    public Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(CancellationToken ct) =>
+        Task.FromResult(Render());
+
+    private (string Html, InlineKeyboardMarkup Keyboard) Render()
     {
         var current = store.EffectivePermissionMode;
 
