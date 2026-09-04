@@ -113,6 +113,31 @@ public sealed class SessionStore
         });
     }
 
+    /// <summary>
+    /// Меняет активную сессию конкретного проекта, но только если она всё ещё равна
+    /// <paramref name="onlyIfActive"/>. Так завершившийся запуск не перетирает /new или
+    /// смену сессии, сделанные пользователем, пока он шёл. Возвращает, произошла ли запись.
+    /// </summary>
+    public bool TrySetSessionId(string projectPath, string? sessionId, string? onlyIfActive)
+    {
+        var project = ProjectCatalog.Normalize(projectPath);
+        var applied = false;
+
+        Mutate(s =>
+        {
+            var current = s.ActiveSessions.GetValueOrDefault(project);
+            if (!string.Equals(current, onlyIfActive, StringComparison.Ordinal)) return;
+
+            if (sessionId is { Length: > 0 }) s.ActiveSessions[project] = sessionId;
+            else s.ActiveSessions.Remove(project);
+
+            s.LastActivityUtc = DateTimeOffset.UtcNow;
+            applied = true;
+        });
+
+        return applied;
+    }
+
     /// <summary>Сессии проекта, свежие сверху.</summary>
     public IReadOnlyList<SessionRecord> SessionsFor(string projectPath)
     {
@@ -166,7 +191,10 @@ public sealed class SessionStore
 
             if (sessionId is not { Length: > 0 }) return;
 
-            var record = Touch(s, project, prompt, sessionId, now);
+            // Активной сессию здесь не делаем: это решает ClaudeRunner через TrySetSessionId,
+            // сверяясь с тем, что было активно на старте. Иначе запись расхода откатила бы
+            // /new или смену сессии, сделанные во время запуска.
+            var record = Touch(s, project, prompt, sessionId, now, activate: false);
             record.Turns += usage.Turns;
             record.CostUsd += usage.CostUsd;
         });
@@ -186,16 +214,16 @@ public sealed class SessionStore
         Mutate(s =>
         {
             s.LastActivityUtc = now.ToUniversalTime();
-            Touch(s, project, prompt, sessionId, now);
+            Touch(s, project, prompt, sessionId, now, activate: true);
         });
     }
 
     /// <summary>
-    /// Обновляет запись сессии (создавая при необходимости) и делает её активной в проекте.
-    /// Вызывается под замком из <see cref="Mutate"/>.
+    /// Обновляет запись сессии (создавая при необходимости); при <paramref name="activate"/>
+    /// делает её активной в проекте. Вызывается под замком из <see cref="Mutate"/>.
     /// </summary>
     private static SessionRecord Touch(
-        GatewayState state, string project, string prompt, string sessionId, DateTimeOffset now)
+        GatewayState state, string project, string prompt, string sessionId, DateTimeOffset now, bool activate)
     {
         var record = state.Sessions.FirstOrDefault(r => string.Equals(r.Id, sessionId, StringComparison.Ordinal));
         if (record is null)
@@ -212,7 +240,7 @@ public sealed class SessionStore
 
         record.LastActivityUtc = now;
 
-        state.ActiveSessions[project] = sessionId;
+        if (activate) state.ActiveSessions[project] = sessionId;
         TrimSessions(state, project);
 
         return record;
@@ -391,6 +419,12 @@ public sealed class SessionStore
     private static GatewayState Rehydrate(GatewayState state)
     {
         state.ActiveSessions = new Dictionary<string, string>(state.ActiveSessions, StringComparer.OrdinalIgnoreCase);
+
+        // Старая версия писала голое имя инструмента («WebSearch») — такая сигнатура разрешала
+        // любые его аргументы. Теперь без ключевого поля в сигнатуру входит весь JSON, и голые
+        // записи никогда не совпадут: убираем, чтобы не висели в /rules.
+        state.AlwaysAllow.RemoveAll(s => !s.Contains('(') && !s.Contains('{'));
+
         return state;
     }
 

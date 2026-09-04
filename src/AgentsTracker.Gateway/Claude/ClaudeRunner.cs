@@ -64,7 +64,9 @@ public sealed class ClaudeRunner(
         foreach (var arg in BuildArguments(prompt, resumedSessionId, sessionId))
             psi.ArgumentList.Add(arg);
 
-        logger.LogInformation("claude {Args}", string.Join(' ', psi.ArgumentList.Skip(2)));
+        // Промпт в лог не пишем целиком: это сообщение пользователя, ему хватит короткого начала.
+        logger.LogInformation("claude -p «{Prompt}» {Args}", Truncate(prompt.ReplaceLineEndings(" "), 80),
+            string.Join(' ', psi.ArgumentList.Skip(2)));
 
         using var process = new Process { StartInfo = psi };
 
@@ -124,7 +126,7 @@ public sealed class ClaudeRunner(
             };
         }
 
-        var result = Parse(stdout, stderr, process.ExitCode, started.Elapsed, resumedSessionId, sessionId);
+        var result = Parse(stdout, stderr, process.ExitCode, started.Elapsed, projectPath, resumedSessionId, sessionId);
 
         // Неудачный запуск тоже стоит денег, поэтому пишем расход и по нему — лишь бы CLI
         // успел его сообщить.
@@ -200,7 +202,7 @@ public sealed class ClaudeRunner(
 
     private ClaudeRunResult Parse(
         string stdout, string stderr, int exitCode, TimeSpan duration,
-        string? resumedSessionId, string sessionId)
+        string projectPath, string? resumedSessionId, string sessionId)
     {
         ClaudeCliJson? payload = null;
         if (stdout.Length > 0)
@@ -220,43 +222,58 @@ public sealed class ClaudeRunner(
             var details = string.IsNullOrWhiteSpace(stderr) ? Truncate(stdout, 3000) : Truncate(stderr, 3000);
             logger.LogError("claude завершился с кодом {Code}: {Details}", exitCode, details);
 
-            // Битый id сессии переживает перезапуск в state.json и валит каждый следующий
-            // запуск одинаково. Сбрасываем его, чтобы диалог продолжился с чистой сессии.
-            // Только что созданную сессию не трогаем: CLI мог успеть поработать до падения,
-            // и терять эту ветку хуже, чем один раз получить отказ на --resume.
-            var note = "";
-            if (resumedSessionId is { Length: > 0 })
-            {
-                store.SetSessionId(null);
-                note = "\n\n_Сессия сброшена — следующее сообщение начнёт новую._";
-                logger.LogWarning("Сессия {SessionId} сброшена после сбоя запуска", resumedSessionId);
-            }
+            // Сбрасываем сессию только когда CLI прямо говорит, что --resume не нашёл её:
+            // битый id переживает перезапуск в state.json и валит каждый следующий запуск.
+            // На любой другой сбой (баннер обновления перед JSON, падение процесса) сессия
+            // цела, и терять её контекст было бы хуже, чем повторить запуск.
+            var dropped = resumedSessionId is { Length: > 0 } && ResetSession(projectPath, resumedSessionId, details);
+            var note = dropped ? "\n\n_Сессия сброшена — следующее сообщение начнёт новую._" : "";
 
             return ClaudeRunResult.Failure(
                 $"claude завершился с кодом {exitCode}.\n\n```\n{details}\n```{note}",
                 duration) with
             {
-                SessionId = resumedSessionId is { Length: > 0 } ? null : sessionId,
+                SessionId = dropped ? null : sessionId,
                 RateLimited = HitPlanLimit(details),
             };
         }
-
-        if (payload.SessionId is { Length: > 0 })
-            store.SetSessionId(payload.SessionId);
 
         var text = payload.Result;
         if (string.IsNullOrWhiteSpace(text))
             text = payload.IsError ? "Агент завершился с ошибкой без текста ответа." : "(пустой ответ)";
 
-        if (payload.IsError || exitCode != 0)
+        var failed = payload.IsError || exitCode != 0;
+
+        // Проверяем «сессия не найдена» до того, как сделать активным id из ответа: на неудачном
+        // --resume CLI возвращает свой session_id, и запись активной сессии сбила бы
+        // compare-and-set внутри ResetSession — битый id остался бы активным навсегда.
+        var reset = failed
+            && resumedSessionId is { Length: > 0 }
+            && ResetSession(projectPath, resumedSessionId, text);
+
+        // Пишем в проект запуска, а не в текущий, и только если активная сессия там не
+        // менялась, пока шёл запуск: /new или выбор другой сессии из меню важнее.
+        if (!reset
+            && payload.SessionId is { Length: > 0 }
+            && !store.TrySetSessionId(projectPath, payload.SessionId, onlyIfActive: sessionId))
+        {
+            logger.LogInformation(
+                "Сессия {SessionId} не сделана активной: пользователь сменил сессию во время запуска", payload.SessionId);
+        }
+
+        if (failed)
         {
             logger.LogWarning("Запуск завершился ошибкой ({Subtype}, код {Code})", payload.Subtype, exitCode);
             var suffix = payload.Subtype is { Length: > 0 } s ? $"\n\n_({s})_" : "";
+
+            // Тот же случай, но в валидном JSON: «No conversation found with session ID …».
+            if (reset) suffix += "\n\n_Сессия сброшена — следующее сообщение начнёт новую._";
+
             return new ClaudeRunResult
             {
                 Ok = false,
                 Text = text + suffix,
-                SessionId = payload.SessionId,
+                SessionId = reset ? null : payload.SessionId,
                 CostUsd = payload.TotalCostUsd,
                 Duration = duration,
                 Usage = payload.ToRunUsage(),
@@ -273,6 +290,39 @@ public sealed class ClaudeRunner(
             Duration = duration,
             Usage = payload.ToRunUsage(),
         };
+    }
+
+    /// <summary>
+    /// Сбрасывает активную сессию проекта, если по тексту ошибки видно, что CLI не нашёл
+    /// сессию для --resume. Возвращает, произошёл ли сброс.
+    /// </summary>
+    private bool ResetSession(string projectPath, string resumedSessionId, string? details)
+    {
+        if (!LooksLikeMissingSession(details, resumedSessionId)) return false;
+        if (!store.TrySetSessionId(projectPath, null, onlyIfActive: resumedSessionId)) return false;
+
+        logger.LogWarning("Сессия {SessionId} сброшена: CLI не нашёл её для --resume", resumedSessionId);
+        return true;
+    }
+
+    /// <summary>
+    /// Отдельного кода для «сессия не найдена» CLI не даёт — узнаём по тексту, которым он
+    /// это сообщает («No conversation found with session ID …»). Кроме маркера требуем сам id:
+    /// иначе ответ агента, где эти слова просто упомянуты (скажем, разбор этого файла),
+    /// снёс бы живую сессию, стоит запуску вернуть ненулевой код.
+    /// </summary>
+    private static bool LooksLikeMissingSession(string? text, string resumedSessionId)
+    {
+        if (text is not { Length: > 0 }) return false;
+        if (!text.Contains(resumedSessionId, StringComparison.OrdinalIgnoreCase)) return false;
+
+        string[] markers =
+        [
+            "no conversation found", "session not found", "could not find session",
+            "unable to resume", "failed to resume", "invalid session",
+        ];
+
+        return markers.Any(marker => text.Contains(marker, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
