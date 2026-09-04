@@ -31,7 +31,9 @@ public sealed class ApprovalBroker(
     private readonly ConcurrentDictionary<string, PendingChoice> _choices = new();
     private readonly TimeSpan _timeout = TimeSpan.FromMinutes(options.Value.ApprovalTimeoutMinutes);
 
-    private TaskCompletionSource<string>? _textPrompt;
+    private sealed record TextPrompt(TaskCompletionSource<string> Completion, long ChatId);
+
+    private TextPrompt? _textPrompt;
 
     /// <summary>Чат, в который уходят карточки. Выставляется при обработке сообщения пользователя.</summary>
     public long? ActiveChatId { get; set; }
@@ -63,6 +65,11 @@ public sealed class ApprovalBroker(
         }
         catch (TimeoutException)
         {
+            // Сначала закрываем ожидание и снимаем запись, потом правим карточку: пока идёт
+            // сетевой вызов, поздний тап иначе прошёл бы через TrySetResult и нарисовал
+            // «Разрешить» на запросе, который уже отклонён по таймауту.
+            completion.TrySetCanceled();
+            _choices.TryRemove(id, out _);
             await FinishCardAsync(chatId, message.MessageId, html, "⌛ Время ожидания истекло");
             throw;
         }
@@ -79,7 +86,8 @@ public sealed class ApprovalBroker(
             ?? throw new InvalidOperationException("Нет активного чата — некому показать запрос.");
 
         var completion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        if (Interlocked.CompareExchange(ref _textPrompt, completion, null) is not null)
+        var prompt = new TextPrompt(completion, chatId);
+        if (Interlocked.CompareExchange(ref _textPrompt, prompt, null) is not null)
             throw new InvalidOperationException("Уже ожидается другой текстовый ответ.");
 
         await bot.SendMessage(chatId, html, ParseMode.Html, cancellationToken: ct);
@@ -90,18 +98,20 @@ public sealed class ApprovalBroker(
         }
         finally
         {
-            Interlocked.CompareExchange(ref _textPrompt, null, completion);
+            Interlocked.CompareExchange(ref _textPrompt, null, prompt);
         }
     }
 
     /// <summary>
-    /// Отдаёт текст ожидающему запросу свободного ответа. Возвращает false, если никто не ждёт —
-    /// тогда сообщение обрабатывается как обычный промпт.
+    /// Отдаёт текст ожидающему запросу свободного ответа. Возвращает false, если никто не ждёт
+    /// или ждут ответа из другого чата — тогда сообщение обрабатывается как обычный промпт.
+    /// Проверка чата нужна при нескольких AllowedUserIds: чужое сообщение не должно
+    /// становиться ответом на вопрос агента.
     /// </summary>
-    public bool TryConsumeText(string text)
+    public bool TryConsumeText(long chatId, string text)
     {
         var prompt = _textPrompt;
-        return prompt is not null && prompt.TrySetResult(text);
+        return prompt is not null && prompt.ChatId == chatId && prompt.Completion.TrySetResult(text);
     }
 
     public async Task HandleCallbackAsync(CallbackQuery query, CancellationToken ct)
@@ -112,6 +122,14 @@ public sealed class ApprovalBroker(
         if (separator <= 0 || !_choices.TryGetValue(data[..separator], out var pending))
         {
             await SafeAnswerAsync(query.Id, "Запрос уже неактуален");
+            return;
+        }
+
+        // Карточка адресована одному чату: нажатие из другого (второй разрешённый
+        // пользователь) не должно одобрять действие, которого он не видел.
+        if (query.Message?.Chat.Id != pending.ChatId)
+        {
+            await SafeAnswerAsync(query.Id, "Этот запрос адресован другому чату");
             return;
         }
 
@@ -140,7 +158,7 @@ public sealed class ApprovalBroker(
             _ = FinishCardAsync(pending.ChatId, pending.MessageId, pending.Html, "🛑 Отменено");
         }
 
-        Interlocked.Exchange(ref _textPrompt, null)?.TrySetCanceled();
+        Interlocked.Exchange(ref _textPrompt, null)?.Completion.TrySetCanceled();
     }
 
     /// <summary>

@@ -17,22 +17,27 @@ public sealed class TelegramBotService(
     ApprovalBroker broker,
     SessionStore store,
     SettingsMenu menu,
+    IHostApplicationLifetime lifetime,
     IOptions<GatewayOptions> options,
     ILogger<TelegramBotService> logger) : BackgroundService
 {
     private readonly GatewayOptions _options = options.Value;
 
+    /// <summary>
+    /// Сколько раз пробовать достучаться до Telegram при старте. При автозапуске на вход в
+    /// систему сеть часто поднимается позже шлюза, поэтому первая неудача — не приговор.
+    /// </summary>
+    private const int ConnectAttempts = 6;
+    private static readonly TimeSpan ConnectRetryDelay = TimeSpan.FromSeconds(10);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        try
+        if (!await ConnectAsync(stoppingToken))
         {
-            var me = await bot.GetMe(stoppingToken);
-            logger.LogInformation("Бот @{Username} готов. Проект: {Project}", me.Username, store.ProjectPath);
-            await PublishCommandsAsync(stoppingToken);
-        }
-        catch (Exception ex)
-        {
-            logger.LogCritical(ex, "Не удалось подключиться к Telegram API. Проверьте токен и доступность api.telegram.org (Gateway:Proxy).");
+            // Молча жить без Telegram нельзя: хост выглядел бы работающим, а чат — мёртвым.
+            // Ненулевой код выхода даёт Планировщику повод перезапустить задачу.
+            Environment.ExitCode = 1;
+            lifetime.StopApplication();
             return;
         }
 
@@ -45,6 +50,40 @@ public sealed class TelegramBotService(
         await bot.ReceiveAsync(HandleUpdateAsync, HandleErrorAsync, receiverOptions, stoppingToken);
     }
 
+    private async Task<bool> ConnectAsync(CancellationToken stoppingToken)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                var me = await bot.GetMe(stoppingToken);
+                logger.LogInformation("Бот @{Username} готов. Проект: {Project}", me.Username, store.ProjectPath);
+                await PublishCommandsAsync(stoppingToken);
+                return true;
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return false;
+            }
+            catch (Exception ex)
+            {
+                if (attempt >= ConnectAttempts)
+                {
+                    logger.LogCritical(ex,
+                        "Не удалось подключиться к Telegram API за {Attempts} попыток. " +
+                        "Проверьте токен и доступность api.telegram.org (Gateway:Proxy).", attempt);
+                    return false;
+                }
+
+                logger.LogWarning("Telegram API недоступен ({Message}), попытка {Attempt} из {Attempts} через {Delay} с",
+                    ex.Message, attempt, ConnectAttempts, ConnectRetryDelay.TotalSeconds);
+            }
+
+            try { await Task.Delay(ConnectRetryDelay, stoppingToken); }
+            catch (OperationCanceledException) { return false; }
+        }
+    }
+
     private async Task HandleUpdateAsync(ITelegramBotClient _, Update update, CancellationToken ct)
     {
         try
@@ -53,7 +92,7 @@ public sealed class TelegramBotService(
             {
                 // Меню и карточки подтверждений делят один поток callback-ов, поэтому
                 // разводим их по префиксу: у меню он "cfg:", у карточек — hex-id запроса.
-                case { CallbackQuery: { } callback } when IsAllowed(callback.From.Id, callback.Message?.Chat.Id):
+                case { CallbackQuery: { } callback } when IsAllowed(callback.From.Id, callback.Message?.Chat):
                     if (callback.Data?.StartsWith(SettingsMenu.CallbackPrefix, StringComparison.Ordinal) == true)
                         await menu.HandleCallbackAsync(callback, ct);
                     else
@@ -61,7 +100,7 @@ public sealed class TelegramBotService(
                     break;
 
                 case { Message: { Text: { Length: > 0 } text, From: { } from } message }
-                    when IsAllowed(from.Id, message.Chat.Id):
+                    when IsAllowed(from.Id, message.Chat):
                     await HandleTextAsync(message.Chat.Id, text.Trim(), ct);
                     break;
             }
@@ -92,7 +131,7 @@ public sealed class TelegramBotService(
         }
 
         // Если агент попросил свободный текст (причина отказа, свой вариант ответа) — отдаём туда.
-        if (broker.TryConsumeText(text)) return;
+        if (broker.TryConsumeText(chatId, text)) return;
 
         // Проверяем занятость до постановки в очередь, иначе первое же сообщение
         // может увидеть уже начавшуюся собственную обработку.
@@ -339,8 +378,13 @@ public sealed class TelegramBotService(
             return $"♾ Снято: {Shorten(signature, RuleDisplayLimit)}";
         }
 
+        // Правила, которые по «Всегда» записал сам CLI, живут в .claude/settings.local.json
+        // проекта — шлюз их не видит и снять не может; об этом стоит сказать.
+        const string cliNote = "\n\nПравила, записанные Claude Code (когда карточка показывала «запишет в "
+            + ".claude/settings.local.json»), правятся в этом файле в папке проекта.";
+
         if (rules.Count == 0)
-            return "Правил «всегда» нет — каждое действие спрашивается кнопками.";
+            return "Правил «всегда» у шлюза нет — каждое действие спрашивается кнопками." + cliNote;
 
         // Правил может накопиться сколько угодно, а сообщение Telegram ограничено:
         // набираем список по бюджету, остаток показываем числом.
@@ -364,22 +408,35 @@ public sealed class TelegramBotService(
             {list}{tail}
 
             Снять: /rules del <номер> | /rules clear
-            """;
+            """ + cliNote;
     }
 
     private static string Shorten(string text, int maxLength) =>
         text.Length <= maxLength ? text : text[..(maxLength - 1)] + "…";
 
-    private bool IsAllowed(long userId, long? chatId)
+    /// <summary>
+    /// Пускает только разрешённого пользователя и только из личного чата: в группе ответы
+    /// агента (код, содержимое файлов) и кнопки подтверждений увидели бы все участники.
+    /// </summary>
+    private bool IsAllowed(long userId, Chat? chat)
     {
-        if (_options.AllowedUserIds.Contains(userId)) return true;
+        if (!_options.AllowedUserIds.Contains(userId))
+        {
+            logger.LogWarning(
+                "Отклонено сообщение от постороннего пользователя. user id: {UserId}, chat id: {ChatId}. " +
+                "Если это вы — добавьте id в Gateway:AllowedUserIds.",
+                userId, chat?.Id);
+            return false;
+        }
 
-        logger.LogWarning(
-            "Отклонено сообщение от постороннего пользователя. user id: {UserId}, chat id: {ChatId}. " +
-            "Если это вы — добавьте id в Gateway:AllowedUserIds.",
-            userId, chatId);
+        if (chat is { Type: not ChatType.Private })
+        {
+            logger.LogWarning("Отклонено сообщение из группового чата {ChatId} ({Type}): шлюз работает только в личке.",
+                chat.Id, chat.Type);
+            return false;
+        }
 
-        return false;
+        return true;
     }
 
     private Task HandleErrorAsync(ITelegramBotClient _, Exception exception, CancellationToken ct)

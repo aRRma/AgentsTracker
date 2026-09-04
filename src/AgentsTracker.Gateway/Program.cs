@@ -71,4 +71,7 @@ catch (InvalidOperationException ex)
 app.MapMcp(app.Services.GetRequiredService<McpConfigFile>().RoutePattern);
 
 await app.RunAsync();
-return 0;
+
+// Ненулевой код ставит TelegramBotService, когда не смог подключиться: по нему Планировщик
+// перезапускает задачу.
+return Environment.ExitCode;
