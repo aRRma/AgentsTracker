@@ -178,7 +178,9 @@ public sealed class ClaudeLimits(IOptions<GatewayOptions> options, ILogger<Claud
             var (windows, extra) = Parse(body);
             return new LimitsSnapshot(windows, extra, DateTimeOffset.UtcNow, null);
         }
-        catch (JsonException ex)
+        // InvalidOperationException — это чтение поля не того вида: ответ недокументирован,
+        // и любой его сдвиг должен пропустить проверку лимитов, а не уронить запуск.
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
             logger.LogWarning(ex, "Не разобран ответ эндпоинта лимитов");
             return new LimitsSnapshot([], null, DateTimeOffset.UtcNow, "ответ эндпоинта не разобран, формат изменился");
@@ -230,9 +232,8 @@ public sealed class ClaudeLimits(IOptions<GatewayOptions> options, ILogger<Claud
                 return (null, "в ~/.claude/.credentials.json нет токена подписки");
             }
 
-            if (oauth.TryGetProperty("expiresAt", out var expires)
-                && expires.TryGetInt64(out var milliseconds)
-                && DateTimeOffset.FromUnixTimeMilliseconds(milliseconds) <= DateTimeOffset.UtcNow)
+            if (Number(oauth, "expiresAt") is { } milliseconds
+                && DateTimeOffset.FromUnixTimeMilliseconds((long)milliseconds) <= DateTimeOffset.UtcNow)
             {
                 return (null, "токен подписки просрочен: запустите claude в терминале, он обновит его");
             }
@@ -273,8 +274,7 @@ public sealed class ClaudeLimits(IOptions<GatewayOptions> options, ILogger<Claud
             if (!IsWindow(property.Name) || value.ValueKind is not JsonValueKind.Object) continue;
 
             // Явный null вместо числа — окна на этом тарифе нет, ограничивать нечего.
-            if (!value.TryGetProperty("utilization", out var utilization) || !utilization.TryGetDouble(out var raw))
-                continue;
+            if (Number(value, "utilization") is not { } raw) continue;
 
             DateTimeOffset? resets =
                 value.TryGetProperty("resets_at", out var at)
@@ -296,12 +296,21 @@ public sealed class ClaudeLimits(IOptions<GatewayOptions> options, ILogger<Claud
 
         var enabled = value.TryGetProperty("is_enabled", out var flag) && flag.ValueKind is JsonValueKind.True;
 
-        double? used = value.TryGetProperty("used_credits", out var credits) && credits.TryGetDouble(out var amount)
-            ? amount
-            : null;
-
-        return new ExtraUsageState(enabled, used);
+        return new ExtraUsageState(enabled, Number(value, "used_credits"));
     }
+
+    /// <summary>
+    /// Числовое поле объекта или <c>null</c>, если его нет либо оно не число.
+    /// Проверка вида обязательна: <c>TryGetDouble</c> на <c>null</c> не возвращает false,
+    /// а бросает <see cref="InvalidOperationException"/> — а её тут ловить некому,
+    /// и сбой опроса лимитов превратился бы в отказ всего запуска.
+    /// </summary>
+    private static double? Number(JsonElement owner, string name) =>
+        owner.TryGetProperty(name, out var field)
+        && field.ValueKind is JsonValueKind.Number
+        && field.TryGetDouble(out var value)
+            ? value
+            : null;
 
     /// <summary>
     /// Шкала <c>utilization</c> у Anthropic то доля (0..1), то проценты, и меняться она может
