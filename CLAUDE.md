@@ -13,9 +13,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Команды
 
 ```powershell
-dotnet build                                    # сборка (держите её без предупреждений)
-dotnet run --project src\AgentsTracker.Gateway  # запуск; нужен заполненный appsettings.Local.json
-pwsh -File scripts\install-autostart.ps1        # publish + задача Планировщика на вход в систему
+dotnet build                                    # сборка; TreatWarningsAsErrors включён
+dotnet run --project src\AgentsTracker.Gateway  # запуск; нужен appsettings.Local.json (в папке данных или рядом)
+dotnet run --project src\AgentsTracker.Gateway -- protect-secrets   # зашифровать BotToken/Proxy (DPAPI), перенести конфиг в %LOCALAPPDATA%
+pwsh -File scripts\install-autostart.ps1        # publish + protect-secrets + ACL + задача Планировщика на вход в систему
 ```
 
 Тестового проекта нет. Изменения, затрагивающие контракт с CLI (аргументы запуска, разбор JSON,
@@ -28,24 +29,78 @@ pwsh -File scripts\install-autostart.ps1        # publish + задача Пла�
 $env:Gateway__ProjectPath = 'C:\tmp\test'; $env:Gateway__AllowedUserIds__0 = '1'
 ```
 
+Два экземпляра шлюза на одной машине не уживаются: общий `mcp-gateway.json` и один бот.
+
 ## Архитектура
+
+### Слои и слайсы
+
+```
+src/AgentsTracker.Gateway/
+  Program.cs            явный список IFeatureModule → AddGatewayInfrastructure → ValidateStartup → MapFeatures
+  GlobalUsings.cs       Domain, Infrastructure, .Configuration, .State, IOptions — доступны везде
+  Domain/               чистые модели и правила без I/O и DI: PermissionModes, EffortLevels,
+                        ClaudeRunResult, GatewayState (state.json), AuditEvent
+  Infrastructure/       техническая часть, общая для фич:
+    Configuration/      GatewayOptions (+Validate), ProjectCatalog (Normalize/Same — ключ сессий)
+    Claude/             ClaudeRunner (процесс claude -p), ClaudeCliLocator, ClaudeLimits, ClaudeCliJson
+    Mcp/                McpConfigFile — mcp-gateway.json, токен в заголовке, RoutePattern = /mcp
+    State/              SessionStore — state.json под Lock, атомарная запись
+    Telegram/           TelegramBotService (роутер), TelegramFormatter, DisplayFormat, BotCommandsCatalog,
+                        Dispatch/ — ITelegramCommandHandler / ITelegramCallbackHandler / ITelegramTextHandler
+    Audit/              IAuditLog, JsonlAuditLog — журнал «кто, куда, что»
+    Security/           DPAPI-шифрование конфига, ACL папки данных, команда protect-secrets
+    Modules/            IFeatureModule — AddServices + MapEndpoints
+  Features/             вертикальные слайсы, каждый со своим *Module:
+    Approvals/          PermissionTool (MCP), ApprovalBroker, ApprovalCardRenderer, /rules; единственный HTTP-эндпоинт
+    Chat/               ChatWorker (очередь и запуск), /new /stop /status, fallback-обработчик текста
+    Settings/           SettingsMenuCoordinator + Screens/*Screen (ISettingsScreen), /menu /model /effort /mode …
+    Help/               /start /help
+    Audit/              /audit
+```
+
+Правила разложения: в `Domain` ничего не открывает файлы и не ходит по сети; `Infrastructure`
+не знает о фичах (кроме контрактов `Dispatch`); фича зависит от другой фичи только через её
+публичный сервис (`Settings` → `ChatWorker.IsBusy`, `Approvals` → `SettingsMenuCoordinator.CallbackPrefix`).
+Новая фича = папка в `Features/` с `*Module`, добавленным в список в `Program.cs`.
+
+### Диспетчер Telegram
+
+`TelegramBotService` сам ничего не делает: проверяет `AllowedUserIds` и `ChatType.Private`, потом
+раздаёт обновления обработчикам из DI. Порядок в `HandleTextAsync` принципиален:
+
+1. слэш-команда ищется в словаре `ITelegramCommandHandler.Commands` — **до** всего остального,
+   иначе `/stop` уйдёт в ожидающий свободный ответ и прервать зависший запуск будет нечем.
+   Дубликат команды у двух фич роняет старт;
+2. цепочка `ITelegramTextHandler` в порядке регистрации модулей: `ApprovalTextHandler`
+   (`broker.TryConsumeText` — причина отказа или свой ответ на `AskUserQuestion`) →
+   `ChatEnqueueTextHandler` (всегда `true`). Поэтому `ChatModule` в `Program.cs` **последний**.
+   Неизвестные слэш-команды сюда и попадают — это команды самого Claude Code (`/review` и прочие).
+
+Callback-и делят один поток: `ITelegramCallbackHandler.CanHandle` — префикс `cfg:` у меню,
+всё остальное (hex-id запроса) у `ApprovalBroker`.
+
+`ActiveChatId` брокера выставляет `ChatWorker` перед самым запуском, а не обработчик сообщения:
+иначе карточки уже идущего запуска ушли бы в чат другого пользователя.
 
 ### Кольцо «шлюз → CLI → шлюз»
 
-Главное, что нужно понять: шлюз одновременно **запускает** `claude.exe` и **обслуживает** его.
+Шлюз одновременно **запускает** `claude.exe` и **обслуживает** его.
 
 ```
 Telegram ──▶ TelegramBotService ──▶ ChatWorker ──▶ ClaudeRunner ──▶ claude.exe -p
                     ▲                                                    │
                     │            карточка с кнопками                     │ нужно разрешение
-                    └── ApprovalBroker ◀── PermissionTool ◀── MCP http://127.0.0.1:<порт>/mcp/<токен>
+                    └── ApprovalBroker ◀── PermissionTool ◀── MCP http://127.0.0.1:<порт>/mcp
+                                                              Authorization: Bearer <токен>
 ```
 
-`McpConfigFile` при старте генерирует секретный токен, пишет `mcp-gateway.json` и отдаёт
-`RoutePattern`; `Program.cs` монтирует MCP-эндпоинт ровно по этому пути. `ClaudeRunner` передаёт
-CLI `--mcp-config` с этим файлом и `--permission-prompt-tool mcp__tg__approve`. Правя одну сторону,
-проверяйте вторую: имя сервера и инструмента задаются константами `McpConfigFile`, а атрибуту
-`[McpServerTool]` нужна константа времени компиляции — отсюда переприсваивание в `PermissionTool`.
+`McpConfigFile` при старте генерирует токен, пишет `mcp-gateway.json` с заголовком
+`Authorization` и удаляет файл при остановке; `ApprovalsModule.MapEndpoints` монтирует `/mcp`
+с фильтром `McpConfigFile.Authorizes`. `ClaudeRunner` передаёт CLI `--mcp-config` с этим файлом
+и `--permission-prompt-tool mcp__tg__approve`. Правя одну сторону, проверяйте вторую: имя сервера
+и инструмента — константы `McpConfigFile`, а атрибуту `[McpServerTool]` нужна константа времени
+компиляции — отсюда переприсваивание в `PermissionTool`.
 
 ### Контракт подтверждений (проверен на живом CLI, схема входа не задокументирована)
 
@@ -55,9 +110,10 @@ CLI зовёт инструмент с `{"tool_name":…,"input":{…},"tool_use
   результат невалидным и отклоняет вызов;
 - `{"behavior":"deny","message":"…"}`.
 
-`PermissionTool` читает поля защитно (`Read(...)` перебирает snake_case/camelCase) и логирует сырой
-payload — схема может измениться с версией CLI. `AskUserQuestion` приходит в тот же инструмент и
-требует вернуть `updatedInput` с исходным `questions` и собранным `answers`.
+`PermissionTool` читает поля защитно (`Read(...)` перебирает snake_case/camelCase); сырой payload
+пишется только на Debug — на Information для Edit/Write это было бы содержимое файлов.
+`AskUserQuestion` приходит в тот же инструмент и требует вернуть `updatedInput` с исходным
+`questions` и собранным `answers`.
 
 Кнопка «Всегда» ведёт себя двояко: если CLI прислал `permission_suggestions` с
 `destination: localSettings`, правило записывает **сам CLI** в `.claude/settings.local.json`
@@ -65,8 +121,9 @@ payload — схема может измениться с версией CLI. `A
 эти правила; иначе шлюз запоминает точную сигнатуру в `state.json`, и её видно в `/rules`.
 
 `ApprovalBroker` держит вызов MCP открытым на `TaskCompletionSource`, пока пользователь не нажмёт
-кнопку. `WaitAsync` намеренно различает таймаут и отмену: отменённый `/stop` запуск должен бросать
-`OperationCanceledException`, а не выглядеть как «не ответил вовремя».
+кнопку, и возвращает `ChoiceResult` (ключ + кто нажал — для аудита). `WaitAsync` намеренно
+различает таймаут и отмену: отменённый `/stop` запуск должен бросать `OperationCanceledException`,
+а не выглядеть как «не ответил вовремя».
 
 ### `--permission-mode` передаётся всегда
 
@@ -78,13 +135,21 @@ payload — схема может измениться с версией CLI. `A
 чата. `dontAsk` и `bypassPermissions` исключены намеренно: полное снятие подтверждений остаётся
 правкой конфига на самой машине.
 
-### Состояние и наслоение настроек
+### Состояние, секреты и наслоение настроек
 
-`%LOCALAPPDATA%\AgentsTracker\` — `state.json` (пишется атомарно) и `mcp-gateway.json`.
+`%LOCALAPPDATA%\AgentsTracker\` (`AppPaths.DataDirectory`, ACL — только владелец и SYSTEM):
+`state.json` (пишется атомарно), `mcp-gateway.json`, `appsettings.Local.json` с секретами,
+`audit\audit-ГГГГ-ММ.jsonl`.
+
+Конфиг слоями (`GatewayInfrastructure.AddGatewayConfiguration`): `appsettings.json` →
+`appsettings.Local.json` рядом с приложением (отладка из IDE) → тот же файл в папке данных
+(боевой) → переменные окружения. Значения `dpapi:…` расшифровываются при загрузке
+(`ProtectedJsonConfigurationProvider`); команда `protect-secrets` шифрует `BotToken` и `Proxy`
+и переносит файл в папку данных. `publish\` секретов не содержит.
 
 Почти всё настраиваемое живёт в двух слоях: `SessionStore` (выбор из чата) поверх `GatewayOptions`
-(конфиг). Отсюда повторяющийся `store.X ?? _options.X`. Значение, совпадающее с конфигом,
-сохраняется как `null`, чтобы правка конфига не оказалась молча перекрыта старым выбором.
+(конфиг) — `EffectiveModel`, `EffectivePermissionMode`, `Effort`. Значение, совпадающее с
+конфигом, сохраняется как `null`, чтобы правка конфига не оказалась молча перекрыта старым выбором.
 
 Сессии Claude Code ключуются **нормализованным путём проекта** (`ProjectCatalog.Normalize`):
 `--resume` работает только в той папке, где сессия создана. Переключение репозитория из меню меняет
@@ -93,9 +158,20 @@ payload — схема может измениться с версией CLI. `A
 
 Id новой сессии выдаёт **шлюз** (`--session-id <uuid>`) и регистрирует её сразу после старта
 процесса, не дожидаясь ответа CLI: иначе `/stop`, таймаут или падение первого запуска теряли бы
-ветку целиком. Продолжение идёт через `--resume`. Если запуск с `--resume` не дал разбираемого
-JSON, id сбрасывается — битая сессия иначе валила бы каждый следующий запуск одинаково; только что
-созданную сессию при этом не трогают.
+ветку целиком. Продолжение идёт через `--resume`. Сессия сбрасывается только когда CLI прямо
+говорит, что не нашёл её (`LooksLikeMissingSession`), и только через `TrySetSessionId(onlyIfActive)`,
+чтобы не перетереть `/new` или смену сессии, сделанные во время запуска.
+
+### Аудит
+
+`IAuditLog.Write(AuditEvent.Now(kind, summary, userId, chatId, project, session, outcome))` —
+короткая строка «кто, куда, что», без секретов и полных текстов (не длиннее 200 символов).
+Виды — константы `AuditKinds`: `access.rejected`, `message`, `run.start`/`run.end`, `approval`,
+`question`, `settings`, `rules`, `session.reset`, `budget.refused`, `gateway`. Пишут: роутер
+(доступ, команды), `ChatEnqueueTextHandler` (промпт), `ChatWorker` (запуски, бюджет),
+`PermissionTool` (решения по карточкам, правила), экраны меню через `SettingsAudit.Changed`,
+`ClaudeRunner` (сброс сессии). Смотреть — `/audit [n]` или файл. Это не замена `ILogger`:
+в аудит идёт то, за что отвечает человек, в лог — то, что нужно для отладки.
 
 ### Деньги и лимиты тарифа
 
@@ -111,24 +187,8 @@ JSON, id сбрасывается — битая сессия иначе вал�
 **пропускается**, а не блокируется, иначе шлюз замолчал бы целиком.
 
 Кредиты («extra usage») агенту тратить запрещено: `ClaudeRunner` ставит процессу
-`DISABLE_EXTRA_USAGE_COMMAND=1`, а при обрыве по лимиту `ChatWorker` снимает всю очередь —
-следующие задачи упёрлись бы в тот же лимит.
-
-### Разбор входящих сообщений
-
-`TelegramBotService.HandleTextAsync` — порядок принципиален:
-
-1. команды шлюза (`GatewayCommands`) — **до** всего остального, иначе `/stop` уйдёт в ожидающий
-   свободный ответ и прервать зависший запуск будет нечем;
-2. `broker.TryConsumeText` — причина отказа или свой вариант ответа на `AskUserQuestion`;
-3. очередь `ChatWorker`. Неизвестные слэш-команды сюда и попадают — это команды самого Claude Code
-   (`/review` и прочие из `.claude/commands`), агент разворачивает их сам.
-
-Callback-и делят один поток: префикс `cfg:` → `SettingsMenu`, всё остальное (hex-id запроса) →
-`ApprovalBroker`.
-
-`ActiveChatId` брокера выставляет `ChatWorker` перед самым запуском, а не обработчик сообщения:
-иначе карточки уже идущего запуска ушли бы в чат другого пользователя.
+`DISABLE_EXTRA_USAGE_COMMAND=1` и вычищает из его окружения `Gateway__*`, а при обрыве по лимиту
+`ChatWorker` снимает всю очередь — следующие задачи упёрлись бы в тот же лимит.
 
 ### Вывод в Telegram
 
@@ -136,7 +196,7 @@ Callback-и делят один поток: префикс `cfg:` → `SettingsM
 под лимит 4096 — резать нужно **исходный markdown до конвертации**, иначе рвутся теги. Курсив
 намеренно не разбирается: одиночные `*` и `_` слишком часто встречаются в путях и коде. Блок кода
 длиннее лимита уходит файлом. При отказе Telegram разбирать разметку `ChatWorker` шлёт тот же текст
-без `ParseMode`.
+без `ParseMode`. Суммы, токены и время форматирует `DisplayFormat` (extension members C# 14).
 
 Карточки подтверждений собираются через `EscapeCapped` с побюджетными лимитами на каждый фрагмент:
 длинная команда иначе переполнит сообщение, отправка упадёт, а исключение превратится в отказ.
@@ -148,8 +208,11 @@ Callback-и делят один поток: префикс `cfg:` → `SettingsM
 - `--bare` использовать нельзя: он не читает `~/.claude` и ломает OAuth-логин по подписке.
 - `claude.exe` ищет `ClaudeCliLocator`: конфиг → стандартные пути → PATH → бинарник внутри
   расширения VS Code (последний привязан к версии расширения и переезжает при обновлении).
-- Единственный барьер аутентификации — `AllowedUserIds`. Kestrel слушает только `127.0.0.1`.
+- Барьеры аутентификации: `AllowedUserIds` + только личные чаты; Kestrel слушает только `127.0.0.1`,
+  MCP-эндпоинт требует токен в заголовке.
 - Аргументы CLI собираются через `ProcessStartInfo.ArgumentList` — не склеивайте командную строку
   руками.
 - `Channel.CreateUnbounded` в `ChatWorker` намеренно без `SingleReader`: с ним `Reader.Count` бросает
   `NotSupportedException`, и `/status` падает.
+- `McpConfigFile` и `SessionStore` — единственные классы с классическим конструктором: у обоих
+  побочный эффект при создании (запись/чтение файла), который должен случиться один раз до старта.

@@ -1,74 +1,35 @@
-using System.Net;
-using AgentsTracker.Gateway.Approvals;
-using AgentsTracker.Gateway.Claude;
-using AgentsTracker.Gateway.Configuration;
-using AgentsTracker.Gateway.State;
-using AgentsTracker.Gateway.Telegram;
-using Microsoft.Extensions.Options;
-using Telegram.Bot;
+using AgentsTracker.Gateway.Features.Approvals;
+using AgentsTracker.Gateway.Features.Audit;
+using AgentsTracker.Gateway.Features.Chat;
+using AgentsTracker.Gateway.Features.Help;
+using AgentsTracker.Gateway.Features.Settings;
+using AgentsTracker.Gateway.Infrastructure.Modules;
+using AgentsTracker.Gateway.Infrastructure.Security;
+
+// Служебная команда: зашифровать секреты локального конфига и перенести его в папку данных.
+if (args is [ProtectSecretsCommand.Name, ..])
+    return ProtectSecretsCommand.Run(args, Console.Out);
+
+// Порядок важен: текстовые обработчики опрашиваются в порядке регистрации, и ChatModule
+// с его «поймать всё» должен идти последним.
+IReadOnlyList<IFeatureModule> modules =
+[
+    new ApprovalsModule(),
+    new SettingsModule(),
+    new HelpModule(),
+    new AuditModule(),
+    new ChatModule(),
+];
 
 var builder = WebApplication.CreateBuilder(args);
-
-builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: false);
-
-builder.Services.Configure<GatewayOptions>(builder.Configuration.GetSection(GatewayOptions.SectionName));
-
-var options = builder.Configuration.GetSection(GatewayOptions.SectionName).Get<GatewayOptions>() ?? new GatewayOptions();
-
-// MCP-эндпоинт подтверждений доступен только с этой машины.
-builder.WebHost.ConfigureKestrel(kestrel => kestrel.Listen(IPAddress.Loopback, options.McpPort));
-
-builder.Services.AddSingleton<SessionStore>();
-builder.Services.AddSingleton<ProjectCatalog>();
-builder.Services.AddSingleton<ClaudeCliLocator>();
-builder.Services.AddSingleton<McpConfigFile>();
-builder.Services.AddSingleton<ClaudeRunner>();
-builder.Services.AddSingleton<ClaudeLimits>();
-builder.Services.AddSingleton<ApprovalBroker>();
-
-builder.Services.AddSingleton<ITelegramBotClient>(sp =>
-{
-    var gateway = sp.GetRequiredService<IOptions<GatewayOptions>>().Value;
-
-    if (gateway.Proxy is not { Length: > 0 } proxy)
-        return new TelegramBotClient(gateway.BotToken);
-
-    var handler = new HttpClientHandler { Proxy = new WebProxy(proxy), UseProxy = true };
-    return new TelegramBotClient(gateway.BotToken, new HttpClient(handler));
-});
-
-builder.Services.AddSingleton<ChatWorker>();
-builder.Services.AddSingleton<SettingsMenu>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<ChatWorker>());
-builder.Services.AddHostedService<TelegramBotService>();
-
-builder.Services
-    .AddMcpServer()
-    .WithHttpTransport()
-    .WithTools<PermissionTool>();
+builder.AddGatewayConfiguration();
+builder.AddGatewayInfrastructure(modules);
 
 var app = builder.Build();
 
-var startupLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+if (app.ValidateStartup() is not 0 and var exitCode) return exitCode;
 
-var errors = options.Validate();
-if (errors.Count > 0)
-{
-    foreach (var error in errors) startupLogger.LogCritical("{Error}", error);
-    return 1;
-}
-
-try
-{
-    app.Services.GetRequiredService<ClaudeCliLocator>().Resolve();
-}
-catch (InvalidOperationException ex)
-{
-    startupLogger.LogCritical("{Message}", ex.Message);
-    return 1;
-}
-
-app.MapMcp(app.Services.GetRequiredService<McpConfigFile>().RoutePattern);
+app.MapFeatures(modules);
 
 await app.RunAsync();
 
