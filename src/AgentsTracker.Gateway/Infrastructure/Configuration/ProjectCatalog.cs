@@ -1,6 +1,9 @@
 
 namespace AgentsTracker.Gateway.Infrastructure.Configuration;
 
+/// <summary>Папка над репозиториями («ME», «MF») — уровень, на котором меню предлагает выбор.</summary>
+public sealed record ProjectGroup(string Name, IReadOnlyList<string> Projects);
+
 /// <summary>
 /// Папки, между которыми можно переключаться из чата. Список берётся из Gateway:Projects,
 /// иначе — обходом Gateway:ProjectsRoot вглубь, иначе — из соседей Gateway:ProjectPath.
@@ -46,6 +49,49 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
         found.Insert(0, currentNormalized);
 
         return found;
+    }
+
+    /// <summary>
+    /// Тот же список, разложенный по папкам-владельцам: репозиториев больше, чем влезает в
+    /// клавиатуру, а лежат они группами (<c>repos\ME\…</c>, <c>repos\MF\…</c>) — по ним и выбирать.
+    /// Группа текущей папки первая, внутри группы — по алфавиту.
+    /// </summary>
+    public IReadOnlyList<ProjectGroup> Grouped(string current)
+    {
+        var currentNormalized = Normalize(current);
+
+        return [.. List(current)
+            .GroupBy(GroupOf, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new ProjectGroup(
+                group.Key,
+                [.. group.Order(StringComparer.OrdinalIgnoreCase)]))
+            .OrderBy(group => group.Projects.Any(
+                p => string.Equals(p, currentNormalized, StringComparison.OrdinalIgnoreCase)) ? 0 : 1)
+            .ThenBy(group => group.Name, StringComparer.OrdinalIgnoreCase)];
+    }
+
+    /// <summary>
+    /// Папка, в которой лежит репозиторий. Под корнем поиска берётся путь относительно корня:
+    /// при вложенности глубже одного уровня имя одной папки склеило бы в группу разные ветки
+    /// дерева («work\api» и «pet\api»).
+    /// </summary>
+    private string GroupOf(string path)
+    {
+        var parent = Path.GetDirectoryName(path);
+        if (parent is null) return path;
+
+        if (_options.ProjectsRoot is { Length: > 0 } configured)
+        {
+            var root = Normalize(configured);
+
+            if (string.Equals(parent, root, StringComparison.OrdinalIgnoreCase))
+                return Path.GetFileName(root) is { Length: > 0 } name ? name : root;
+
+            if (parent.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                return Path.GetRelativePath(root, parent);
+        }
+
+        return Path.GetFileName(parent) is { Length: > 0 } folder ? folder : parent;
     }
 
     private IEnumerable<string> Sources()
