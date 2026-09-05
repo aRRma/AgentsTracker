@@ -2,6 +2,7 @@ using AgentsTracker.Gateway.Features.Approvals;
 using AgentsTracker.Gateway.Features.Audit;
 using AgentsTracker.Gateway.Features.Chat;
 using AgentsTracker.Gateway.Features.Help;
+using AgentsTracker.Gateway.Features.Monitor;
 using AgentsTracker.Gateway.Features.Settings;
 using AgentsTracker.Gateway.Infrastructure.Modules;
 using AgentsTracker.Gateway.Infrastructure.Security;
@@ -18,6 +19,7 @@ IReadOnlyList<IFeatureModule> modules =
     new SettingsModule(),
     new HelpModule(),
     new AuditModule(),
+    new MonitorModule(),
     new ChatModule(),
 ];
 

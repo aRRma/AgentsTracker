@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentsTracker — монитор</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #fff; --text: #1f2328; --muted: #6b7280; --line: #e5e7eb;
+    --ok: #16a34a; --warn: #d97706; --bad: #dc2626; --accent: #2563eb; --accent-soft: #dbeafe;
+    --mono: ui-monospace, Consolas, "Cascadia Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f1115; --card: #171a21; --text: #e6e8eb; --muted: #9aa3b2; --line: #2a2f3a; --accent-soft: #1e2a44; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; padding: 12px 20px; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
+  header h1 { font-size: 16px; margin: 0 12px 0 0; }
+  header .kv { color: var(--muted); }
+  header .kv b { color: var(--text); font-weight: 600; }
+  #conn { margin-left: auto; padding: 3px 10px; border-radius: 999px; font-size: 12px; background: var(--accent-soft); color: var(--accent); }
+  #conn.down { background: #fee2e2; color: var(--bad); }
+  main { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; padding: 16px 20px; max-width: 1600px; margin: 0 auto; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+  section.wide { grid-column: 1 / -1; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 10px; display: flex; align-items: center; gap: 10px; }
+  h2 .right { margin-left: auto; font-weight: normal; text-transform: none; letter-spacing: 0; }
+  .state { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.busy { background: var(--accent); animation: pulse 1.2s infinite; }
+  .dot.wait { background: var(--warn); animation: pulse 1.2s infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .meta { color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 16px; margin-bottom: 8px; }
+  .prompt { font-style: italic; margin: 6px 0 10px; word-break: break-word; }
+  .steps { font-family: var(--mono); font-size: 12px; max-height: 320px; overflow: auto; border-top: 1px solid var(--line); padding-top: 6px; }
+  .steps div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .steps .t { color: var(--muted); margin-right: 8px; }
+  .steps .n { padding-left: 18px; }
+  .approval { border: 1px solid var(--warn); border-radius: 8px; padding: 8px 12px; margin: 8px 0; background: rgba(217,119,6,.08); }
+  .queue { margin-top: 8px; }
+  .queue li { color: var(--muted); }
+  .bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin: 4px 0 8px; }
+  .bar i { display: block; height: 100%; background: var(--ok); }
+  .bar i.warn { background: var(--warn); } .bar i.bad { background: var(--bad); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; white-space: nowrap; }
+  td.wrap { white-space: normal; word-break: break-word; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .scroll { overflow: auto; max-height: 420px; }
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .tag.ok { background: #dcfce7; color: #166534; } .tag.cancel { background: #fef3c7; color: #92400e; }
+  .tag.error, .tag.rate-limit { background: #fee2e2; color: #991b1b; }
+  .tag.Warning { background: #fef3c7; color: #92400e; } .tag.Error, .tag.Critical { background: #fee2e2; color: #991b1b; }
+  .tag.Information { background: var(--accent-soft); color: var(--accent); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .tile { background: var(--bg); border-radius: 8px; padding: 8px 12px; }
+  .tile b { display: block; font-size: 20px; font-weight: 600; }
+  .tile span { color: var(--muted); font-size: 12px; }
+  svg { width: 100%; height: 160px; display: block; }
+  svg rect { fill: var(--accent); }
+  svg rect:hover { fill: var(--warn); }
+  svg text { fill: var(--muted); font-size: 10px; }
+  select, input, a.btn { font: inherit; background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; text-decoration: none; }
+  .mono { font-family: var(--mono); font-size: 12px; }
+  .muted { color: var(--muted); }
+  .empty { color: var(--muted); font-style: italic; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AgentsTracker</h1>
+  <span class="kv">работает <b id="uptime">—</b></span>
+  <span class="kv">CLI <b id="cli">—</b></span>
+  <span class="kv">проект <b id="project" class="mono">—</b></span>
+  <span class="kv">модель <b id="model">—</b></span>
+  <span class="kv">режим <b id="mode">—</b></span>
+  <span class="kv">effort <b id="effort">—</b></span>
+  <span id="conn">подключение…</span>
+</header>
+<main>
+  <section id="now">
+    <h2>Сейчас <span class="right muted" id="now-time"></span></h2>
+    <div class="state"><span class="dot" id="dot"></span><span id="state-text">—</span></div>
+    <div id="approval"></div>
+    <div id="run"></div>
+    <div class="queue" id="queue"></div>
+  </section>
+
+  <section id="limits">
+    <h2>Лимиты тарифа <span class="right muted" id="limits-note"></span></h2>
+    <div id="limits-body" class="empty">загрузка…</div>
+    <div id="budget" class="muted"></div>
+  </section>
+
+  <section class="wide">
+    <h2>По дням
+      <select id="metric">
+        <option value="runs">запуски</option>
+        <option value="costUsd">стоимость, $</option>
+        <option value="tokens">токены (вход+выход)</option>
+        <option value="minutes">минуты</option>
+      </select>
+      <span class="right"><a class="btn" href="/api/stats.csv">CSV</a> <a class="btn" href="/api/stats">JSON</a></span>
+    </h2>
+    <div class="tiles" id="tiles"></div>
+    <svg id="chart"></svg>
+  </section>
+
+  <section class="wide">
+    <h2>Запуски
+      <select id="run-project"><option value="">все проекты</option></select>
+      <span class="right"><a class="btn" href="/api/runs">JSON</a></span>
+    </h2>
+    <div class="scroll"><table id="runs"><thead><tr>
+      <th>Когда</th><th>Проект</th><th>Промпт</th><th>Исход</th><th class="num">Время</th><th class="num">Ходов</th><th class="num">Вызовов</th><th class="num">Токены</th><th class="num">$</th><th>Сессия</th>
+    </tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section>
+    <h2>По моделям</h2>
+    <div class="scroll"><table id="models"><thead><tr><th>Модель</th><th class="num">Запусков</th><th class="num">Вход</th><th class="num">Выход</th><th class="num">Кэш</th><th class="num">$</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section>
+    <h2>Скиллы</h2>
+    <div class="scroll"><table id="skills"><thead><tr><th>Команда</th><th class="num">Запусков</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section class="wide">
+    <h2>Сессии</h2>
+    <div class="scroll"><table id="sessions"><thead><tr><th>Проект</th><th>Сессия</th><th>Название</th><th>Активность</th><th class="num">Ходов</th><th class="num">$</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section class="wide">
+    <h2>Аудит <span class="right"><a class="btn" href="/api/audit?count=1000">JSON</a></span></h2>
+    <div class="scroll"><table id="audit"><thead><tr><th>Когда</th><th>Вид</th><th>Что</th><th>Исход</th><th>Кто</th><th>Проект</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section class="wide">
+    <h2>Лог
+      <select id="log-level"><option>Information</option><option>Warning</option><option>Error</option></select>
+    </h2>
+    <div class="scroll"><table id="log"><thead><tr><th>Когда</th><th>Уровень</th><th>Кто</th><th>Сообщение</th></tr></thead><tbody></tbody></table></div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const fmtTime = iso => iso ? new Date(iso).toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit', second:'2-digit'}) : '';
+  const fmtWhen = iso => {
+    if (!iso) return '';
+    const d = new Date(iso), now = new Date();
+    const same = d.toDateString() === now.toDateString();
+    return same ? fmtTime(iso) : d.toLocaleString('ru-RU', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'});
+  };
+  const fmtDur = ms => {
+    const s = Math.floor(ms / 1000);
+    if (s >= 3600) return `${Math.floor(s/3600)} ч ${Math.floor(s%3600/60)} мин`;
+    if (s >= 60) return `${Math.floor(s/60)} мин ${s%60} с`;
+    return `${s} с`;
+  };
+  const fmtTokens = n => n < 1000 ? String(n) : n < 1e6 ? (n/1000).toFixed(1).replace(/\.0$/,'') + 'k' : (n/1e6).toFixed(2) + 'M';
+  const fmtMoney = v => v ? (v < 0.01 ? '<$0.01' : '$' + v.toFixed(2)) : '$0';
+  const shortPath = p => (p || '').split(/[\\/]/).filter(Boolean).slice(-2).join('/');
+  const shortId = id => id ? id.slice(0, 8) : '';
+
+  // ---- живое состояние ----
+  let last = null;
+  function renderLive(s) {
+    last = s;
+    $('uptime').textContent = fmtDur(Date.now() - new Date(s.gatewayStartedUtc));
+    $('cli').textContent = s.cliVersion || '?';
+    $('project').textContent = shortPath(s.project); $('project').title = s.project || '';
+    $('model').textContent = s.model || 'по умолчанию';
+    $('mode').textContent = s.permissionMode || '—';
+    $('effort').textContent = s.effort || '—';
+    $('now-time').textContent = 'обновлено ' + fmtTime(s.at);
+
+    const dot = $('dot'); dot.className = 'dot';
+    let text = 'Свободен';
+    if (s.approval) { dot.classList.add('wait'); text = 'Ждёт подтверждения'; }
+    else if (s.run) { dot.classList.add('busy'); text = 'Работает · ' + fmtDur(Date.now() - new Date(s.run.startedUtc)); }
+    $('state-text').textContent = text;
+
+    $('approval').innerHTML = s.approval
+      ? `<div class="approval">⏳ <b>${esc(s.approval.tool)}</b> <span class="mono">${esc(s.approval.brief)}</span><div class="muted">ждёт ${fmtDur(Date.now() - new Date(s.approval.sinceUtc))} — кнопки в Telegram</div></div>`
+      : '';
+
+    if (s.run) {
+      const r = s.run, st = r.start;
+      const steps = r.steps.map(x => `<div class="${x.nested ? 'n' : ''}"><span class="t">${fmtTime(x.at)}</span>${x.nested ? '↳ ' : ''}${esc(x.description)}</div>`).join('');
+      $('run').innerHTML = `
+        <div class="meta"><span>сессия <span class="mono">${esc(st.sessionId ? shortId(st.sessionId) : 'новая')}</span></span>
+          <span>${esc(st.model || 'модель по умолчанию')} · ${esc(st.permissionMode)}${st.effort ? ' · ' + esc(st.effort) : ''}</span>
+          <span>вызовов инструментов: <b>${r.toolCalls}</b></span></div>
+        <div class="prompt">${esc(st.promptPreview)}</div>
+        <div class="steps">${r.droppedSteps ? `<div class="muted">… ещё ${r.droppedSteps} ранних шагов</div>` : ''}${steps || '<div class="muted">ждём первый шаг…</div>'}</div>`;
+      const box = $('run').querySelector('.steps'); box.scrollTop = box.scrollHeight;
+    } else {
+      $('run').innerHTML = `<div class="muted">сессия проекта: <span class="mono">${esc(s.session ? shortId(s.session) : 'новая')}</span></div>`;
+    }
+
+    $('queue').innerHTML = s.queue.length
+      ? `<b>В очереди: ${s.queue.length}</b><ol>${s.queue.map(q => `<li>${esc(q)}</li>`).join('')}</ol>`
+      : '';
+
+    if (s.budget && s.budget.daily) {
+      const pct = Math.min(100, s.budget.spentToday / s.budget.daily * 100);
+      $('budget').innerHTML = `Дневной бюджет: ${fmtMoney(s.budget.spentToday)} из ${fmtMoney(s.budget.daily)}<div class="bar"><i class="${pct > 90 ? 'bad' : pct > 70 ? 'warn' : ''}" style="width:${pct}%"></i></div>`;
+    }
+  }
+  // Часы и «прошло времени» тикают между кадрами сервера.
+  setInterval(() => { if (last) renderLive(last); }, 1000);
+
+  let refreshTimer = null;
+  function connect() {
+    const es = new EventSource('/api/events');
+    es.addEventListener('state', e => {
+      const s = JSON.parse(e.data);
+      const wasRunning = last && last.run, isRunning = !!s.run;
+      renderLive(s);
+      // Запуск закончился — история и статистика изменились.
+      if (wasRunning && !isRunning) { clearTimeout(refreshTimer); refreshTimer = setTimeout(loadAll, 800); }
+    });
+    es.onopen = () => { $('conn').textContent = 'онлайн'; $('conn').className = ''; loadAll(); };
+    es.onerror = () => { $('conn').textContent = 'шлюз недоступен'; $('conn').className = 'down'; };
+  }
+
+  // ---- статистика ----
+  const get = (url, fallback) => fetch(url).then(r => r.ok ? r.json() : fallback).catch(() => fallback);
+  let stats = null, runs = [];
+
+  async function loadAll() {
+    [stats, runs] = await Promise.all([get('/api/stats', null), get('/api/runs', [])]);
+    if (stats) { renderStats(); }
+    renderRuns();
+    loadLimits(); loadAudit(); loadLog();
+  }
+
+  function renderStats() {
+    const t = stats.total;
+    $('tiles').innerHTML = [
+      [t.runs, 'запусков'], [t.turns, 'ходов'], [fmtMoney(t.costUsd), 'оценка стоимости'],
+      [fmtTokens(t.inputTokens + t.outputTokens), 'токенов'], [fmtTokens(t.cacheReadTokens), 'из кэша'], [fmtDur(t.durationMs), 'в работе'],
+    ].map(([v, l]) => `<div class="tile"><b>${v}</b><span>${l}${l === 'запусков' && stats.sinceUtc ? ' с ' + new Date(stats.sinceUtc).toLocaleDateString('ru-RU') : ''}</span></div>`).join('');
+    renderChart();
+
+    $('models').querySelector('tbody').innerHTML = stats.byModel.map(m =>
+      `<tr><td class="mono">${esc(m.model)}</td><td class="num">${m.runs}</td><td class="num">${fmtTokens(m.inputTokens)}</td><td class="num">${fmtTokens(m.outputTokens)}</td><td class="num">${fmtTokens(m.cacheReadTokens)}</td><td class="num">${fmtMoney(m.costUsd)}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">пока пусто</td></tr>';
+
+    $('skills').querySelector('tbody').innerHTML = stats.skills.map(s =>
+      `<tr><td class="mono">${esc(s.command)}</td><td class="num">${s.count}</td></tr>`).join('') || '<tr><td colspan="2" class="empty">пока пусто</td></tr>';
+
+    $('sessions').querySelector('tbody').innerHTML = stats.sessions.map(s =>
+      `<tr><td title="${esc(s.projectPath)}">${esc(shortPath(s.projectPath))}</td><td class="mono" title="${esc(s.id)}">${s.active ? '▶ ' : ''}${shortId(s.id)}</td><td class="wrap">${esc(s.title)}</td><td>${fmtWhen(s.lastActivityUtc)}</td><td class="num">${s.turns}</td><td class="num">${fmtMoney(s.costUsd)}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">пока пусто</td></tr>';
+  }
+
+  function renderChart() {
+    const metric = $('metric').value;
+    const days = stats.byDay.slice(-30);
+    const value = d => metric === 'tokens' ? d.inputTokens + d.outputTokens : metric === 'minutes' ? d.durationMs / 60000 : d[metric];
+    const W = 1000, H = 160, pad = 18, bw = W / Math.max(days.length, 1);
+    const max = Math.max(...days.map(value), 0.0001);
+    const svg = $('chart'); svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.innerHTML = days.map((d, i) => {
+      const v = value(d), h = (H - pad - 4) * v / max;
+      const label = metric === 'costUsd' ? fmtMoney(v) : metric === 'minutes' ? v.toFixed(1) + ' мин' : metric === 'tokens' ? fmtTokens(v) : v;
+      return `<rect x="${i * bw + 2}" y="${H - pad - h}" width="${Math.max(bw - 4, 1)}" height="${h}" rx="2"><title>${d.day}: ${label}</title></rect>
+        ${(days.length <= 15 || i % Math.ceil(days.length / 15) === 0) ? `<text x="${i * bw + bw / 2}" y="${H - 4}" text-anchor="middle">${d.day.slice(5)}</text>` : ''}`;
+    }).join('') || '<text x="10" y="80">пока пусто</text>';
+  }
+  $('metric').onchange = renderChart;
+
+  function renderRuns() {
+    const sel = $('run-project');
+    const projects = [...new Set(runs.map(r => r.projectPath))];
+    const current = sel.value;
+    sel.innerHTML = '<option value="">все проекты</option>' + projects.map(p => `<option value="${esc(p)}" ${p === current ? 'selected' : ''}>${esc(shortPath(p))}</option>`).join('');
+    const list = runs.filter(r => !sel.value || r.projectPath === sel.value);
+    $('runs').querySelector('tbody').innerHTML = list.map(r =>
+      `<tr><td>${fmtWhen(r.startedUtc)}</td><td title="${esc(r.projectPath)}">${esc(shortPath(r.projectPath))}</td><td class="wrap">${esc(r.prompt)}</td>
+       <td><span class="tag ${esc(r.outcome)}">${esc(r.outcome)}</span></td><td class="num">${fmtDur(r.durationMs)}</td><td class="num">${r.turns}</td><td class="num">${r.toolCalls}</td>
+       <td class="num" title="вход ${r.inputTokens} / выход ${r.outputTokens}">${fmtTokens(r.inputTokens + r.outputTokens)}</td><td class="num">${fmtMoney(r.costUsd)}</td><td class="mono" title="${esc(r.sessionId)}">${shortId(r.sessionId)}</td></tr>`).join('')
+      || '<tr><td colspan="10" class="empty">запусков ещё не было</td></tr>';
+  }
+  $('run-project').onchange = renderRuns;
+
+  const windowName = k => k === 'five_hour' ? '5 часов' : k === 'seven_day' ? 'неделя' : 'неделя, ' + k.replace(/^(seven_day|five_hour)_/, '').replace(/_/g, ' ');
+  async function loadLimits() {
+    const l = await get('/api/limits', null);
+    if (!l) return;
+    $('limits-note').textContent = l.fetchedUtc ? 'на ' + fmtTime(l.fetchedUtc) : '';
+    if (l.error) { $('limits-body').innerHTML = `<span class="muted">${esc(l.error)}</span>`; return; }
+    const live = l.windows.filter(w => !w.resetsAt || new Date(w.resetsAt) > new Date());
+    $('limits-body').innerHTML = live.map(w => {
+      const used = Math.min(100, Math.round(w.used * 100));
+      return `<div><b>${esc(windowName(w.key))}</b> — использовано ${used}%${w.resetsAt ? `, сброс ${fmtWhen(w.resetsAt)}` : ''}</div><div class="bar"><i class="${used >= 100 ? 'bad' : used > 80 ? 'warn' : ''}" style="width:${used}%"></i></div>`;
+    }).join('') || '<span class="empty">окон нет</span>';
+    if (l.extraUsageEnabled) $('limits-body').innerHTML += '<div class="tag Warning">на аккаунте включены кредиты (extra usage)</div>';
+  }
+  setInterval(loadLimits, 60000);
+
+  async function loadAudit() {
+    const list = await get('/api/audit?count=100', []);
+    $('audit').querySelector('tbody').innerHTML = list.slice().reverse().map(a =>
+      `<tr><td>${fmtWhen(a.at)}</td><td class="mono">${esc(a.kind)}</td><td class="wrap">${esc(a.summary)}</td><td>${esc(a.outcome || '')}</td><td>${esc(a.userId || '')}</td><td title="${esc(a.project || '')}">${esc(shortPath(a.project))}</td></tr>`).join('')
+      || '<tr><td colspan="6" class="empty">пусто</td></tr>';
+  }
+
+  async function loadLog() {
+    const list = await get('/api/log?count=200&level=' + $('log-level').value, []);
+    $('log').querySelector('tbody').innerHTML = list.slice().reverse().map(e =>
+      `<tr><td>${fmtWhen(e.at)}</td><td><span class="tag ${esc(e.level)}">${esc(e.level)}</span></td><td class="mono">${esc(e.category)}</td><td class="wrap">${esc(e.message)}${e.exception ? `<details><summary class="muted">исключение</summary><pre class="mono">${esc(e.exception)}</pre></details>` : ''}</td></tr>`).join('')
+      || '<tr><td colspan="4" class="empty">пусто</td></tr>';
+  }
+  $('log-level').onchange = loadLog;
+  setInterval(() => { loadAudit(); loadLog(); }, 30000);
+
+  connect();
+})();
+</script>
+</body>
+</html>
