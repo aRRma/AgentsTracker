@@ -1,13 +1,22 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace AgentsTracker.Gateway.Infrastructure.Claude;
 
 /// <summary>Один скилл (или пользовательская команда) Claude Code: что набрать и что оно делает.</summary>
 /// <param name="Command">Полная слэш-команда: <c>/name</c> или <c>/plugin:name</c>.</param>
-/// <param name="Description">Первая строка описания из frontmatter, обрезанная для чата.</param>
+/// <param name="Description">Первое предложение описания — для списка.</param>
+/// <param name="Details">Описание целиком (в разумных пределах) — для карточки скилла.</param>
 /// <param name="Group">Откуда скилл: «Проект», «Личные» или имя плагина.</param>
-/// <param name="ArgumentHint">Подсказка по аргументам из frontmatter; null — аргументы не нужны.</param>
-public sealed record SkillInfo(string Command, string Description, string Group, string? ArgumentHint);
+/// <param name="ArgumentHint">Подсказка по аргументам из frontmatter; null — подсказки нет.</param>
+/// <param name="Flags">Флаги вида <c>--name</c>, упомянутые в тексте скилла; пусто — не нашлось.</param>
+public sealed record SkillInfo(
+    string Command,
+    string Description,
+    string Details,
+    string Group,
+    string? ArgumentHint,
+    IReadOnlyList<string> Flags);
 
 /// <summary>Группа скиллов с общим источником: папка проекта, личная папка или плагин.</summary>
 public sealed record SkillGroup(string Name, IReadOnlyList<SkillInfo> Skills);
@@ -25,6 +34,13 @@ public sealed class SkillCatalog(IOptions<GatewayOptions> options, ILogger<Skill
     public const string BuiltInGroup = "Встроенные";
 
     private const int DescriptionLimit = 120;
+
+    private const int DetailsLimit = 700;
+
+    private const int FlagsLimit = 8;
+
+    /// <summary>Флаг в тексте скилла: <c>--fix</c>, <c>--no-post</c>. Одиночные буквы не ищем — слишком много ложных.</summary>
+    private static readonly Regex FlagPattern = new(@"(?<![\w-])--[a-z][a-z0-9-]{1,30}\b", RegexOptions.Compiled);
 
     private static readonly string ClaudeHome =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude");
@@ -52,16 +68,20 @@ public sealed class SkillCatalog(IOptions<GatewayOptions> options, ILogger<Skill
         groups.Add(new SkillGroup(name, skills));
     }
 
-    /// <summary>Строки «/команда | описание» из конфига; без слэша и пустые молча пропускаются.</summary>
+    /// <summary>
+    /// Строки «/команда | описание | подсказка аргументов» из конфига; третья часть необязательна.
+    /// Без слэша в начале строка пропускается с предупреждением.
+    /// </summary>
     private List<SkillInfo> BuiltIn()
     {
         var result = new List<SkillInfo>();
 
         foreach (var line in options.Value.BuiltInSkills)
         {
-            var bar = line.IndexOf('|');
-            var command = (bar < 0 ? line : line[..bar]).Trim();
-            var description = bar < 0 ? "" : line[(bar + 1)..].Trim();
+            var parts = line.Split('|', 3, StringSplitOptions.TrimEntries);
+            var command = parts[0];
+            var description = parts.Length > 1 ? parts[1] : "";
+            var hint = parts.Length > 2 && parts[2].Length > 0 ? parts[2] : null;
 
             if (command.Length < 2 || command[0] != '/' || command.Any(char.IsWhiteSpace))
             {
@@ -69,7 +89,9 @@ public sealed class SkillCatalog(IOptions<GatewayOptions> options, ILogger<Skill
                 continue;
             }
 
-            result.Add(new SkillInfo(command, Shorten(description), BuiltInGroup, null));
+            result.Add(new SkillInfo(
+                command, Shorten(description), Clip(description, DetailsLimit), BuiltInGroup, hint,
+                Flags(description + " " + hint)));
         }
 
         return result;
@@ -121,9 +143,11 @@ public sealed class SkillCatalog(IOptions<GatewayOptions> options, ILogger<Skill
     private SkillInfo? Parse(string file, string name, string? prefix, string group)
     {
         Dictionary<string, string> front;
+        string body;
         try
         {
-            front = Frontmatter(File.ReadLines(file));
+            body = File.ReadAllText(file);
+            front = Frontmatter(body.Split('\n'));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -135,11 +159,37 @@ public sealed class SkillCatalog(IOptions<GatewayOptions> options, ILogger<Skill
             && invocable.Equals("false", StringComparison.OrdinalIgnoreCase))
             return null;
 
-        var description = Shorten(front.GetValueOrDefault("description") ?? "");
+        var full = front.GetValueOrDefault("description") ?? "";
         var hint = front.GetValueOrDefault("argument-hint");
         var command = "/" + (prefix is null ? name : $"{prefix}:{name}");
 
-        return new SkillInfo(command, description, group, string.IsNullOrWhiteSpace(hint) ? null : hint.Trim());
+        // Флаги из тела ищем только у скиллов, которые вообще читают аргументы ($ARGUMENTS, $1):
+        // у остальных «--providers» в тексте — это флаг dotnet-trace из примера, а не скилла.
+        var takesArguments = body.Contains("$ARGUMENTS", StringComparison.Ordinal)
+                             || body.Contains("$1", StringComparison.Ordinal);
+
+        return new SkillInfo(
+            command, Shorten(full), Clip(full, DetailsLimit), group,
+            string.IsNullOrWhiteSpace(hint) ? null : hint.Trim(),
+            Flags(takesArguments ? body : full + " " + hint));
+    }
+
+    /// <summary>
+    /// Флаги, упомянутые в тексте: у скиллов нет формальной схемы аргументов, а «--fix» в
+    /// описании — единственный намёк, что его можно передать. Ложные срабатывания возможны,
+    /// поэтому в карточке они подписаны как «упомянутые».
+    /// </summary>
+    private static IReadOnlyList<string> Flags(string text) =>
+        FlagPattern.Matches(text)
+            .Select(m => m.Value)
+            .Distinct(StringComparer.Ordinal)
+            .Take(FlagsLimit)
+            .ToList();
+
+    private static string Clip(string text, int limit)
+    {
+        var value = text.Trim();
+        return value.Length <= limit ? value : value[..(limit - 1)].TrimEnd() + "…";
     }
 
     /// <summary>

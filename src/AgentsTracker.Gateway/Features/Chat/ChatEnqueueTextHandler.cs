@@ -21,7 +21,7 @@ public sealed class ChatEnqueueTextHandler(
 
         // Слэш-команды шлюза сюда не доходят — остались команды и скиллы самого Claude Code.
         // Считаем их, чтобы экран скиллов знал, что запускают чаще всего.
-        if (text.StartsWith('/')) store.RecordSkillUse(text.Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries)[0]);
+        if (text.StartsWith('/')) store.RecordSkillUse(CommandName(text));
 
         // ActiveChatId выставляет ChatWorker перед самым запуском: сделать это здесь значило бы
         // увести карточки уже идущего запуска в чат другого пользователя.
@@ -31,5 +31,13 @@ public sealed class ChatEnqueueTextHandler(
             await bot.SendMessage(chatId, "📥 Добавлено в очередь — отвечу, как освобожусь.", cancellationToken: ct);
 
         return true;
+    }
+
+    /// <summary>Первое слово без суффикса «@имябота»: Telegram подставляет его при выборе из подсказок.</summary>
+    private static string CommandName(string text)
+    {
+        var word = text.Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries)[0];
+        var at = word.IndexOf('@');
+        return at < 0 ? word : word[..at];
     }
 }

@@ -19,6 +19,9 @@ public sealed class SettingsModule : IFeatureModule
         services.AddSingleton<ISettingsScreen, SkillsScreen>();
 
         services.AddSingleton<SettingsMenuCoordinator>();
+        services.AddSingleton<SkillLauncher>();
+        // Раньше ChatModule: текст после кнопки «С аргументами» — аргументы скилла, а не промпт.
+        services.AddSingleton<ITelegramTextHandler, SkillArgumentsTextHandler>();
         services.AddSingleton<ITelegramCallbackHandler, SettingsCallbackHandler>();
         services.AddSingleton<ITelegramCommandHandler, SettingsCommandHandler>();
     }

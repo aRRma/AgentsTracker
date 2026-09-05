@@ -1,7 +1,5 @@
 using System.Security.Cryptography;
 using System.Text;
-using AgentsTracker.Gateway.Features.Chat;
-using AgentsTracker.Gateway.Infrastructure.Audit;
 using AgentsTracker.Gateway.Infrastructure.Claude;
 using Telegram.Bot.Types.ReplyMarkups;
 using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
@@ -9,49 +7,65 @@ using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
 
 /// <summary>
-/// Скиллы Claude Code кнопками: сначала источник (проект, личные, плагин), потом скилл.
-/// Нажатие ставит в очередь агента слэш-команду — ту же, что пользователь набрал бы руками.
+/// Скиллы Claude Code кнопками: источник (встроенные, проект, личные, плагин) → скилл →
+/// карточка с описанием, подсказкой по аргументам и флагами. Из карточки скилл запускается
+/// сразу или после ввода аргументов следующим сообщением (<see cref="SkillLauncher"/>).
 /// </summary>
-public sealed class SkillsScreen(
-    SessionStore store,
-    SkillCatalog catalog,
-    ChatWorker worker,
-    IAuditLog audit) : ISettingsScreen
+public sealed class SkillsScreen(SessionStore store, SkillCatalog catalog, SkillLauncher launcher) : ISettingsScreen
 {
     private const int PageSize = 12;
 
-    /// <summary>Префиксы перелистывания и открытия группы. Ключи скиллов — hex, не пересекаются.</summary>
+    /// <summary>Префиксы callback-ов. Ключи скиллов и групп — 12 hex-символов, с буквами префиксов не пересекаются
+    /// только потому, что после префикса всегда идёт ключ той же длины или число.</summary>
     private const string PagePrefix = "p";
 
     private const string GroupPrefix = "g";
 
+    private const string CardPrefix = "c";
+
+    private const string RunPrefix = "r";
+
+    private const string AskPrefix = "a";
+
     private const string UpArgument = "up";
+
+    private const string ListArgument = "list";
 
     /// <summary>Сколько частых скиллов выносить в отдельную группу наверх.</summary>
     private const int TopCount = 5;
 
     private const string TopGroup = "⭐ Частые";
 
-    /// <summary>Открытая группа и страница — поля экрана: меню одно на шлюз, как и в ProjectScreen.</summary>
+    /// <summary>Открытая группа, страница и карточка — поля экрана: меню одно на шлюз, как и в ProjectScreen.</summary>
     private string? _group;
 
     private int _page;
+
+    private string? _card;
 
     public string Key => "skills";
 
     public string? Apply(string argument, long userId, long chatId)
     {
-        if (argument == UpArgument)
+        switch (argument)
         {
-            _group = null;
-            _page = 0;
-            return null;
+            case UpArgument:
+                _group = null;
+                _page = 0;
+                _card = null;
+                return null;
+
+            case ListArgument:
+                _card = null;
+                launcher.Cancel(userId);
+                return null;
         }
 
         if (argument.StartsWith(GroupPrefix, StringComparison.Ordinal))
         {
             _group = argument[GroupPrefix.Length..];
             _page = 0;
+            _card = null;
             return null;
         }
 
@@ -62,27 +76,39 @@ public sealed class SkillsScreen(
             return null;
         }
 
-        // Ищем по ключу, а не по номеру: между отрисовкой и нажатием список мог измениться.
-        var skill = catalog.Grouped(store.ProjectPath)
-            .SelectMany(g => g.Skills)
-            .FirstOrDefault(s => SkillKey(s.Command) == argument);
+        if (argument.StartsWith(CardPrefix, StringComparison.Ordinal))
+        {
+            _card = argument[CardPrefix.Length..];
+            return null;
+        }
 
-        if (skill is null) return "Скилла уже нет в списке";
+        if (argument.StartsWith(RunPrefix, StringComparison.Ordinal))
+        {
+            var skill = Find(argument[RunPrefix.Length..]);
+            if (skill is null) return "Скилла уже нет в списке";
 
-        store.RecordSkillUse(skill.Command);
+            launcher.Cancel(userId);
+            return launcher.Launch(chatId, userId, skill.Command);
+        }
 
-        audit.Write(AuditEvent.Now(
-            AuditKinds.Message, $"skill: {skill.Command}", userId, chatId, store.ProjectPath, store.SessionId));
+        if (argument.StartsWith(AskPrefix, StringComparison.Ordinal))
+        {
+            var skill = Find(argument[AskPrefix.Length..]);
+            if (skill is null) return "Скилла уже нет в списке";
 
-        var wasBusy = worker.IsBusy;
-        worker.Enqueue(chatId, userId, skill.Command);
+            launcher.Expect(userId, skill.Command);
+            return $"Напишите аргументы для {skill.Command} следующим сообщением";
+        }
 
-        var hint = skill.ArgumentHint is null ? "" : $"\nС аргументами: {skill.Command} {skill.ArgumentHint}";
-        return (wasBusy ? $"📥 В очереди: {skill.Command}" : $"🚀 Запуск: {skill.Command}") + hint;
+        return null;
     }
 
     public Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(CancellationToken ct) =>
         Task.FromResult(Render());
+
+    /// <summary>Ищем по ключу, а не по номеру: между отрисовкой и нажатием список мог измениться.</summary>
+    private SkillInfo? Find(string key) =>
+        catalog.Grouped(store.ProjectPath).SelectMany(g => g.Skills).FirstOrDefault(s => SkillKey(s.Command) == key);
 
     private (string Html, InlineKeyboardMarkup Keyboard) Render()
     {
@@ -101,6 +127,13 @@ public sealed class SkillsScreen(
                 <i>Неизвестные шлюзу слэш-команды и так уходят агенту как есть.</i>
                 """;
             return (empty, new InlineKeyboardMarkup([[BackButton]]));
+        }
+
+        if (_card is not null)
+        {
+            var skill = groups.SelectMany(g => g.Skills).FirstOrDefault(s => SkillKey(s.Command) == _card);
+            if (skill is not null) return RenderCard(skill);
+            _card = null;
         }
 
         if (groups.Count == 1) return RenderSkills(groups[0], single: true);
@@ -150,8 +183,8 @@ public sealed class SkillsScreen(
 
             {string.Join("\n", lines)}
 
-            <i>Выберите источник, потом скилл. Нажатие запускает его в текущей сессии;
-            скилл с аргументами наберите руками: <code>/имя аргументы</code>.</i>{counter}
+            <i>Выберите источник, потом скилл: откроется карточка с описанием,
+            аргументами и кнопкой запуска.</i>{counter}
             """;
 
         var buttons = page
@@ -171,7 +204,7 @@ public sealed class SkillsScreen(
         var usage = store.SkillUsage();
 
         var lines = page.Select(skill =>
-            $"· <code>{E(skill.Command)}{(skill.ArgumentHint is null ? "" : " " + E(skill.ArgumentHint))}</code>"
+            $"· <code>{E(skill.Command)}</code>"
             + (usage.GetValueOrDefault(skill.Command) is > 0 and var count ? $" — {count} {Times(count)}" : "")
             + (skill.Description.Length > 0 ? $"\n   {E(skill.Description)}" : ""));
 
@@ -180,14 +213,14 @@ public sealed class SkillsScreen(
 
             {string.Join("\n", lines)}
 
-            <i>Нажатие запускает скилл в текущей сессии без аргументов.</i>{counter}
+            <i>Нажатие открывает карточку скилла.</i>{counter}
             """;
 
         // В кнопке — имя без префикса плагина: он и так в заголовке, а место в кнопке дорого.
         // В группе частых источники разные, там префикс остаётся — иначе два одноимённых не различить.
         var mixed = group.Name == TopGroup;
         var buttons = page
-            .Select(skill => Button(mixed ? skill.Command : ShortName(skill.Command), $"skills:{SkillKey(skill.Command)}"))
+            .Select(skill => Button(mixed ? skill.Command : ShortName(skill.Command), $"skills:{CardPrefix}{SkillKey(skill.Command)}"))
             .Chunk(2)
             .ToList();
 
@@ -195,6 +228,40 @@ public sealed class SkillsScreen(
         buttons.Add(single ? [BackButton] : [Button("📦 К источникам", $"skills:{UpArgument}"), BackButton]);
 
         return (html, new InlineKeyboardMarkup(buttons));
+    }
+
+    /// <summary>
+    /// Карточка: всё, что известно о скилле до запуска. Формальной схемы аргументов у скиллов
+    /// нет, поэтому показываем то, что удалось достать — подсказку из frontmatter и флаги,
+    /// упомянутые в тексте.
+    /// </summary>
+    private (string Html, InlineKeyboardMarkup Keyboard) RenderCard(SkillInfo skill)
+    {
+        var count = store.SkillUsage().GetValueOrDefault(skill.Command);
+        var key = SkillKey(skill.Command);
+
+        var parts = new List<string> { $"🧩 <b>{E(skill.Command)}</b>  <i>({E(skill.Group)})</i>" };
+
+        if (skill.Details.Length > 0) parts.Add(E(skill.Details));
+
+        var usage = new List<string>();
+        if (skill.ArgumentHint is not null) usage.Add($"Аргументы: <code>{E(skill.Command)} {E(skill.ArgumentHint)}</code>");
+        if (skill.Flags.Count > 0) usage.Add($"Флаги, упомянутые в описании: {string.Join(", ", skill.Flags.Select(f => $"<code>{E(f)}</code>"))}");
+        if (usage.Count == 0) usage.Add("<i>Подсказки по аргументам нет — обычно запускается без них.</i>");
+        if (count > 0) usage.Add($"Запускали: {count} {Times(count)}");
+        parts.Add(string.Join("\n", usage));
+
+        parts.Add("<i>«Запустить» — без аргументов. «С аргументами» — следующее сообщение станет аргументами команды; «отмена» отменяет.</i>");
+
+        var html = string.Join("\n\n", parts);
+
+        var keyboard = new InlineKeyboardMarkup(
+        [
+            [Button("🚀 Запустить", $"skills:{RunPrefix}{key}"), Button("✏️ С аргументами", $"skills:{AskPrefix}{key}")],
+            [Button("◀️ К списку", $"skills:{ListArgument}"), BackButton],
+        ]);
+
+        return (html, keyboard);
     }
 
     private (T[] Items, string Counter, InlineKeyboardButton[]? PageRow) Page<T>(IReadOnlyList<T> all, string noun)
@@ -217,7 +284,13 @@ public sealed class SkillsScreen(
         return (items, counter, row);
     }
 
-    private static string Times(int count) => count % 10 == 1 && count % 100 != 11 ? "раз" : "раза";
+    /// <summary>«раз» / «раза» по правилам русского: 1, 21 — раз; 2–4, 22–24 — раза; 5–20, 25–30 — раз.</summary>
+    private static string Times(int count)
+    {
+        var tens = count % 100;
+        var ones = count % 10;
+        return ones is >= 2 and <= 4 && tens is < 12 or > 14 ? "раза" : "раз";
+    }
 
     private static string ShortName(string command)
     {

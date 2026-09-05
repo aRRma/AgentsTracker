@@ -104,7 +104,7 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 | `/stop` | прервать текущую задачу |
 | `/status` | что сейчас происходит |
 | `/project` | сменить папку проекта |
-| `/skills` | скиллы Claude Code: список и запуск кнопкой |
+| `/skills` | скиллы Claude Code: описание, аргументы, запуск кнопкой |
 | `/sessions` | переключиться на другой разговор |
 | `/model` | сменить модель (opus / sonnet / haiku) |
 | `/effort` | сколько модели думать (low … max) |
@@ -126,7 +126,7 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 | `AllowedUserIds` | кому можно управлять ботом |
 | `ProjectPath` | папка проекта по умолчанию |
 | `Projects` / `ProjectsRoot` | какие папки показывать в меню выбора проекта |
-| `BuiltInSkills` | список встроенных скиллов Claude Code для `/skills` (по умолчанию `/code-review`, `/simplify`, `/security-review`, `/init`, `/fewer-permission-prompts`); формат строки `"/команда \| описание"` |
+| `BuiltInSkills` | список встроенных скиллов Claude Code для `/skills` (по умолчанию `/code-review`, `/simplify`, `/security-review`, `/init`, `/fewer-permission-prompts`); формат строки `"/команда \| описание \| подсказка аргументов"` |
 | `Model`, `Effort` | модель и глубина размышлений по умолчанию |
 | `PermissionMode` | что можно без спроса: `default`, `acceptEdits`, `auto`, `plan` |
 | `DailyBudgetUsd`, `RunBudgetUsd` | денежные предохранители, по умолчанию выключены |
