@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>AgentsTracker.Agents</RootNamespace>
+  </PropertyGroup>
+
+  <!-- Ради IServiceCollection, IConfiguration, ILogger и IEndpointRouteBuilder в контракте модуля:
+       бэкенд сам регистрирует свои сервисы и монтирует свои эндпоинты. Telegram здесь нет и не будет. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+</Project>
