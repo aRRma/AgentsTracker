@@ -21,7 +21,7 @@ public sealed class BotCommandsCatalog(ITelegramBotClient bot, ILogger<BotComman
         new() { Command = "skills", Description = "скиллы Claude Code кнопками" },
         new() { Command = "model", Description = "сменить модель" },
         new() { Command = "effort", Description = "сколько модели думать" },
-        new() { Command = "mode", Description = "уровень доступа к машине" },
+        new() { Command = "mode", Description = "режим работы агента" },
         new() { Command = "rules", Description = "разрешения, выданные кнопкой «Всегда»" },
         new() { Command = "audit", Description = "журнал действий: кто, где, что" },
         new() { Command = "help", Description = "справка" },

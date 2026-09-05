@@ -53,7 +53,7 @@ public sealed class SessionStore
         get { lock (_gate) return _state.PermissionMode; }
     }
 
-    /// <summary>Уровень доступа следующего запуска: выбранный из чата, иначе из конфига.</summary>
+    /// <summary>Режим работы следующего запуска: выбранный из чата, иначе из конфига.</summary>
     public string EffectivePermissionMode
     {
         get { lock (_gate) return _state.PermissionMode ?? _options.PermissionMode; }

@@ -29,7 +29,7 @@ public sealed class RootScreen(SessionStore store, ChatWorker worker, ClaudeLimi
             <code>{E(project)}</code>
             🧠 Модель: <b>{E(store.EffectiveModel ?? "по умолчанию")}</b>
             🎚 Effort: <b>{E(store.EffectiveEffort ?? "по умолчанию")}</b>
-            🔐 Доступ: <b>{E(store.EffectivePermissionMode)}</b>
+            🔐 Режим: <b>{E(store.EffectivePermissionMode)}</b>
             🧵 Сессия: {(session is null ? "<i>новая</i>" : $"<b>{E(session.Title)}</b>")}
             🚦 Осталось: <b>{E(plan.Length > 0 ? plan : "—")}</b>
             ⚙️ {(worker.IsBusy ? "выполняется" : "простаивает")}, в очереди: {worker.QueueLength}
@@ -38,7 +38,7 @@ public sealed class RootScreen(SessionStore store, ChatWorker worker, ClaudeLimi
         var keyboard = new InlineKeyboardMarkup(
         [
             [Button("📁 Репозиторий", "proj"), Button("🧠 Модель", "model")],
-            [Button("🎚 Effort", "effort"), Button("🔐 Доступ", "mode")],
+            [Button("🎚 Effort", "effort"), Button("🔐 Режим", "mode")],
             [Button("🧵 Сессии", "sess"), Button("📊 Статистика", "usage")],
             [Button("🧩 Скиллы", "skills"), Button("✖️ Закрыть", "close")],
         ]);

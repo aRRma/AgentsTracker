@@ -6,7 +6,7 @@ using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
 
 /// <summary>
-/// Уровень доступа агента к машине (<c>--permission-mode</c>). Из чата переключаются только
+/// Режим работы агента (<c>--permission-mode</c>). Из чата переключаются только
 /// <see cref="PermissionModes.Selectable"/>: снять подтверждения полностью можно лишь конфигом.
 /// </summary>
 public sealed class ModeScreen(
@@ -22,20 +22,20 @@ public sealed class ModeScreen(
         {
             store.SetPermissionMode(null);
             audit.Changed(store, userId, "mode", previous, options.Value.PermissionMode);
-            return $"Доступ: {options.Value.PermissionMode} (из конфига)";
+            return $"Режим: {options.Value.PermissionMode} (из конфига)";
         }
 
         var mode = PermissionModes.Resolve(argument);
         if (mode is null || !PermissionModes.Selectable.Contains(mode, StringComparer.Ordinal))
-            return "Этот уровень из чата не переключается";
+            return "Этот режим из чата не переключается";
 
         if (mode == previous) return $"Уже {mode}";
 
         store.SetPermissionMode(mode);
         audit.Changed(store, userId, "mode", previous, mode);
         return worker.IsBusy
-            ? $"Доступ: {mode} — со следующего запуска"
-            : $"Доступ: {mode}";
+            ? $"Режим: {mode} — со следующего запуска"
+            : $"Режим: {mode}";
     }
 
     public Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(long userId, CancellationToken ct) =>
@@ -46,7 +46,7 @@ public sealed class ModeScreen(
         var current = store.EffectivePermissionMode;
 
         var html = $"""
-            🔐 <b>Доступ агента к машине</b>
+            🔐 <b>Режим работы агента</b>
 
             {string.Join("\n", PermissionModes.Selectable.Select(m => $"{Marker(m == current)} {E(PermissionModes.Describe(m))}"))}
 

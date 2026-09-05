@@ -25,7 +25,7 @@ public sealed class HelpCommandHandler(ITelegramBotClient bot) : ITelegramComman
         /usage — расход: запуски, токены, стоимость
         /model sonnet|opus|haiku|reset — сменить модель
         /effort low|medium|high|xhigh|max|reset — сколько модели думать
-        /mode plan|default|acceptEdits|auto|reset — уровень доступа к машине
+        /mode plan|default|acceptEdits|auto|reset — режим работы агента
         /rules — что разрешено без вопросов; /rules del <n>, /rules clear
         /audit [n] — последние записи журнала действий
 

@@ -1,7 +1,7 @@
 namespace AgentsTracker.Gateway.Domain;
 
 /// <summary>
-/// Уровни доступа агента к машине — то, что уходит в <c>--permission-mode</c>,
+/// Режимы работы агента (насколько свободно он действует на машине) — то, что уходит в <c>--permission-mode</c>,
 /// плюс человеческие названия для команды /mode.
 /// </summary>
 public static class PermissionModes

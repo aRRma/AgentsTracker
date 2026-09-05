@@ -52,10 +52,10 @@ public sealed class SettingsCommandHandler(
                 await bot.SendMessage(chatId, ChangeEffort(argument, userId, chatId), cancellationToken: ct);
                 break;
 
+            // Команда без аргумента открывает тот же экран с кнопками, что и меню: набирать
+            // значение руками после подсказки текстом — лишний шаг с телефона.
             case "/model" when argument.Length == 0:
-                await bot.SendMessage(chatId,
-                    $"Текущая модель: {store.EffectiveModel ?? "по умолчанию"}\nЗадать: /model sonnet | opus | haiku | reset",
-                    cancellationToken: ct);
+                await menu.OpenAsync(chatId, userId, ct, "model");
                 break;
 
             case "/model":
@@ -63,7 +63,7 @@ public sealed class SettingsCommandHandler(
                 break;
 
             case "/mode" when argument.Length == 0:
-                await bot.SendMessage(chatId, DescribeMode(), cancellationToken: ct);
+                await menu.OpenAsync(chatId, userId, ct, "mode");
                 break;
 
             case "/mode":
@@ -87,26 +87,8 @@ public sealed class SettingsCommandHandler(
             : $"🎚 Effort: {options.Value.Effort ?? "по умолчанию"} — как в конфиге.";
     }
 
-    private string DescribeMode()
-    {
-        var current = store.EffectivePermissionMode;
-        var list = string.Join(
-            '\n',
-            PermissionModes.Selectable.Select(m =>
-                $"{(m == current ? "▶" : "·")} {PermissionModes.Describe(m)}"));
-
-        return $"""
-            Уровень доступа: {current}
-
-            {list}
-
-            Сменить: /mode plan|default|acceptEdits|auto
-            Вернуть значение из конфига ({options.Value.PermissionMode}): /mode reset
-            """;
-    }
-
     /// <summary>
-    /// Меняет уровень доступа агента к машине. Новый режим ложится в state.json
+    /// Меняет режим работы агента. Новый режим ложится в state.json
     /// и переживает перезапуск; текущий запуск доигрывает со старым.
     /// </summary>
     private string ChangeMode(string argument, long userId, long chatId)
@@ -114,7 +96,7 @@ public sealed class SettingsCommandHandler(
         if (argument.Equals("reset", StringComparison.OrdinalIgnoreCase))
         {
             menu.Screen("mode").Apply(argument, userId, chatId);
-            return $"Уровень доступа: {options.Value.PermissionMode} — как в конфиге. Применится со следующего запуска.";
+            return $"🔐 Режим: {options.Value.PermissionMode} — как в конфиге. Применится со следующего запуска.";
         }
 
         var mode = PermissionModes.Resolve(argument);
@@ -124,7 +106,7 @@ public sealed class SettingsCommandHandler(
             // dontAsk и bypassPermissions сюда не попадают намеренно: полное снятие
             // подтверждений остаётся правкой конфига на самой машине.
             return $"""
-                Не знаю уровень «{argument}». Доступно: {string.Join(", ", PermissionModes.Selectable)}, reset.
+                Не знаю режим «{argument}». Доступно: {string.Join(", ", PermissionModes.Selectable)}, reset.
                 Снять подтверждения полностью можно только в appsettings.Local.json на самой машине.
                 """;
         }
@@ -134,7 +116,7 @@ public sealed class SettingsCommandHandler(
         menu.Screen("mode").Apply(mode, userId, chatId);
 
         // Занятость спрашиваем у воркера, а не угадываем по тексту тоста экрана.
-        var note = worker.IsBusy ? "\nТекущий запуск доигрывает со старым уровнем." : "";
+        var note = worker.IsBusy ? "\nТекущий запуск доигрывает со старым режимом." : "";
         return $"🔐 {PermissionModes.Describe(mode)}.\nПрименится со следующего запуска.{note}";
     }
 }

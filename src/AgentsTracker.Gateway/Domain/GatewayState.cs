@@ -17,7 +17,7 @@ public sealed class GatewayState
     /// <summary>Алиас модели, выставленный из чата. null = из конфига.</summary>
     public string? Model { get; set; }
 
-    /// <summary>Уровень доступа, выставленный командой /mode. null = из конфига.</summary>
+    /// <summary>Режим работы агента, выставленный командой /mode. null = из конфига.</summary>
     public string? PermissionMode { get; set; }
 
     /// <summary>Уровень усилий, выставленный из чата. null = из конфига.</summary>

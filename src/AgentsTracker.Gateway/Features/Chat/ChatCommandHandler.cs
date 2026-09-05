@@ -55,7 +55,7 @@ public sealed class ChatCommandHandler(
             📁 {store.ProjectPath}
             🧠 {store.EffectiveModel ?? "модель по умолчанию"}
             🎚 Effort: {store.EffectiveEffort ?? "по умолчанию"}{(state.Effort is null ? " (из конфига)" : "")}
-            🔐 Доступ: {store.EffectivePermissionMode}{(state.PermissionMode is null ? " (из конфига)" : "")}
+            🔐 Режим: {store.EffectivePermissionMode}{(state.PermissionMode is null ? " (из конфига)" : "")}
             🧵 Сессия: {store.SessionId ?? "новая (ещё не создана)"}
             🚦 Осталось: {(plan.Length > 0 ? plan : "—")}
             ⚙️ {(worker.IsBusy ? "выполняется" : "простаивает")}, в очереди: {worker.QueueLength}
