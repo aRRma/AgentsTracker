@@ -53,6 +53,32 @@ public sealed class GatewayState
     /// команда в нижнем регистре. По этому счётчику экран скиллов выносит частые наверх.
     /// </summary>
     public Dictionary<string, int> SkillUsage { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Последние запуски для веб-монитора, свежие в конце. Хранится ограниченное число.</summary>
+    public List<RunRecord> RecentRuns { get; set; } = [];
+}
+
+/// <summary>
+/// Один завершённый запуск CLI — строка в таблице монитора. Промпт здесь только превью:
+/// в state.json полный текст не кладём по той же причине, что и в аудит.
+/// </summary>
+public sealed class RunRecord
+{
+    public DateTimeOffset StartedUtc { get; set; }
+    public string ProjectPath { get; set; } = "";
+    public string? SessionId { get; set; }
+    public string Prompt { get; set; } = "";
+    public string? Model { get; set; }
+
+    /// <summary>ok / cancel / rate-limit / error — как в аудите.</summary>
+    public string Outcome { get; set; } = "";
+
+    public long DurationMs { get; set; }
+    public int Turns { get; set; }
+    public int ToolCalls { get; set; }
+    public decimal CostUsd { get; set; }
+    public long InputTokens { get; set; }
+    public long OutputTokens { get; set; }
 }
 
 /// <summary>Сессия Claude Code, о которой знает шлюз, — чтобы её можно было выбрать в меню.</summary>

@@ -16,6 +16,9 @@ public sealed class SessionStore
     private const int SessionsPerProject = 25;
     private const int UsageDays = 60;
 
+    /// <summary>Сколько последних запусков держать для монитора.</summary>
+    private const int RecentRunsKept = 200;
+
     private readonly string _path;
     private readonly GatewayOptions _options;
     private readonly ILogger<SessionStore> _logger;
@@ -209,6 +212,26 @@ public sealed class SessionStore
             record.Turns += usage.Turns;
             record.CostUsd += usage.CostUsd;
         });
+    }
+
+    /// <summary>
+    /// Записывает итог запуска для монитора. Отдельно от <see cref="RecordRun"/>: расход
+    /// известен только CLI внутри ClaudeRunner, а исход, превью промпта и число вызовов — ChatWorker.
+    /// </summary>
+    public void RecordRunOutcome(RunRecord record)
+    {
+        Mutate(s =>
+        {
+            s.RecentRuns.Add(record);
+            if (s.RecentRuns.Count > RecentRunsKept)
+                s.RecentRuns.RemoveRange(0, s.RecentRuns.Count - RecentRunsKept);
+        });
+    }
+
+    /// <summary>Последние запуски, свежие сверху: копия, чтобы читать без замка.</summary>
+    public IReadOnlyList<RunRecord> RecentRuns()
+    {
+        lock (_gate) return [.. Enumerable.Reverse(_state.RecentRuns).Select(Clone)];
     }
 
     /// <summary>
@@ -473,6 +496,22 @@ public sealed class SessionStore
         LastActivityUtc = record.LastActivityUtc,
         Turns = record.Turns,
         CostUsd = record.CostUsd,
+    };
+
+    private static RunRecord Clone(RunRecord record) => new()
+    {
+        StartedUtc = record.StartedUtc,
+        ProjectPath = record.ProjectPath,
+        SessionId = record.SessionId,
+        Prompt = record.Prompt,
+        Model = record.Model,
+        Outcome = record.Outcome,
+        DurationMs = record.DurationMs,
+        Turns = record.Turns,
+        ToolCalls = record.ToolCalls,
+        CostUsd = record.CostUsd,
+        InputTokens = record.InputTokens,
+        OutputTokens = record.OutputTokens,
     };
 
     /// <summary>

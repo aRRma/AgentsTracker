@@ -76,6 +76,12 @@ public sealed class GatewayOptions
     /// <summary>Порт локального MCP-сервера подтверждений (слушает только 127.0.0.1).</summary>
     public int McpPort { get; set; } = 5099;
 
+    /// <summary>
+    /// Порт веб-монитора (страница состояния и статистики, без авторизации, слушает только
+    /// 127.0.0.1). 0 — монитор выключен.
+    /// </summary>
+    public int MonitorPort { get; set; } = 5100;
+
     /// <summary>Сколько ждать нажатия кнопки, прежде чем автоматически отклонить.</summary>
     public int ApprovalTimeoutMinutes { get; set; } = 15;
 
@@ -102,6 +108,12 @@ public sealed class GatewayOptions
 
         if (McpPort is < 1 or > 65535)
             errors.Add($"{SectionName}:McpPort вне диапазона: {McpPort}");
+
+        if (MonitorPort is < 0 or > 65535)
+            errors.Add($"{SectionName}:MonitorPort вне диапазона: {MonitorPort}. 0 выключает монитор.");
+        // Один конвейер на оба порта: совпадение открыло бы страницу монитора и на порту MCP.
+        else if (MonitorPort != 0 && MonitorPort == McpPort)
+            errors.Add($"{SectionName}:MonitorPort совпадает с McpPort: {MonitorPort}");
 
         // Нуль тут выглядит как «без ограничения», а на деле CancellationTokenSource
         // с нулевым интервалом срабатывает сразу и убивает каждый запуск.

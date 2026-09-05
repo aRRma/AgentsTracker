@@ -4,6 +4,7 @@ using System.Threading.Channels;
 using AgentsTracker.Gateway.Features.Approvals;
 using AgentsTracker.Gateway.Infrastructure.Audit;
 using AgentsTracker.Gateway.Infrastructure.Claude;
+using AgentsTracker.Gateway.Infrastructure.Monitoring;
 using AgentsTracker.Gateway.Infrastructure.Telegram;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
@@ -23,6 +24,7 @@ public sealed partial class ChatWorker(
     ApprovalBroker broker,
     SessionStore store,
     IAuditLog audit,
+    RunMonitor monitor,
     ILogger<ChatWorker> logger) : BackgroundService
 {
     // SingleReader здесь ставить нельзя: канал становится SingleConsumerUnboundedChannel,
@@ -38,8 +40,11 @@ public sealed partial class ChatWorker(
 
     public int QueueLength => _queue.Reader.Count;
 
-    public void Enqueue(long chatId, long userId, string text) =>
+    public void Enqueue(long chatId, long userId, string text)
+    {
         _queue.Writer.TryWrite(new QueuedPrompt(chatId, userId, text));
+        monitor.Enqueued(Text.Preview(text));
+    }
 
     /// <summary>Прерывает текущий запуск и снимает висящие запросы подтверждений.</summary>
     public bool Stop()
@@ -77,6 +82,8 @@ public sealed partial class ChatWorker(
 
     private async Task ProcessAsync(QueuedPrompt prompt, CancellationToken stoppingToken)
     {
+        monitor.Dequeued();
+
         // Лимиты проверяем здесь, а не при постановке в очередь: пока сообщение ждало,
         // предыдущие запуски могли выбрать и бюджет, и тарифное окно.
         if (OverBudget() is { } refusal)
@@ -112,24 +119,56 @@ public sealed partial class ChatWorker(
 
         var status = await RunStatusMessage.StartAsync(bot, prompt.ChatId, thread, logger, stoppingToken);
 
+        var startedUtc = DateTimeOffset.UtcNow;
+        var project = store.ProjectPath;
+        var model = store.EffectiveModel;
+        monitor.RunStarted(new RunStart(
+            project, session, Text.Preview(prompt.Text), model, store.EffectivePermissionMode, store.EffectiveEffort));
+
         ClaudeRunResult result;
+        CurrentRun? finished;
         try
         {
-            result = await runner.RunAsync(prompt.Text, status.Report, runCts.Token);
+            result = await runner.RunAsync(
+                prompt.Text,
+                activity => { status.Report(activity); monitor.Step(activity); },
+                runCts.Token);
         }
         finally
         {
             _runCts = null;
+            finished = monitor.RunFinished();
             await status.DisposeAsync();
             // Процесс завершён — отвечать на висящие карточки уже некому.
             broker.CancelAll();
             await DeleteQuietlyAsync(prompt.ChatId, status.MessageId, stoppingToken);
         }
 
-        Audit(prompt, AuditKinds.RunEnd,
-            $"{result.Duration.Elapsed}, ходов {result.Usage?.Turns ?? 0}",
-            result.SessionId,
-            result switch { { Cancelled: true } => "cancel", { RateLimited: true } => "rate-limit", { Ok: true } => "ok", _ => "error" });
+        var outcome = result switch
+        {
+            { Cancelled: true } => "cancel",
+            { RateLimited: true } => "rate-limit",
+            { Ok: true } => "ok",
+            _ => "error",
+        };
+
+        Audit(prompt, AuditKinds.RunEnd, $"{result.Duration.Elapsed}, ходов {result.Usage?.Turns ?? 0}", result.SessionId, outcome);
+
+        store.RecordRunOutcome(new RunRecord
+        {
+            StartedUtc = startedUtc,
+            ProjectPath = project,
+            SessionId = result.SessionId ?? session,
+            Prompt = Text.Preview(prompt.Text),
+            Model = model,
+            Outcome = outcome,
+            DurationMs = (long)result.Duration.TotalMilliseconds,
+            Turns = result.Usage?.Turns ?? 0,
+            ToolCalls = finished?.ToolCalls ?? 0,
+            CostUsd = result.Usage?.CostUsd ?? result.CostUsd ?? 0m,
+            InputTokens = result.Usage?.InputTokens ?? 0,
+            OutputTokens = result.Usage?.OutputTokens ?? 0,
+        });
 
         var text = result.Ok ? result.Text : $"⚠️ {result.Text}";
         await SendRenderedAsync(prompt.ChatId, text + Footer(result), stoppingToken);
@@ -167,6 +206,7 @@ public sealed partial class ChatWorker(
     {
         var dropped = 0;
         while (_queue.Reader.TryRead(out _)) dropped++;
+        monitor.QueueCleared();
 
         if (dropped == 0) return;
 

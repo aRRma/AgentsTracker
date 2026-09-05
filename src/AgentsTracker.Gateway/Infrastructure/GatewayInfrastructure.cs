@@ -3,6 +3,7 @@ using AgentsTracker.Gateway.Infrastructure.Audit;
 using AgentsTracker.Gateway.Infrastructure.Claude;
 using AgentsTracker.Gateway.Infrastructure.Mcp;
 using AgentsTracker.Gateway.Infrastructure.Modules;
+using AgentsTracker.Gateway.Infrastructure.Monitoring;
 using AgentsTracker.Gateway.Infrastructure.Security;
 using AgentsTracker.Gateway.Infrastructure.Telegram;
 using Telegram.Bot;
@@ -42,6 +43,10 @@ public static class GatewayInfrastructure
             services.AddSingleton<ClaudeLimits>();
             services.AddSingleton<SkillCatalog>();
 
+            services.AddSingleton<RunMonitor>();
+            services.AddSingleton<RingBufferLog>();
+            services.AddSingleton<ILoggerProvider, RingBufferLoggerProvider>();
+
             services.AddSingleton<ITelegramBotClient>(sp =>
                 TelegramClientFactory.Create(sp.GetRequiredService<IOptions<GatewayOptions>>().Value));
             services.AddSingleton<BotCommandsCatalog>();
@@ -49,9 +54,16 @@ public static class GatewayInfrastructure
 
             foreach (var module in modules) module.AddServices(services, configuration);
 
-            // MCP-эндпоинт подтверждений доступен только с этой машины.
-            var port = configuration.GetValue<int?>($"{GatewayOptions.SectionName}:McpPort") ?? new GatewayOptions().McpPort;
-            builder.WebHost.ConfigureKestrel(kestrel => kestrel.Listen(IPAddress.Loopback, port));
+            // MCP-эндпоинт подтверждений и монитор доступны только с этой машины. Монитор — на
+            // отдельном порту: у него нет токена, и его можно выключить, не трогая MCP.
+            var defaults = new GatewayOptions();
+            var port = configuration.GetValue<int?>($"{GatewayOptions.SectionName}:McpPort") ?? defaults.McpPort;
+            var monitorPort = configuration.GetValue<int?>($"{GatewayOptions.SectionName}:MonitorPort") ?? defaults.MonitorPort;
+            builder.WebHost.ConfigureKestrel(kestrel =>
+            {
+                kestrel.Listen(IPAddress.Loopback, port);
+                if (monitorPort > 0 && monitorPort != port) kestrel.Listen(IPAddress.Loopback, monitorPort);
+            });
         }
     }
 
@@ -81,9 +93,14 @@ public static class GatewayInfrastructure
                 // Контракт с CLI держится на его недокументированном поведении, а версия
                 // меняется сама собой: без записи в логе непонятно, чей ответ разбирали.
                 if (locator.TryGetVersion() is { Length: > 0 } version)
+                {
                     logger.LogInformation("Версия CLI: {Version}", version);
+                    app.Services.GetRequiredService<RunMonitor>().CliVersion = version;
+                }
                 else
+                {
                     logger.LogWarning("Не удалось получить версию CLI");
+                }
             }
             catch (InvalidOperationException ex)
             {
@@ -92,6 +109,9 @@ public static class GatewayInfrastructure
             }
 
             DataDirectoryAcl.Restrict(AppPaths.DataDirectory, logger);
+
+            if (options.MonitorPort > 0)
+                logger.LogInformation("Монитор: http://127.0.0.1:{Port}/", options.MonitorPort);
 
             // Файл с секретом MCP не должен пережить процесс.
             var mcp = app.Services.GetRequiredService<McpConfigFile>();

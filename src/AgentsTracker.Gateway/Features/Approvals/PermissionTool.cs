@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using AgentsTracker.Gateway.Infrastructure.Audit;
+using AgentsTracker.Gateway.Infrastructure.Monitoring;
 using AgentsTracker.Gateway.Infrastructure.Telegram;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -19,6 +20,7 @@ public sealed class PermissionTool(
     ApprovalBroker broker,
     SessionStore store,
     IAuditLog audit,
+    RunMonitor monitor,
     ILogger<PermissionTool> logger)
 {
     private const string AskUserQuestionTool = "AskUserQuestion";
@@ -57,7 +59,11 @@ public sealed class PermissionTool(
         var suggestions = Read(arguments, "permission_suggestions", "suggestions", "permissionSuggestions");
 
         // Только начало: полная команда может нести токен в заголовке curl, ему в логе не место.
-        logger.LogInformation("Запрос разрешения: {Tool} {Key}", toolName, Text.Preview(Highlight(toolName, toolInput) ?? ""));
+        var brief = Text.Preview(Highlight(toolName, toolInput) ?? "");
+        logger.LogInformation("Запрос разрешения: {Tool} {Key}", toolName, brief);
+
+        // Монитору — та же короткая строка, что и логу: полный ввод Edit/Write — содержимое файлов.
+        using var pending = monitor.Approval(toolName, brief);
 
         try
         {
@@ -148,6 +154,18 @@ public sealed class PermissionTool(
     private static string? Highlight(string toolName, JsonElement? input)
     {
         if (input is not { ValueKind: JsonValueKind.Object } obj) return null;
+
+        // У вопроса ключевое поле — текст первого вопроса; в сигнатуру он не идёт, только в лог и монитор.
+        if (string.Equals(toolName, AskUserQuestionTool, StringComparison.Ordinal))
+        {
+            return obj.TryGetProperty("questions", out var questions)
+                && questions.ValueKind == JsonValueKind.Array
+                && questions.EnumerateArray().FirstOrDefault() is { ValueKind: JsonValueKind.Object } first
+                && first.TryGetProperty("question", out var question)
+                && question.ValueKind == JsonValueKind.String
+                    ? question.GetString()
+                    : null;
+        }
 
         string[] interesting = ["command", "file_path", "path", "url", "pattern"];
 
