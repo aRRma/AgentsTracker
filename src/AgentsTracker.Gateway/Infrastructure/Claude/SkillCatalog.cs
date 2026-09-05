@@ -17,19 +17,24 @@ public sealed record SkillGroup(string Name, IReadOnlyList<SkillInfo> Skills);
 /// из <c>-p</c>, а без списка из чата не видно, что вообще можно запустить.
 /// Смотрит туда же, куда сам CLI: <c>.claude/skills</c> и <c>.claude/commands</c> проекта
 /// и пользователя, плюс включённые плагины из <c>~/.claude/plugins</c>.
-/// Встроенные скиллы CLI (<c>/init</c> и подобные) на диске не лежат — их здесь нет.
+/// Встроенные скиллы CLI (<c>/code-review</c> и подобные) на диске не лежат — они берутся
+/// из <c>Gateway:BuiltInSkills</c>.
 /// </summary>
-public sealed class SkillCatalog(ILogger<SkillCatalog> logger)
+public sealed class SkillCatalog(IOptions<GatewayOptions> options, ILogger<SkillCatalog> logger)
 {
+    public const string BuiltInGroup = "Встроенные";
+
     private const int DescriptionLimit = 120;
 
     private static readonly string ClaudeHome =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude");
 
-    /// <summary>Группы в порядке показа: сначала проект и личные, потом плагины по алфавиту.</summary>
+    /// <summary>Группы в порядке показа: встроенные, проект, личные, потом плагины по алфавиту.</summary>
     public IReadOnlyList<SkillGroup> Grouped(string projectPath)
     {
         var groups = new List<SkillGroup>();
+
+        Add(groups, BuiltInGroup, BuiltIn());
 
         Add(groups, "Проект", ScanFolder(Path.Combine(projectPath, ".claude"), prefix: null, "Проект"));
         Add(groups, "Личные", ScanFolder(ClaudeHome, prefix: null, "Личные"));
@@ -45,6 +50,29 @@ public sealed class SkillCatalog(ILogger<SkillCatalog> logger)
         if (skills.Count == 0) return;
         skills.Sort((a, b) => string.Compare(a.Command, b.Command, StringComparison.OrdinalIgnoreCase));
         groups.Add(new SkillGroup(name, skills));
+    }
+
+    /// <summary>Строки «/команда | описание» из конфига; без слэша и пустые молча пропускаются.</summary>
+    private List<SkillInfo> BuiltIn()
+    {
+        var result = new List<SkillInfo>();
+
+        foreach (var line in options.Value.BuiltInSkills)
+        {
+            var bar = line.IndexOf('|');
+            var command = (bar < 0 ? line : line[..bar]).Trim();
+            var description = bar < 0 ? "" : line[(bar + 1)..].Trim();
+
+            if (command.Length < 2 || command[0] != '/' || command.Any(char.IsWhiteSpace))
+            {
+                logger.LogWarning("Gateway:BuiltInSkills — пропущена строка без команды: {Line}", line);
+                continue;
+            }
+
+            result.Add(new SkillInfo(command, Shorten(description), BuiltInGroup, null));
+        }
+
+        return result;
     }
 
     /// <summary>

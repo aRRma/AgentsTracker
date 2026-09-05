@@ -95,10 +95,10 @@ public sealed class SkillsScreen(
                 🧩 <b>Скиллы</b>
 
                 Ничего не найдено: ни <code>.claude/skills</code> в проекте и профиле,
-                ни включённых плагинов в <code>~/.claude/plugins</code>.
+                ни включённых плагинов в <code>~/.claude/plugins</code>, ни строк
+                в <code>Gateway:BuiltInSkills</code>.
 
-                <i>Встроенные команды Claude Code (например <code>/init</code>) можно набрать вручную —
-                неизвестные шлюзу слэш-команды уходят агенту как есть.</i>
+                <i>Неизвестные шлюзу слэш-команды и так уходят агенту как есть.</i>
                 """;
             return (empty, new InlineKeyboardMarkup([[BackButton]]));
         }

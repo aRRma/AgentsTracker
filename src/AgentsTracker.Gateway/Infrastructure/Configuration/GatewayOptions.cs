@@ -31,6 +31,21 @@ public sealed class GatewayOptions
     /// <summary>На сколько уровней вглубь <see cref="ProjectsRoot"/> спускаться.</summary>
     public int ProjectsRootDepth { get; set; } = 3;
 
+    /// <summary>
+    /// Встроенные скиллы Claude Code для экрана «Скиллы»: они вшиты в claude.exe, на диске их
+    /// нет и перечислить их CLI не умеет. Формат строки — «/команда | описание». Список
+    /// по умолчанию соответствует CLI 2.1.x; после обновления CLI его можно переопределить
+    /// здесь, не пересобирая шлюз.
+    /// </summary>
+    public string[] BuiltInSkills { get; set; } =
+    [
+        "/code-review | Ревью текущего диффа: баги, упрощения, эффективность",
+        "/simplify | Упростить изменённый код: повторное использование, лишние абстракции",
+        "/security-review | Проверка безопасности изменений в текущей ветке",
+        "/init | Создать CLAUDE.md с описанием кодовой базы",
+        "/fewer-permission-prompts | Разрешить частые безопасные команды, чтобы меньше спрашивать",
+    ];
+
     /// <summary>Путь к claude.exe. null = автопоиск.</summary>
     public string? ClaudeExecutable { get; set; }
 
