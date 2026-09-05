@@ -30,9 +30,13 @@ $env:Gateway__ProjectPath = 'C:\tmp\test'; $env:Gateway__AllowedUserIds__0 = '1'
 ```
 
 Разовый прогон без правки конфига: запустить exe с `$env:Gateway__BotToken`,
-`Gateway__AllowedUserIds__0` и **своим** `Gateway__McpPort` — иначе перезапишете
-`mcp-gateway.json` работающего экземпляра, и его следующий `claude -p` упадёт. Два экземпляра
-шлюза на одной машине не уживаются и по другой причине: бот один, `getUpdates` отдаётся 409.
+`Gateway__AllowedUserIds__0` и **своими** `Gateway__McpPort`/`Gateway__MonitorPort`. Но
+`mcp-gateway.json` в папке данных временный экземпляр перезапишет в любом случае (путь
+один, `%LOCALAPPDATA%` берётся не из переменной окружения), и следующий `claude -p`
+работающего экземпляра не достучится до подтверждений — после пробы его надо перезапустить.
+Два экземпляра шлюза на одной машине не уживаются и по другой причине: бот один, `getUpdates`
+отдаётся 409 (с поддельным токеном экземпляр живёт ~минуту до выхода — хватает, чтобы
+дёрнуть эндпоинты монитора).
 
 Сборка падает с `MSB3021`, если шлюз запущен: exe заблокирован. Собирайте в другую папку —
 `dotnet build src\AgentsTracker.Gateway -o <временная папка>`.
@@ -77,6 +81,9 @@ Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.
 Новая фича: папка в `Features/` с `*Module` и запись в списке модулей в `Program.cs`.
 `ChatModule` там остаётся последним.
 
+Новый эндпоинт монитора: `api.MapGet` в `MonitorModule.MapEndpoints` (группа уже фильтрует
+порт), данные — только чтение, `Results.Json(..., Json)`; новая секция — в `index.html`.
+
 ## Архитектура
 
 ### Слои и слайсы
@@ -99,15 +106,18 @@ src/AgentsTracker.Gateway/
                         DisplayFormat, BotCommandsCatalog,
                         Dispatch/ — ITelegramCommandHandler / ITelegramCallbackHandler / ITelegramTextHandler
     Audit/              IAuditLog, JsonlAuditLog — журнал «кто, куда, что»
+    Monitoring/         RunMonitor — живое состояние (запуск, шаги, очередь, ожидание карточки) и подписка;
+                        RingBufferLog — хвост ILogger в памяти для монитора
     Security/           DPAPI-шифрование конфига, ACL папки данных, команда protect-secrets
     Modules/            IFeatureModule — AddServices + MapEndpoints
   Features/             вертикальные слайсы, каждый со своим *Module:
-    Approvals/          PermissionTool (MCP), ApprovalBroker, ApprovalCardRenderer, /rules; единственный HTTP-эндпоинт
+    Approvals/          PermissionTool (MCP), ApprovalBroker, ApprovalCardRenderer, /rules; HTTP-эндпоинт /mcp
     Chat/               ChatWorker (очередь и запуск), RunStatusMessage (живой статус запуска),
                         /new /stop /status, fallback-обработчик текста
     Settings/           SettingsMenuCoordinator + Screens/*Screen (ISettingsScreen), /menu /model /effort /mode /skills …
     Help/               /start /help
     Audit/              /audit
+    Monitor/            веб-монитор: MonitorModule (эндпоинты /, /api/*) + index.html (вшит в сборку)
 ```
 
 Правила разложения: в `Domain` ничего не открывает файлы и не ходит по сети; `Infrastructure`
@@ -213,6 +223,44 @@ CLI запускается с `--output-format stream-json --verbose` (без `-
 сеть — в своём цикле; `DisposeAsync` дожидается цикла (не дольше 10 с), иначе правка
 догоняла бы удаление сообщения. Аргумент инструмента в статусе один и короткий (`ClaudeStreamEvent.Describe`):
 полный ввод Edit/Write — это содержимое файла.
+
+### Веб-монитор
+
+`Features/Monitor/` — страница состояния на **отдельном** порту `Gateway:MonitorPort`
+(по умолчанию 5100, `0` выключает; `Validate` не даёт совпасть с `McpPort`). Kestrel слушает
+оба порта одним конвейером, поэтому группа эндпоинтов монитора фильтрует
+`Connection.LocalPort` — иначе страница открылась бы и на порту MCP (проверка: `/` на порту
+MCP отдаёт 404). Авторизации нет намеренно, только loopback: поэтому эндпоинты **только
+читают** — `/stop`, смена проекта и прочие действия остаются в Telegram, где есть
+`AllowedUserIds` и аудит «кто нажал».
+
+Источник «что сейчас» — `RunMonitor` (`Infrastructure/Monitoring`): `ChatWorker` сообщает
+очередь (`Enqueued`/`Dequeued`/`QueueCleared`), старт (`RunStarted`), каждый шаг (тот же
+callback, что у `RunStatusMessage`) и финиш; `PermissionTool` — ожидание карточки через
+`using monitor.Approval(tool, brief)`, где brief — та же короткая строка, что в логе (полный
+ввод Edit/Write — содержимое файлов, на страницу не идёт). Шагов хранится 300 последних,
+`DroppedSteps` считает отброшенные. `Changes()` — подписка: канал на одного подписчика
+ёмкостью 1 с вытеснением, медленный браузер получает последнее состояние, а не очередь
+устаревших. `/api/events` — SSE (`TypedResults.ServerSentEvents`): снимок при подключении,
+далее по изменениям, между ними `ping` раз в 5 с — без него страница не отличит тишину от
+упавшего шлюза. Снимок собирается в `MonitorModule` из `RunMonitor.Current` + `SessionStore`.
+
+История запусков — `GatewayState.RecentRuns` (200 последних, пишет `ChatWorker` через
+`SessionStore.RecordRunOutcome` после запуска: исход, превью промпта через `Text.Preview`,
+число вызовов, расход). Отдельно от `RecordRun` в `ClaudeRunner`: тот знает расход, но не
+исход. Статистика (`/api/stats`, `/api/stats.csv` — `;` и BOM для Excel на русской локали)
+берётся из `Snapshot()`; лимиты — `ClaudeLimits.GetAsync` (кэш 3 мин, страница опрашивает
+раз в минуту); аудит — `IAuditLog.Tail`; лог — `RingBufferLog` (500 записей, Information и
+выше, регистрируется как `ILoggerProvider`).
+
+`index.html` — один файл без сборки и CDN, `EmbeddedResource` в csproj: publish не зависит
+от папки рядом с exe. Все данные из `/api/*` в camelCase (`JsonSerializerDefaults.Web`),
+кириллица без `\u`-экранирования.
+
+Проверка без остановки рабочего шлюза **невозможна изолированно**: `AppPaths.DataDirectory`
+берёт `%LOCALAPPDATA%` через `Environment.GetFolderPath`, переменная окружения его не
+перекрывает, и временный экземпляр перезаписывает `mcp-gateway.json` рабочего (см. выше).
+После такой пробы рабочий экземпляр нужно перезапустить.
 
 ### `--permission-mode` передаётся всегда
 
@@ -350,7 +398,8 @@ Id новой сессии выдаёт **шлюз** (`--session-id <uuid>`) и 
   ищется заново, а не валит каждое сообщение до перезапуска шлюза. Версию (`--version`)
   `ValidateStartup` пишет в лог — контракт разбора JSON держится на поведении конкретной версии.
 - Барьеры аутентификации: `AllowedUserIds` + только личные чаты; Kestrel слушает только `127.0.0.1`,
-  MCP-эндпоинт требует токен в заголовке.
+  MCP-эндпоинт требует токен в заголовке. Веб-монитор на своём порту без токена — поэтому
+  он только читает.
 - Аргументы CLI собираются через `ProcessStartInfo.ArgumentList` — не склеивайте командную строку
   руками.
 - `Channel.CreateUnbounded` в `ChatWorker` намеренно без `SingleReader`: с ним `Reader.Count` бросает
