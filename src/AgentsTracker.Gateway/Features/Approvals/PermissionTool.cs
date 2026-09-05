@@ -230,7 +230,7 @@ public sealed class PermissionTool(
                     card.Append(" — ").Append(TelegramFormatter.EscapeCapped(description, OptionDescriptionBudget));
 
                 fullLabels[$"o{i}"] = label;
-                buttons.Add(new ChoiceOption($"o{i}", Shorten(label, ButtonLabelLimit)));
+                buttons.Add(new ChoiceOption($"o{i}", Text.Clip(label, ButtonLabelLimit)));
             }
 
             buttons.Add(new ChoiceOption("free", "✍️ Свой ответ"));
@@ -244,7 +244,7 @@ public sealed class PermissionTool(
                 ? await broker.AskTextAsync("Напишите ответ сообщением:", ct)
                 : fullLabels.GetValueOrDefault(key, key);
 
-            Audit(AuditKinds.Question, $"{header ?? text}: {answer}", key == "free" ? "free" : "option", userId);
+            Audit(AuditKinds.Question, $"{Text.Preview(header ?? text, 60)}: {Text.Preview(answer, 60)}", key == "free" ? "free" : "option", userId);
             answers[text] = answer;
         }
 
@@ -260,9 +260,6 @@ public sealed class PermissionTool(
             ["updatedInput"] = updatedInput,
         }.ToJsonString();
     }
-
-    private static string Shorten(string text, int maxLength) =>
-        text.Length <= maxLength ? text : text[..(maxLength - 1)] + "…";
 
     private void Audit(string kind, string summary, string outcome, long? userId = null) =>
         audit.Write(AuditEvent.Now(kind, summary, userId, broker.ActiveChatId, store.ProjectPath, store.SessionId, outcome));

@@ -63,12 +63,19 @@ public sealed class ClaudeCliLocator(IOptions<GatewayOptions> options, ILogger<C
             using var process = Process.Start(psi);
             if (process is null) return null;
 
-            var output = process.StandardOutput.ReadToEnd();
+            // Оба потока читаются параллельно: если бы stderr никто не вычитывал, CLI с
+            // многословным предупреждением упёрся бы в полный буфер, а мы — в ReadToEnd stdout.
+            var stdout = process.StandardOutput.ReadToEndAsync();
+            var stderr = process.StandardError.ReadToEndAsync();
+
             if (!process.WaitForExit((int)VersionTimeout.TotalMilliseconds))
             {
                 try { process.Kill(entireProcessTree: true); } catch { /* уже мёртв */ }
                 return null;
             }
+
+            var output = stdout.GetAwaiter().GetResult();
+            stderr.GetAwaiter().GetResult();
 
             return process.ExitCode == 0 && output.Trim() is { Length: > 0 } version ? version : null;
         }

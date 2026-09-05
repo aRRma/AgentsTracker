@@ -13,7 +13,8 @@ public sealed class ChatEnqueueTextHandler(
 {
     public async Task<bool> TryHandleAsync(long chatId, long userId, string text, CancellationToken ct)
     {
-        audit.Write(AuditEvent.Now(AuditKinds.Message, $"text: {text}", userId, chatId, store.ProjectPath, store.SessionId));
+        // Превью, а не весь промпт: в него могли вставить токен или содержимое файла.
+        audit.Write(AuditEvent.Now(AuditKinds.Message, $"text: {Text.Preview(text)}", userId, chatId, store.ProjectPath, store.SessionId));
 
         // Проверяем занятость до постановки в очередь, иначе первое же сообщение
         // может увидеть уже начавшуюся собственную обработку.

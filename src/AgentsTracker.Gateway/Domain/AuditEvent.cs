@@ -36,11 +36,8 @@ public sealed record AuditEvent(
     public static AuditEvent Now(
         string kind, string summary, long? userId = null, long? chatId = null,
         string? project = null, string? session = null, string? outcome = null) =>
-        new(DateTimeOffset.Now, kind, Clip(summary.ReplaceLineEndings(" ")), userId, chatId,
+        new(DateTimeOffset.Now, kind, Text.Clip(summary.ReplaceLineEndings(" "), SummaryLimit), userId, chatId,
             project is { Length: > 0 } ? Path.GetFileName(project.TrimEnd('\\', '/')) : null,
             session is { Length: > 8 } ? session[..8] : session,
             outcome);
-
-    private static string Clip(string text) =>
-        text.Length <= SummaryLimit ? text : text[..(SummaryLimit - 1)] + "…";
 }

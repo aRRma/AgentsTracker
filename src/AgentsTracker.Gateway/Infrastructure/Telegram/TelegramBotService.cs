@@ -152,7 +152,7 @@ public sealed class TelegramBotService(
         if (command is not null && _commands.TryGetValue(command, out var handler))
         {
             audit.Write(AuditEvent.Now(
-                AuditKinds.Message, argument.Length > 0 ? $"{command} {argument}" : command,
+                AuditKinds.Message, argument.Length > 0 ? $"{command} {Text.Preview(argument)}" : command,
                 userId, chatId, store.ProjectPath, store.SessionId));
             await handler.HandleAsync(new TelegramCommandContext(chatId, userId, command, argument), ct);
             return;

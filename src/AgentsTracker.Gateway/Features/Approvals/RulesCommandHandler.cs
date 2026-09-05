@@ -81,6 +81,5 @@ public sealed class RulesCommandHandler(ITelegramBotClient bot, SessionStore sto
     private void Audit(TelegramCommandContext context, string summary) =>
         audit.Write(AuditEvent.Now(AuditKinds.Rules, summary, context.UserId, context.ChatId, store.ProjectPath, outcome: "gateway"));
 
-    private static string Shorten(string text) =>
-        text.Length <= RuleDisplayLimit ? text : text[..(RuleDisplayLimit - 1)] + "…";
+    private static string Shorten(string text) => Text.Clip(text, RuleDisplayLimit);
 }
