@@ -134,8 +134,9 @@ public sealed class GatewayOptions
         if (ProjectsRootDepth is < 1 or > 6)
             errors.Add($"{SectionName}:ProjectsRootDepth = {ProjectsRootDepth}. Допустимо 1..6.");
 
+        // Значение в текст ошибки не подставляем: в URI прокси бывает user:pass, а ошибка идёт в лог.
         if (Proxy is { Length: > 0 } && !Uri.TryCreate(Proxy, UriKind.Absolute, out _))
-            errors.Add($"{SectionName}:Proxy — некорректный URI: {Proxy}");
+            errors.Add($"{SectionName}:Proxy — некорректный URI (ожидается вида http://host:port).");
 
         return errors;
     }
