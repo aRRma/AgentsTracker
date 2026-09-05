@@ -39,6 +39,12 @@ public sealed class GatewayState
     public Dictionary<string, string> ActiveSessions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public UsageStats Usage { get; set; } = new();
+
+    /// <summary>
+    /// Сколько раз запускали каждую слэш-команду Claude Code (кнопкой или текстом). Ключ —
+    /// команда в нижнем регистре. По этому счётчику экран скиллов выносит частые наверх.
+    /// </summary>
+    public Dictionary<string, int> SkillUsage { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>Сессия Claude Code, о которой знает шлюз, — чтобы её можно было выбрать в меню.</summary>

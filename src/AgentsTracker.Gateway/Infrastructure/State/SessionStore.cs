@@ -307,6 +307,21 @@ public sealed class SessionStore
         return removed;
     }
 
+    /// <summary>Засчитывает запуск слэш-команды: «/plugin:skill» или «/skill», без аргументов.</summary>
+    public void RecordSkillUse(string command)
+    {
+        var key = command.Trim().ToLowerInvariant();
+        if (key.Length < 2 || key[0] != '/') return;
+
+        Mutate(s => s.SkillUsage[key] = s.SkillUsage.GetValueOrDefault(key) + 1);
+    }
+
+    /// <summary>Счётчики запусков команд: копия, чтобы читать без замка.</summary>
+    public IReadOnlyDictionary<string, int> SkillUsage()
+    {
+        lock (_gate) return new Dictionary<string, int>(_state.SkillUsage, StringComparer.OrdinalIgnoreCase);
+    }
+
     public GatewayState Snapshot()
     {
         lock (_gate) return Clone(_state);

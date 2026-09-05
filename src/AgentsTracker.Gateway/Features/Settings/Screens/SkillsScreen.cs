@@ -27,6 +27,11 @@ public sealed class SkillsScreen(
 
     private const string UpArgument = "up";
 
+    /// <summary>Сколько частых скиллов выносить в отдельную группу наверх.</summary>
+    private const int TopCount = 5;
+
+    private const string TopGroup = "⭐ Частые";
+
     /// <summary>Открытая группа и страница — поля экрана: меню одно на шлюз, как и в ProjectScreen.</summary>
     private string? _group;
 
@@ -64,6 +69,8 @@ public sealed class SkillsScreen(
 
         if (skill is null) return "Скилла уже нет в списке";
 
+        store.RecordSkillUse(skill.Command);
+
         audit.Write(AuditEvent.Now(
             AuditKinds.Message, $"skill: {skill.Command}", userId, chatId, store.ProjectPath, store.SessionId));
 
@@ -80,7 +87,7 @@ public sealed class SkillsScreen(
     private (string Html, InlineKeyboardMarkup Keyboard) Render()
     {
         // Пересобирается на каждый показ: плагин могли включить или выключить в терминале.
-        var groups = catalog.Grouped(store.ProjectPath);
+        var groups = WithTop(catalog.Grouped(store.ProjectPath));
 
         if (groups.Count == 0)
         {
@@ -107,6 +114,29 @@ public sealed class SkillsScreen(
         }
 
         return RenderSkills(opened, single: false);
+    }
+
+    /// <summary>
+    /// Первой группой — до пяти самых запускаемых скиллов из каталога; счётчики ведёт
+    /// <see cref="SessionStore.RecordSkillUse"/>. Остальные группы остаются по алфавиту:
+    /// частый скилл виден и там, чтобы в списке источника не было «дыр».
+    /// </summary>
+    private IReadOnlyList<SkillGroup> WithTop(IReadOnlyList<SkillGroup> groups)
+    {
+        var usage = store.SkillUsage();
+        if (usage.Count == 0) return groups;
+
+        var top = groups
+            .SelectMany(g => g.Skills)
+            .Select(s => (Skill: s, Count: usage.GetValueOrDefault(s.Command)))
+            .Where(x => x.Count > 0)
+            .OrderByDescending(x => x.Count)
+            .ThenBy(x => x.Skill.Command, StringComparer.OrdinalIgnoreCase)
+            .Take(TopCount)
+            .Select(x => x.Skill)
+            .ToList();
+
+        return top.Count == 0 ? groups : [new SkillGroup(TopGroup, top), .. groups];
     }
 
     private (string Html, InlineKeyboardMarkup Keyboard) RenderGroups(IReadOnlyList<SkillGroup> groups)
@@ -138,9 +168,11 @@ public sealed class SkillsScreen(
     private (string Html, InlineKeyboardMarkup Keyboard) RenderSkills(SkillGroup group, bool single)
     {
         var (page, counter, pageRow) = Page(group.Skills, "скиллов");
+        var usage = store.SkillUsage();
 
         var lines = page.Select(skill =>
             $"· <code>{E(skill.Command)}{(skill.ArgumentHint is null ? "" : " " + E(skill.ArgumentHint))}</code>"
+            + (usage.GetValueOrDefault(skill.Command) is > 0 and var count ? $" — {count} {Times(count)}" : "")
             + (skill.Description.Length > 0 ? $"\n   {E(skill.Description)}" : ""));
 
         var html = $"""
@@ -152,8 +184,10 @@ public sealed class SkillsScreen(
             """;
 
         // В кнопке — имя без префикса плагина: он и так в заголовке, а место в кнопке дорого.
+        // В группе частых источники разные, там префикс остаётся — иначе два одноимённых не различить.
+        var mixed = group.Name == TopGroup;
         var buttons = page
-            .Select(skill => Button(ShortName(skill.Command), $"skills:{SkillKey(skill.Command)}"))
+            .Select(skill => Button(mixed ? skill.Command : ShortName(skill.Command), $"skills:{SkillKey(skill.Command)}"))
             .Chunk(2)
             .ToList();
 
@@ -182,6 +216,8 @@ public sealed class SkillsScreen(
 
         return (items, counter, row);
     }
+
+    private static string Times(int count) => count % 10 == 1 && count % 100 != 11 ? "раз" : "раза";
 
     private static string ShortName(string command)
     {
