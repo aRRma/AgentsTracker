@@ -9,6 +9,7 @@ public sealed class ChatCommandHandler(
     ITelegramBotClient bot,
     ChatWorker worker,
     SessionStore store,
+    IAgentBackend agent,
     IAgentLimits limits,
     IAuditLog audit) : ITelegramCommandHandler
 {
@@ -50,10 +51,14 @@ public sealed class ChatCommandHandler(
         // а запуск упирается именно в окно лимита.
         var plan = await limits.ShortSummaryAsync(store.EffectiveModel, ct);
 
+        // Строка effort только у агента, который его понимает, — как в меню.
+        var effort = agent.Capabilities.Effort is null
+            ? ""
+            : $"\n🎚 Effort: {store.EffectiveEffort ?? "по умолчанию"}{(state.Effort is null ? " (из конфига)" : "")}";
+
         return $"""
             📁 {store.ProjectPath}
-            🧠 {store.EffectiveModel ?? "модель по умолчанию"}
-            🎚 Effort: {store.EffectiveEffort ?? "по умолчанию"}{(state.Effort is null ? " (из конфига)" : "")}
+            🧠 {store.EffectiveModel ?? "модель по умолчанию"}{effort}
             🔐 Режим: {store.EffectivePermissionMode}{(state.PermissionMode is null ? " (из конфига)" : "")}
             🧵 Сессия: {store.SessionId ?? "новая (ещё не создана)"}
             🚦 Осталось: {(plan.Length > 0 ? plan : "—")}

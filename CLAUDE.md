@@ -20,7 +20,7 @@ pwsh -File scripts\install-autostart.ps1        # publish + protect-secrets + AC
 ```
 
 Тестового проекта нет. Изменения, затрагивающие контракт с CLI (аргументы запуска, разбор JSON,
-форма ответа `PermissionTool`), проверяются вручную: запустить шлюз, выполнить `claude -p …`
+форма ответа `ClaudePermissionTool`), проверяются вручную: запустить шлюз, выполнить `claude -p …`
 с теми же флагами против его MCP-эндпоинта и посмотреть лог.
 
 Конфиг перекрывается переменными окружения — удобно для разовых проверок без правки файла:
@@ -87,6 +87,14 @@ Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.
 Новая фича: папка в `Features/` с `*Module` и запись в списке модулей в `Program.cs`.
 `ChatModule` там остаётся последним.
 
+Новый агент (Codex, Cursor): отдельный проект `src/AgentsTracker.Agents.<Имя>` со ссылкой на
+`AgentsTracker.Agents.Abstractions`, в нём `IAgentBackendModule`, регистрирующий `IAgentBackend`,
+`IAgentLimits` (или `NoAgentLimits`), `IAgentSkillCatalog` (или `NoAgentSkills`) и свой канал
+подтверждений, который зовёт `IOperatorConsole`; плюс строка в списке `agents` в `Program.cs`
+и ссылка на проект в `AgentsTracker.Gateway.csproj`. Хост видит агента только через контракты:
+`grep -rn Claude src/AgentsTracker.Gateway --include=*.cs` должен находить лишь `Program.cs`
+и комментарии. Настройки агента — в подсекции `Gateway:<Id>` (`Gateway:Claude`), хост её не читает.
+
 Новый эндпоинт монитора: `api.MapGet` в `MonitorModule.MapEndpoints` (группа уже фильтрует
 порт), данные — только чтение, `Results.Json(..., Json)`; новая секция — в `index.html`.
 
@@ -95,18 +103,31 @@ Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.
 ### Слои и слайсы
 
 ```
+src/AgentsTracker.Agents.Abstractions/   контракты агента, без Telegram и без конкретного CLI:
+  IAgentBackend         Id, DisplayName, Capabilities, Probe() (бинарник и версия), RunAsync(AgentRunRequest, IAgentRunObserver)
+  AgentRun.cs           AgentRunRequest (промпт, папка, сессия, модель, effort, режим, бюджет, таймаут),
+                        IAgentRunObserver (SessionStarted, Activity), AgentRunResult (+SessionLost, RateLimited)
+  AgentCapabilities     AgentSetting для модели, effort (null — не умеет), режима разрешений; SupportsRunBudget
+  IOperatorConsole      что агент просит у человека: ApproveAsync(ApprovalRequest) → ApprovalDecision,
+                        AskAsync(вопросы) → QuestionResult; PersistentRule — правило «всегда» в формате агента
+  IAgentLimits          лимиты тарифа (+NoAgentLimits), IAgentSkillCatalog — слэш-команды (+NoAgentSkills)
+  IAgentBackendModule   AddServices + MapEndpoints; AgentHost — папка данных, порт и прокси от хоста
+  RunActivity, RunUsage, Text — общие модели и обрезка текста
+src/AgentsTracker.Agents.Claude/         Claude Code за этими контрактами:
+  ClaudeAgentModule     регистрация всего ниже, MapMcp(/mcp) с фильтром токена, Dispose McpConfigFile
+  ClaudeBackend         процесс claude -p, аргументы, разбор stream-json, «сессия не найдена», лимит тарифа
+  ClaudeCapabilities    PermissionModes, EffortLevels, алиасы моделей → AgentCapabilities
+  ClaudeOptions         секция Gateway:Claude — Executable, BuiltInSkills
+  ClaudeCliLocator, ClaudeCliJson, ClaudeStreamEvent, ClaudeLimits, ClaudeSkillCatalog
+  Mcp/                  McpConfigFile — mcp-gateway.json, токен в заголовке;
+                        ClaudePermissionTool — MCP-инструмент: payload CLI → IOperatorConsole → JSON для CLI
 src/AgentsTracker.Gateway/
-  Program.cs            явный список IFeatureModule → AddGatewayConfiguration → AddGatewayInfrastructure
-                        → ValidateStartup → MapFeatures
-  GlobalUsings.cs       Domain, Infrastructure, .Configuration, .State, IOptions — доступны везде
-  Domain/               чистые модели и правила без I/O и DI: PermissionModes, EffortLevels,
-                        ClaudeRunResult, RunActivity, GatewayState (state.json), AuditEvent
+  Program.cs            список IAgentBackendModule (выбор по Gateway:Agent) и IFeatureModule
+                        → AddGatewayConfiguration → AddGatewayInfrastructure → ValidateStartup → MapFeatures
+  GlobalUsings.cs       Agents, Domain, Infrastructure, .Configuration, .State, IOptions — доступны везде
+  Domain/               чистые модели без I/O и DI: GatewayState (state.json), AuditEvent
   Infrastructure/       техническая часть, общая для фич (AppPaths, GatewayInfrastructure — в корне):
-    Configuration/      GatewayOptions (+Validate), ProjectCatalog (Normalize/Same — ключ сессий)
-    Claude/             ClaudeRunner (процесс claude -p), ClaudeCliLocator, ClaudeLimits, ClaudeCliJson,
-                        ClaudeStreamEvent (строки stream-json → шаги агента),
-                        SkillCatalog — скиллы и команды с диска (.claude проекта/профиля, плагины)
-    Mcp/                McpConfigFile — mcp-gateway.json, токен в заголовке, RoutePattern = /mcp
+    Configuration/      GatewayOptions (+Validate, +ValidateFor(capabilities)), ProjectCatalog (Normalize/Same — ключ сессий)
     State/              SessionStore — state.json под Lock, атомарная запись
     Telegram/           TelegramBotService (роутер), TelegramClientFactory, TelegramFormatter,
                         DisplayFormat, BotCommandsCatalog,
@@ -117,8 +138,9 @@ src/AgentsTracker.Gateway/
     Security/           DPAPI-шифрование конфига, ACL папки данных, команда protect-secrets
     Modules/            IFeatureModule — AddServices + MapEndpoints
   Features/             вертикальные слайсы, каждый со своим *Module:
-    Approvals/          PermissionTool (MCP), ApprovalBroker, ApprovalCardRenderer, /rules; HTTP-эндпоинт /mcp
-    Chat/               ChatWorker (очередь и запуск), RunStatusMessage (живой статус запуска),
+    Approvals/          OperatorConsole (IOperatorConsole: карточки, правила «всегда», вопросы, аудит),
+                        ApprovalBroker, ApprovalCardRenderer, /rules
+    Chat/               ChatWorker (очередь, запуск через IAgentBackend, сессии), RunStatusMessage (живой статус),
                         /new /stop /status, fallback-обработчик текста
     Settings/           SettingsMenuCoordinator + Screens/*Screen (ISettingsScreen), /menu /model /effort /mode /skills …
     Help/               /start /help
@@ -126,7 +148,10 @@ src/AgentsTracker.Gateway/
     Monitor/            веб-монитор: MonitorModule (эндпоинты /, /api/*) + index.html (вшит в сборку)
 ```
 
-Правила разложения: в `Domain` ничего не открывает файлы и не ходит по сети; `Infrastructure`
+Правила разложения: в `Domain` и `Agents.Abstractions` ничего не открывает файлы и не ходит по
+сети; `Gateway` знает о конкретном агенте только в `Program.cs`, всё остальное — через
+`IAgentBackend`/`IAgentLimits`/`IAgentSkillCatalog`/`AgentCapabilities`; бэкенд не знает о
+Telegram и `GatewayOptions` (ему даётся `AgentHost`); `Infrastructure`
 не знает о фичах (кроме контрактов `Dispatch`); фича зависит от другой фичи только через её
 публичный сервис (`Settings` → `ChatWorker.IsBusy`, `Approvals` → `SettingsMenuCoordinator.CallbackPrefix`).
 
@@ -152,22 +177,24 @@ Callback-и делят один поток: `ITelegramCallbackHandler.CanHandle`
 
 ### Кольцо «шлюз → CLI → шлюз»
 
-Шлюз одновременно **запускает** `claude.exe` и **обслуживает** его.
+Шлюз одновременно **запускает** агента и **обслуживает** его. Для Claude Code:
 
 ```
-Telegram ──▶ TelegramBotService ──▶ ChatWorker ──▶ ClaudeRunner ──▶ claude.exe -p
-                    ▲                                                    │
-                    │            карточка с кнопками                     │ нужно разрешение
-                    └── ApprovalBroker ◀── PermissionTool ◀── MCP http://127.0.0.1:<порт>/mcp
-                                                              Authorization: Bearer <токен>
+Telegram ──▶ TelegramBotService ──▶ ChatWorker ──▶ IAgentBackend (ClaudeBackend) ──▶ claude.exe -p
+                    ▲                                                                     │
+                    │       карточка с кнопками                                           │ нужно разрешение
+                    └── ApprovalBroker ◀── OperatorConsole ◀── ClaudePermissionTool ◀── MCP http://127.0.0.1:<порт>/mcp
+                        (Gateway)          (IOperatorConsole)  (Agents.Claude)            Authorization: Bearer <токен>
 ```
 
+Граница проходит по `IOperatorConsole`: хост показывает карточку, помнит правила «всегда»
+и пишет аудит, а как запрос доставлен и в каком JSON вернуть решение — знает только бэкенд.
 `McpConfigFile` при старте генерирует токен, пишет `mcp-gateway.json` с заголовком
-`Authorization` и удаляет файл при остановке; `ApprovalsModule.MapEndpoints` монтирует `/mcp`
-с фильтром `McpConfigFile.Authorizes`. `ClaudeRunner` передаёт CLI `--mcp-config` с этим файлом
+`Authorization` и удаляет файл при остановке; `ClaudeAgentModule.MapEndpoints` монтирует `/mcp`
+с фильтром `McpConfigFile.Authorizes`. `ClaudeBackend` передаёт CLI `--mcp-config` с этим файлом
 и `--permission-prompt-tool mcp__tg__approve`. Правя одну сторону, проверяйте вторую: имя сервера
-и инструмента — константы `McpConfigFile`, а атрибуту `[McpServerTool]` нужна константа времени
-компиляции — отсюда переприсваивание в `PermissionTool`.
+и инструмента — константы `McpConfigFile`, атрибут `[McpServerTool]` берёт ту же константу.
+Порт и папку данных бэкенд получает через `AgentHost`, а не из `GatewayOptions`.
 README — простая инструкция для пользователя, без подробностей устройства; меняя защиту
 эндпоинта или папку данных, проверьте его раздел «Безопасность».
 
@@ -179,15 +206,17 @@ CLI зовёт инструмент с `{"tool_name":…,"input":{…},"tool_use
   результат невалидным и отклоняет вызов;
 - `{"behavior":"deny","message":"…"}`.
 
-`PermissionTool` читает поля защитно (`Read(...)` перебирает snake_case/camelCase); сырой payload
+`ClaudePermissionTool` читает поля защитно (`Read(...)` перебирает snake_case/camelCase); сырой payload
 пишется только на Debug — на Information для Edit/Write это было бы содержимое файлов.
 `AskUserQuestion` приходит в тот же инструмент и требует вернуть `updatedInput` с исходным
-`questions` и собранным `answers`.
+`questions` и собранным `answers` (ключ — текст вопроса); в хост он уходит как
+`IOperatorConsole.AskAsync` со списком `AgentQuestion`.
 
 Кнопка «Всегда» ведёт себя двояко: если CLI прислал `permission_suggestions` с
 `destination: localSettings`, правило записывает **сам CLI** в `.claude/settings.local.json`
 проекта (обычно префиксное, шире точного совпадения), и `ApprovalCardRenderer` показывает именно
-эти правила; иначе шлюз запоминает точную сигнатуру в `state.json`
+эти правила (в хост они приходят как `PersistentRule` с `Raw` — элемент в формате CLI, который
+возвращается ему без изменений в `updatedPermissions`); иначе шлюз запоминает точную сигнатуру в `state.json`
 (`AlwaysAllowByProject`, ключ — нормализованный путь проекта), и её видно в `/rules`.
 Правила шлюза действуют только в своём проекте: `git push --force`, разрешённый в одном
 репозитории, не должен молча проходить в остальных. Старый плоский список `AlwaysAllow`
@@ -196,7 +225,7 @@ CLI зовёт инструмент с `{"tool_name":…,"input":{…},"tool_use
 Карточка режет длинные фрагменты под лимит сообщения, но одобрять команду с невидимым
 хвостом нельзя: `ApprovalCardRenderer.Render` возвращает `ApprovalCard`, и когда что-то
 обрезано (команда, стороны правки, остальные правки `MultiEdit`, хвост файла `Write`),
-`PermissionTool` перед карточкой шлёт полный текст файлом через
+`OperatorConsole` перед карточкой шлёт полный текст файлом через
 `ApprovalBroker.SendAttachmentAsync`, а карточка предупреждает «показано не всё».
 
 Самовыдача прав агентом проверена на CLI 2.1.x: `Write` в `.claude/settings.local.json`
@@ -217,9 +246,9 @@ MCP на стороне CLI (см. «Что стоит держать в гол�
 ### Статус запуска и поток событий
 
 CLI запускается с `--output-format stream-json --verbose` (без `--verbose` CLI отказывается
-писать поток в режиме `-p`). События идут по строке на каждое; `ClaudeRunner.ReadStreamAsync`
+писать поток в режиме `-p`). События идут по строке на каждое; `ClaudeBackend.ReadStreamAsync`
 читает stdout построчно, каждую строку разбирает один раз (`ClaudeStreamEvent.Classify`),
-вызовы инструментов (`assistant` → `tool_use`) отдаёт в обработчик `onActivity`, остальные
+вызовы инструментов (`assistant` → `tool_use`) отдаёт в `IAgentRunObserver.Activity`, остальные
 события отбрасывает — в долгом запуске их мегабайты. Итог — последняя строка `"type":"result"`, той же формы, что
 ответ `--output-format json` (`ClaudeCliJson` не менялся); `Parse` получает её отдельно от
 «шума» (не-JSON строки вроде баннера обновления, а без итога — последнее событие), и шум
@@ -247,7 +276,7 @@ MCP отдаёт 404). Авторизации нет намеренно, тол�
 
 Источник «что сейчас» — `RunMonitor` (`Infrastructure/Monitoring`): `ChatWorker` сообщает
 очередь (`Enqueued`/`Dequeued`/`QueueCleared`), старт (`RunStarted`), каждый шаг (тот же
-callback, что у `RunStatusMessage`) и финиш; `PermissionTool` — ожидание карточки через
+callback, что у `RunStatusMessage`) и финиш; `OperatorConsole` — ожидание карточки через
 `using monitor.Approval(tool, brief)`, где brief — та же короткая строка, что в логе (полный
 ввод Edit/Write — содержимое файлов, на страницу не идёт). Карточек в снимке список
 (`Approvals`), не одна: CLI зовёт инструмент параллельно на несколько `tool_use` одного хода.
@@ -259,10 +288,10 @@ callback, что у `RunStatusMessage`) и финиш; `PermissionTool` — ож
 
 История запусков — `GatewayState.RecentRuns` (200 последних, пишет `ChatWorker` через
 `SessionStore.RecordRunOutcome` после запуска: исход, превью промпта через `Text.Preview`,
-число вызовов, расход). Отдельно от `RecordRun` в `ClaudeRunner`: тот знает расход, но не
-исход. Статистика (`/api/stats`, `/api/stats.csv` — `;`, BOM и десятичная запятая для Excel на
+число вызовов, расход). Отдельно от `RecordRun`: расход приходит в `AgentRunResult.Usage`, а
+исход определяет `ChatWorker`. Статистика (`/api/stats`, `/api/stats.csv` — `;`, BOM и десятичная запятая для Excel на
 русской локали, иначе дробные приходят текстом)
-берётся из `Snapshot()`; лимиты — `ClaudeLimits.GetAsync` (кэш 3 мин, страница опрашивает
+берётся из `Snapshot()`; лимиты — `IAgentLimits.GetAsync` (у Claude кэш 3 мин, страница опрашивает
 раз в минуту); аудит — `IAuditLog.Tail`; лог — `RingBufferLog` (500 записей, Information и
 выше, регистрируется как `ILoggerProvider`).
 
@@ -278,11 +307,15 @@ callback, что у `RunStatusMessage`) и финиш; `PermissionTool` — ож
 
 Без явного флага действует `permissions.defaultMode` из `~/.claude/settings.json` пользователя.
 У него там `auto` — решения принимает классификатор, и кнопки в чате не появляются вовсе.
-Не убирайте этот аргумент из `ClaudeRunner.BuildArguments`.
+Не убирайте этот аргумент из `ClaudeBackend.BuildArguments`.
 
-`PermissionModes.Selectable` (`plan`/`default`/`acceptEdits`/`auto`) — то, что можно переключать из
-чата. `dontAsk` и `bypassPermissions` исключены намеренно: полное снятие подтверждений остаётся
-правкой конфига на самой машине.
+Списки значений для меню и проверки конфига объявляет бэкенд в `AgentCapabilities`
+(`ClaudeCapabilities`): `PermissionMode.Selectable` (`plan`/`default`/`acceptEdits`/`auto`) — то,
+что можно переключать из чата. `dontAsk` и `bypassPermissions` исключены намеренно: полное снятие
+подтверждений остаётся правкой конфига на самой машине. `Effort` у капабилити может быть `null` —
+тогда `RootScreen` не показывает кнопку, а `/effort` отвечает отказом. `GatewayOptions.Validate`
+эти значения не проверяет (агент ещё не выбран), проверяет `ValidateFor(capabilities)` в
+`ValidateStartup`.
 
 ### Состояние, секреты и наслоение настроек
 
@@ -313,7 +346,7 @@ callback, что у `RunStatusMessage`) и финиш; `PermissionTool` — ож
 порядок `List` — текущий проект первым в своей группе, а после выбора страница сбрасывается
 на первую: иначе на длинном списке отметка `▶` оказывалась бы за пределами экрана.
 
-Экран «Скиллы» (`/skills`) — `SkillCatalog` собирает то же, что видит CLI: `skills/*/SKILL.md`
+Экран «Скиллы» (`/skills`) — `IAgentSkillCatalog` (у Claude `ClaudeSkillCatalog`) собирает то же, что видит CLI: `skills/*/SKILL.md`
 (один уровень) и `commands/**/*.md` (подпапка → `/папка:имя`) из `.claude` проекта и `~/.claude`,
 плюс из `installPath` включённых плагинов
 (`~/.claude/plugins/installed_plugins.json`, флаги `enabledPlugins` наслаиваются: профиль →
@@ -322,7 +355,7 @@ callback, что у `RunStatusMessage`) и финиш; `PermissionTool` — ож
 разбирается плоско, без YAML-библиотеки. Результат обхода кэшируется на 5 секунд: одно нажатие
 в меню — это `Apply` и `Render` подряд, без кэша это два обхода диска. Встроенные скиллы CLI (`/code-review`, `/init` и т.п.)
 вшиты в `claude.exe`, перечислить их CLI не умеет — группа «Встроенные» берётся из
-`Gateway:BuiltInSkills` (список по умолчанию в `GatewayOptions` под CLI 2.1.x; после обновления
+`Gateway:Claude:BuiltInSkills` (список по умолчанию в `ClaudeOptions` под CLI 2.1.x; после обновления
 CLI переопределяется конфигом без пересборки; третья часть строки — подсказка аргументов).
 Нажатие скилла открывает карточку: описание, `argument-hint`, флаги `--x`, найденные в тексте
 SKILL.md регуляркой (формальной схемы аргументов у скиллов нет, поэтому подписаны как
@@ -336,14 +369,17 @@ SKILL.md регуляркой (формальной схемы аргумент�
 
 Сессии Claude Code ключуются **нормализованным путём проекта** (`ProjectCatalog.Normalize`):
 `--resume` работает только в той папке, где сессия создана. Переключение репозитория из меню меняет
-и активную сессию. `ClaudeRunner` фиксирует `SessionId` и `ProjectPath` в начале запуска — иначе
-переключение посреди работы развело бы рабочий каталог процесса и проект, которому пишется сессия.
+и активную сессию. `ChatWorker` фиксирует сессию и `ProjectPath` в `AgentRunRequest` до запуска —
+иначе переключение посреди работы развело бы рабочий каталог процесса и проект, которому
+пишется сессия.
 
-Id новой сессии выдаёт **шлюз** (`--session-id <uuid>`) и регистрирует её сразу после старта
-процесса, не дожидаясь ответа CLI: иначе `/stop`, таймаут или падение первого запуска теряли бы
-ветку целиком. Продолжение идёт через `--resume`. Сессия сбрасывается только когда CLI прямо
-говорит, что не нашёл её (`LooksLikeMissingSession`), и только через `TrySetSessionId(onlyIfActive)`,
-чтобы не перетереть `/new` или смену сессии, сделанные во время запуска.
+Id новой сессии выдаёт **шлюз** (`AgentRunRequest.NewSessionId` → `--session-id <uuid>`) и
+регистрирует её, как только бэкенд сообщит `IAgentRunObserver.SessionStarted` — сразу после
+старта процесса, не дожидаясь ответа CLI: иначе `/stop`, таймаут или падение первого запуска
+теряли бы ветку целиком. Продолжение идёт через `--resume`. Сессия сбрасывается только когда CLI
+прямо говорит, что не нашёл её (`LooksLikeMissingSession` в бэкенде → `AgentRunResult.SessionLost`),
+и только в `ChatWorker.SettleSession` через `TrySetSessionId(onlyIfActive)`, чтобы не перетереть
+`/new` или смену сессии, сделанные во время запуска.
 
 ### Аудит
 
@@ -354,8 +390,8 @@ Id новой сессии выдаёт **шлюз** (`--session-id <uuid>`) и 
 Виды — константы `AuditKinds`: `access.rejected`, `message`, `run.start`/`run.end`, `approval`,
 `question`, `settings`, `rules`, `session.reset`, `budget.refused`, `gateway`. Пишут: роутер
 (доступ, команды), `ChatEnqueueTextHandler` (промпт), `ChatWorker` (запуски, бюджет),
-`PermissionTool` (решения по карточкам, правила), экраны меню через `SettingsAudit.Changed`,
-`ClaudeRunner` (сброс сессии). Смотреть — `/audit [n]` или файл. Это не замена `ILogger`:
+`OperatorConsole` (решения по карточкам, вопросы, правила), экраны меню через `SettingsAudit.Changed`,
+`ChatWorker` (сброс сессии). Смотреть — `/audit [n]` или файл. Это не замена `ILogger`:
 в аудит идёт то, за что отвечает человек, в лог — то, что нужно для отладки.
 
 ### Деньги и лимиты тарифа
@@ -364,10 +400,10 @@ Id новой сессии выдаёт **шлюз** (`--session-id <uuid>`) и 
 
 1. `DailyBudgetUsd` — сумма из `state.json` за календарный день пользователя;
 2. `RunBudgetUsd` → `--max-budget-usd`, но не больше остатка дневного бюджета;
-3. `ClaudeLimits` — тарифные окна (`five_hour`, `seven_day`, `seven_day_<модель>`).
+3. `IAgentLimits` (`ClaudeLimits`) — тарифные окна (`five_hour`, `seven_day`, `seven_day_<модель>`).
 
 Суммы в чат не выводятся: на подписке они ничего не значат, а кредиты запрещены. Вместо них
-`ClaudeLimits.ShortSummaryAsync` (сводка меню, `/status`) и `RemainingLinesAsync` (экран
+`IAgentLimits.ShortSummaryAsync` (сводка меню, `/status`) и `RemainingLinesAsync` (экран
 статистики) показывают остаток окон. Ради этого `ISettingsScreen.RenderAsync` асинхронный —
 отрисовка ходит в сеть, пусть и через кэш. Оценка стоимости продолжает копиться в `state.json`:
 на ней держится `DailyBudgetUsd`, единственное место, где суммы ещё видны.
@@ -377,9 +413,11 @@ Id новой сессии выдаёт **шлюз** (`--session-id <uuid>`) и 
 на частый опрос (отсюда кэш на 3 минуты) и может исчезнуть в любой версии — при любой ошибке запуск
 **пропускается**, а не блокируется, иначе шлюз замолчал бы целиком.
 
-Кредиты («extra usage») агенту тратить запрещено: `ClaudeRunner` ставит процессу
-`DISABLE_EXTRA_USAGE_COMMAND=1` и вычищает из его окружения `Gateway__*`, а при обрыве по лимиту
-`ChatWorker` снимает всю очередь — следующие задачи упёрлись бы в тот же лимит.
+Кредиты («extra usage») агенту тратить запрещено: `ClaudeBackend` ставит процессу
+`DISABLE_EXTRA_USAGE_COMMAND=1`, а при обрыве по лимиту `ChatWorker` снимает всю очередь —
+следующие задачи упёрлись бы в тот же лимит. Переменные `Gateway__*` дочерний процесс не видит:
+хост удаляет их из своего окружения в `ValidateStartup`, когда конфиг уже прочитан, — так это
+не нужно помнить каждому бэкенду.
 
 ### Вывод в Telegram
 
@@ -401,7 +439,7 @@ Id новой сессии выдаёт **шлюз** (`--session-id <uuid>`) и 
 - Шлюз **не подключается** к сессии, открытой в VS Code. Это отдельная параллельная сессия на той же
   папке: общие `CLAUDE.md`, `.claude/settings.json`, хуки и MCP проекта, но своя история диалога.
 - `--bare` использовать нельзя: он не читает `~/.claude` и ломает OAuth-логин по подписке.
-- `claude.exe` ищет `ClaudeCliLocator`: конфиг → стандартные пути → PATH → бинарник внутри
+- `claude.exe` ищет `ClaudeCliLocator` (`IAgentBackend.Probe`): `Gateway:Claude:Executable` → стандартные пути → PATH → бинарник внутри
   расширения VS Code. Последний — только чтобы шлюз завёлся на машине без своего CLI: путь
   содержит версию расширения и исчезает при его обновлении, поэтому на такой находке пишется
   предупреждение. Штатно нужен отдельный CLI (`irm https://claude.ai/install.ps1 | iex` →
@@ -418,6 +456,7 @@ Id новой сессии выдаёт **шлюз** (`--session-id <uuid>`) и 
   `NotSupportedException`, и `/status` падает.
 - `McpConfigFile` и `SessionStore` — единственные классы с классическим конструктором: у обоих
   побочный эффект при создании (запись/чтение файла), который должен случиться один раз до старта.
+  `McpConfigFile` создаётся, когда `ValidateStartup` запрашивает `IAgentBackend`, — до `MapFeatures`.
 - Диагностика C#-LSP не подхватывает `GlobalUsings.cs` после перемещения файлов и сыплет ложными
   `CS0246`. Источник правды — `dotnet build`.
 - `JsonElement.TryGetDouble`/`TryGetInt64` не спасают от `null`: на элементе не-числе они бросают

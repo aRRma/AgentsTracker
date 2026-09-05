@@ -129,7 +129,9 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 | `AllowedUserIds` | кому можно управлять ботом |
 | `ProjectPath` | папка проекта по умолчанию |
 | `Projects` / `ProjectsRoot` | какие папки показывать в меню выбора проекта |
-| `BuiltInSkills` | список встроенных скиллов Claude Code для `/skills` (по умолчанию `/code-review`, `/simplify`, `/security-review`, `/init`, `/fewer-permission-prompts`); формат строки `"/команда \| описание \| подсказка аргументов"` |
+| `Agent` | какой агент за шлюзом; сейчас только `claude` |
+| `Claude:Executable` | путь к `claude.exe`, если автопоиск его не находит |
+| `Claude:BuiltInSkills` | список встроенных скиллов Claude Code для `/skills` (по умолчанию `/code-review`, `/simplify`, `/security-review`, `/init`, `/fewer-permission-prompts`); формат строки `"/команда \| описание \| подсказка аргументов"` |
 | `Model`, `Effort` | модель и глубина размышлений по умолчанию |
 | `PermissionMode` | что можно без спроса: `default`, `acceptEdits`, `auto`, `plan` |
 | `DailyBudgetUsd`, `RunBudgetUsd` | денежные предохранители, по умолчанию выключены |
