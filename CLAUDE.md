@@ -84,11 +84,11 @@ src/AgentsTracker.Gateway/
                         → ValidateStartup → MapFeatures
   GlobalUsings.cs       Domain, Infrastructure, .Configuration, .State, IOptions — доступны везде
   Domain/               чистые модели и правила без I/O и DI: PermissionModes, EffortLevels,
-                        ClaudeRunResult, GatewayState (state.json), AuditEvent
+                        ClaudeRunResult, RunActivity, GatewayState (state.json), AuditEvent
   Infrastructure/       техническая часть, общая для фич (AppPaths, GatewayInfrastructure — в корне):
     Configuration/      GatewayOptions (+Validate), ProjectCatalog (Normalize/Same — ключ сессий)
     Claude/             ClaudeRunner (процесс claude -p), ClaudeCliLocator, ClaudeLimits, ClaudeCliJson,
-                        SkillCatalog — скиллы и команды с диска (.claude проекта/профиля, плагины)
+                        ClaudeStreamEvent (строки stream-json → шаги агента), SkillCatalog — скиллы и команды с диска (.claude проекта/профиля, плагины)
     Mcp/                McpConfigFile — mcp-gateway.json, токен в заголовке, RoutePattern = /mcp
     State/              SessionStore — state.json под Lock, атомарная запись
     Telegram/           TelegramBotService (роутер), TelegramClientFactory, TelegramFormatter,
@@ -99,7 +99,8 @@ src/AgentsTracker.Gateway/
     Modules/            IFeatureModule — AddServices + MapEndpoints
   Features/             вертикальные слайсы, каждый со своим *Module:
     Approvals/          PermissionTool (MCP), ApprovalBroker, ApprovalCardRenderer, /rules; единственный HTTP-эндпоинт
-    Chat/               ChatWorker (очередь и запуск), /new /stop /status, fallback-обработчик текста
+    Chat/               ChatWorker (очередь и запуск), RunStatusMessage (живой статус запуска),
+                        /new /stop /status, fallback-обработчик текста
     Settings/           SettingsMenuCoordinator + Screens/*Screen (ISettingsScreen), /menu /model /effort /mode /skills …
     Help/               /start /help
     Audit/              /audit
@@ -172,6 +173,24 @@ CLI зовёт инструмент с `{"tool_name":…,"input":{…},"tool_use
 кнопку, и возвращает `ChoiceResult` (ключ + кто нажал — для аудита). `WaitAsync` намеренно
 различает таймаут и отмену: отменённый `/stop` запуск должен бросать `OperationCanceledException`,
 а не выглядеть как «не ответил вовремя».
+
+### Статус запуска и поток событий
+
+CLI запускается с `--output-format stream-json --verbose` (без `--verbose` CLI отказывается
+писать поток в режиме `-p`). События идут по строке на каждое; `ClaudeRunner.ReadStreamAsync`
+читает stdout построчно, вызовы инструментов (`assistant` → `tool_use`) отдаёт через
+`ClaudeStreamEvent.ToolCalls` в обработчик `onActivity`, остальные события отбрасывает — в
+долгом запуске их мегабайты. Итог — последняя строка `"type":"result"`, той же формы, что
+ответ `--output-format json`, поэтому `Parse` и `ClaudeCliJson` не изменились: `Parse` берёт
+последнюю JSON-строку stdout, перед ней может стоять текст (баннер обновления).
+
+В чате это `RunStatusMessage` (`Features/Chat/`): одно сообщение «Работаю…», которое раз
+в 5 секунд редактируется — часы крутятся, время растёт, ниже счётчик вызовов и три последних
+шага (`Read ChatWorker.cs`, `Bash dotnet build`, шаги сабагентов с `↳`). Иначе долгий запуск
+неотличим от зависшего шлюза. `Report` зовётся из потока чтения stdout и только запоминает,
+сеть — в своём цикле; `DisposeAsync` дожидается цикла, иначе правка догоняла бы удаление
+сообщения. Аргумент инструмента в статусе один и короткий (`ClaudeStreamEvent.Describe`):
+полный ввод Edit/Write — это содержимое файла.
 
 ### `--permission-mode` передаётся всегда
 

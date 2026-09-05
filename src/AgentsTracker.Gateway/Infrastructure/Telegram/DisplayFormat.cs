@@ -16,6 +16,18 @@ public static class DisplayFormat
         };
     }
 
+    extension(int count)
+    {
+        /// <summary>«1 вызов», «2 вызова», «5 вызовов» — формы для 1, 2–4 и остальных.</summary>
+        public string Count(string one, string few, string many)
+        {
+            var form = count % 100 is >= 11 and <= 19
+                ? many
+                : (count % 10) switch { 1 => one, 2 or 3 or 4 => few, _ => many };
+            return $"{count} {form}";
+        }
+    }
+
     extension(long count)
     {
         public string Tokens => count switch

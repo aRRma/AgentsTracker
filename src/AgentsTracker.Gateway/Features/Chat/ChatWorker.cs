@@ -110,19 +110,17 @@ public sealed partial class ChatWorker(
             $"{store.EffectiveModel ?? "модель по умолчанию"}, {store.EffectivePermissionMode}, effort {store.EffectiveEffort ?? "—"}",
             session);
 
-        var status = await bot.SendMessage(
-            prompt.ChatId, $"⏳ Работаю… 🧵 {thread}", cancellationToken: stoppingToken);
-        using var typing = new TypingIndicator(bot, prompt.ChatId, logger);
+        var status = await RunStatusMessage.StartAsync(bot, prompt.ChatId, thread, logger, stoppingToken);
 
         ClaudeRunResult result;
         try
         {
-            result = await runner.RunAsync(prompt.Text, runCts.Token);
+            result = await runner.RunAsync(prompt.Text, status.Report, runCts.Token);
         }
         finally
         {
             _runCts = null;
-            typing.Dispose();
+            await status.DisposeAsync();
             // Процесс завершён — отвечать на висящие карточки уже некому.
             broker.CancelAll();
             await DeleteQuietlyAsync(prompt.ChatId, status.MessageId, stoppingToken);
@@ -268,37 +266,4 @@ public sealed partial class ChatWorker(
 
     [GeneratedRegex("<[^>]*>")]
     private static partial Regex TagRegex();
-
-    /// <summary>Держит в чате индикатор «печатает», пока агент работает.</summary>
-    private sealed class TypingIndicator : IDisposable
-    {
-        private readonly CancellationTokenSource _cts = new();
-
-        public TypingIndicator(ITelegramBotClient bot, long chatId, ILogger logger)
-        {
-            _ = Task.Run(async () =>
-            {
-                while (!_cts.IsCancellationRequested)
-                {
-                    try
-                    {
-                        await bot.SendChatAction(chatId, ChatAction.Typing, cancellationToken: _cts.Token);
-                        await Task.Delay(TimeSpan.FromSeconds(4), _cts.Token);
-                    }
-                    catch (OperationCanceledException) { return; }
-                    catch (Exception ex)
-                    {
-                        logger.LogDebug(ex, "Индикатор набора текста прерван");
-                        return;
-                    }
-                }
-            });
-        }
-
-        public void Dispose()
-        {
-            if (!_cts.IsCancellationRequested) _cts.Cancel();
-            _cts.Dispose();
-        }
-    }
 }

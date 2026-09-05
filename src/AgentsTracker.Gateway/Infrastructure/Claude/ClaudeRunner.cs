@@ -25,7 +25,11 @@ public sealed class ClaudeRunner(
     /// <summary>Сколько stdout/stderr показывать в логе на уровне Error: полный дамп — на Debug.</summary>
     private const int ErrorDetailsLimit = 200;
 
-    public async Task<ClaudeRunResult> RunAsync(string prompt, CancellationToken ct)
+    /// <param name="onActivity">
+    /// Вызывается на каждом инструменте, который позвал агент, — из потока чтения stdout.
+    /// Обработчик должен быть быстрым и не бросать: иначе застопорит разбор вывода.
+    /// </param>
+    public async Task<ClaudeRunResult> RunAsync(string prompt, Action<RunActivity>? onActivity, CancellationToken ct)
     {
         var started = Stopwatch.StartNew();
 
@@ -101,7 +105,7 @@ public sealed class ClaudeRunner(
         process.StandardInput.Close();
 
         // Оба потока читаем одновременно — иначе заполненный пайп заблокирует процесс.
-        var stdoutTask = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
+        var stdoutTask = ReadStreamAsync(process.StandardOutput, onActivity);
         var stderrTask = process.StandardError.ReadToEndAsync(CancellationToken.None);
 
         var cancelled = false;
@@ -145,13 +149,54 @@ public sealed class ClaudeRunner(
         return result;
     }
 
+    /// <summary>
+    /// Читает stdout построчно: события потока отдаёт в <paramref name="onActivity"/>, а
+    /// возвращает то, что нужно разбору итога, — строку <c>result</c> и всё, что не было
+    /// событием (баннер обновления, текст ошибки до JSON). Промежуточные события не копим:
+    /// в долгом запуске их мегабайты, а для ответа они не нужны.
+    /// </summary>
+    private static async Task<string> ReadStreamAsync(StreamReader stdout, Action<RunActivity>? onActivity)
+    {
+        var kept = new StringBuilder();
+        var toolCalls = 0;
+
+        while (await stdout.ReadLineAsync(CancellationToken.None) is { } line)
+        {
+            if (line.Length == 0) continue;
+
+            if (ClaudeStreamEvent.IsResult(line))
+            {
+                kept.AppendLine(line);
+                continue;
+            }
+
+            var calls = ClaudeStreamEvent.ToolCalls(line);
+            if (calls.Count > 0)
+            {
+                foreach (var (description, nested) in calls)
+                    onActivity?.Invoke(new RunActivity(description, ++toolCalls, nested));
+                continue;
+            }
+
+            // Остальные события (init, user, rate_limit_event…) не нужны; не-JSON сохраняем —
+            // это единственное, что расскажет о падении до первого события.
+            if (!line.StartsWith('{')) kept.AppendLine(line);
+        }
+
+        return kept.ToString().TrimEnd();
+    }
+
     private IEnumerable<string> BuildArguments(string prompt, string? resumedSessionId, string sessionId)
     {
         yield return "-p";
         yield return prompt;
 
+        // Поток событий, а не один JSON в конце: по нему чат показывает, что агент делает
+        // сейчас. Итог приходит последней строкой той же формы, что у --output-format json.
+        // --verbose обязателен: без него CLI отказывается писать stream-json в режиме -p.
         yield return "--output-format";
-        yield return "json";
+        yield return "stream-json";
+        yield return "--verbose";
 
         // Продолжаем известную сессию либо создаём новую с заранее выданным id: CLI принимает
         // его как есть и возвращает тем же. Оба флага вместе передавать нельзя.
@@ -213,17 +258,21 @@ public sealed class ClaudeRunner(
         string stdout, string stderr, int exitCode, TimeSpan duration,
         string projectPath, string? resumedSessionId, string sessionId)
     {
+        // Итог — последняя JSON-строка; перед ней может стоять текст, который CLI печатает
+        // до потока событий (баннер обновления), и разбирать его как JSON нельзя.
+        var resultLine = stdout.Split('\n').Select(l => l.Trim()).LastOrDefault(l => l.StartsWith('{'));
+
         ClaudeCliJson? payload = null;
-        if (stdout.Length > 0)
+        if (resultLine is { Length: > 0 })
         {
             try
             {
-                payload = JsonSerializer.Deserialize<ClaudeCliJson>(stdout);
+                payload = JsonSerializer.Deserialize<ClaudeCliJson>(resultLine);
             }
             catch (JsonException ex)
             {
                 // Полный stdout — на Debug: это может быть ответ агента с содержимым файлов.
-                logger.LogWarning(ex, "Ответ CLI не разобран как JSON: {Stdout}", Truncate(stdout, ErrorDetailsLimit));
+                logger.LogWarning(ex, "Ответ CLI не разобран как JSON: {Stdout}", Truncate(resultLine, ErrorDetailsLimit));
                 logger.LogDebug("stdout целиком: {Stdout}", Truncate(stdout, 2000));
             }
         }
