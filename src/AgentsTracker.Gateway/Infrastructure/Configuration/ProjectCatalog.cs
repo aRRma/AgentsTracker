@@ -54,21 +54,15 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
     /// <summary>
     /// Тот же список, разложенный по папкам-владельцам: репозиториев больше, чем влезает в
     /// клавиатуру, а лежат они группами (<c>repos\ME\…</c>, <c>repos\MF\…</c>) — по ним и выбирать.
-    /// Группа текущей папки первая, внутри группы — по алфавиту.
+    /// Порядок <see cref="List"/> сохраняется: группа текущей папки первая, внутри группы текущая
+    /// папка первая — иначе на длинной странице её пришлось бы искать перелистыванием.
     /// </summary>
-    public IReadOnlyList<ProjectGroup> Grouped(string current)
-    {
-        var currentNormalized = Normalize(current);
-
-        return [.. List(current)
+    public IReadOnlyList<ProjectGroup> Grouped(string current) =>
+        [.. List(current)
             .GroupBy(GroupOf, StringComparer.OrdinalIgnoreCase)
-            .Select(group => new ProjectGroup(
-                group.Key,
-                [.. group.Order(StringComparer.OrdinalIgnoreCase)]))
-            .OrderBy(group => group.Projects.Any(
-                p => string.Equals(p, currentNormalized, StringComparison.OrdinalIgnoreCase)) ? 0 : 1)
+            .Select(group => new ProjectGroup(group.Key, [.. group]))
+            .OrderBy(group => group.Projects.Any(p => Same(p, current)) ? 0 : 1)
             .ThenBy(group => group.Name, StringComparer.OrdinalIgnoreCase)];
-    }
 
     /// <summary>
     /// Папка, в которой лежит репозиторий. Под корнем поиска берётся путь относительно корня:

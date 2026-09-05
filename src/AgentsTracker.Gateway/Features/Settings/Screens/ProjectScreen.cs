@@ -17,7 +17,7 @@ public sealed class ProjectScreen(
     IOptions<GatewayOptions> options,
     ILogger<ProjectScreen> logger) : ISettingsScreen
 {
-    /// <summary>Сколько репозиториев показывать на странице, чтобы сообщение и клавиатура остались читаемыми.</summary>
+    /// <summary>Сколько строк показывать на странице, чтобы сообщение и клавиатура остались читаемыми.</summary>
     private const int PageSize = 12;
 
     /// <summary>Префикс callback-а перелистывания. Не пересекается с ключами: те — hex.</summary>
@@ -30,8 +30,9 @@ public sealed class ProjectScreen(
     private const string UpArgument = "up";
 
     /// <summary>
-    /// Открытая папка и страница в ней. Поля экрана, а не состояние на пользователя: меню одно
-    /// на шлюз, как и его сообщение, которое координатор перерисовывает.
+    /// Ключ открытой папки и страница. Поля экрана, а не состояние на пользователя: меню одно
+    /// на шлюз, как и его сообщение, которое координатор перерисовывает. Хранится ключ, а не имя:
+    /// по нему же ищет и нажатие, и отрисовка — два способа поиска разошлись бы на редких именах.
     /// </summary>
     private string? _group;
 
@@ -48,14 +49,13 @@ public sealed class ProjectScreen(
             return null;
         }
 
-        // Ищем по ключу, а не по номеру в списке: между отрисовкой и нажатием список мог
-        // измениться (появился склонированный репозиторий), и номер указал бы на другой путь.
+        // Папка проверяется при отрисовке: исчезнувшая молча вернёт к списку папок.
+        // Проверять здесь — лишний обход диска на каждое нажатие.
         if (argument.StartsWith(GroupPrefix, StringComparison.Ordinal))
         {
-            var key = argument[GroupPrefix.Length..];
-            _group = catalog.Grouped(store.ProjectPath).FirstOrDefault(g => GroupKey(g.Name) == key)?.Name;
+            _group = argument[GroupPrefix.Length..];
             _page = 0;
-            return _group is null ? "Папки уже нет в списке" : null;
+            return null;
         }
 
         if (argument.StartsWith(PagePrefix, StringComparison.Ordinal)
@@ -65,6 +65,8 @@ public sealed class ProjectScreen(
             return null;
         }
 
+        // Ищем по ключу, а не по номеру в списке: между отрисовкой и нажатием список мог
+        // измениться (появился склонированный репозиторий), и номер указал бы на другой путь.
         var project = catalog.List(store.ProjectPath).FirstOrDefault(p => ProjectKey(p) == argument);
         if (project is null) return "Репозитория уже нет в списке";
 
@@ -72,6 +74,9 @@ public sealed class ProjectScreen(
         if (ProjectCatalog.Same(project, previous)) return null;
 
         store.SetProjectPath(project);
+
+        // Выбранная папка становится первой в списке — показывать при этом пятую страницу незачем.
+        _page = 0;
 
         logger.LogInformation("Рабочая папка переключена на {Project}", project);
         audit.Changed(store, userId, "project", Path.GetFileName(previous), Path.GetFileName(project));
@@ -97,9 +102,7 @@ public sealed class ProjectScreen(
         if (groups.Count <= 1)
             return RenderProjects(groups.Count == 0 ? [] : groups[0].Projects, group: null, current);
 
-        var opened = _group is null
-            ? null
-            : groups.FirstOrDefault(g => string.Equals(g.Name, _group, StringComparison.OrdinalIgnoreCase));
+        var opened = _group is null ? null : groups.FirstOrDefault(g => GroupKey(g.Name) == _group);
 
         if (opened is null)
         {
@@ -113,7 +116,11 @@ public sealed class ProjectScreen(
     private (string Html, InlineKeyboardMarkup Keyboard) RenderGroups(
         IReadOnlyList<ProjectGroup> groups, string current)
     {
-        var lines = groups.Select(group =>
+        // Папок-владельцев тоже бывает больше, чем влезает в клавиатуру: под корнем с
+        // вложенностью группа — это каждая ветка дерева.
+        var (page, counter, pageRow) = Page(groups, "папок");
+
+        var lines = page.Select(group =>
             $"{Marker(group.Projects.Any(p => ProjectCatalog.Same(p, current)))} "
             + $"<b>{E(group.Name)}</b> — {group.Projects.Count}");
 
@@ -125,15 +132,16 @@ public sealed class ProjectScreen(
 
             {string.Join("\n", lines)}
 
-            <i>Выберите папку, потом репозиторий в ней. {Source()}</i>
+            <i>Выберите папку, потом репозиторий в ней. {Source()}</i>{counter}
             """;
 
-        var buttons = groups
+        var buttons = page
             .Select(group => Button(
                 $"📂 {group.Name} ({group.Projects.Count})", $"proj:{GroupPrefix}{GroupKey(group.Name)}"))
             .Chunk(2)
             .ToList();
 
+        if (pageRow is not null) buttons.Add(pageRow);
         buttons.Add([BackButton]);
 
         return (html, new InlineKeyboardMarkup(buttons));
@@ -142,17 +150,10 @@ public sealed class ProjectScreen(
     private (string Html, InlineKeyboardMarkup Keyboard) RenderProjects(
         IReadOnlyList<string> all, string? group, string current)
     {
-        var pages = Math.Max(1, (all.Count + PageSize - 1) / PageSize);
-        _page = Math.Clamp(_page, 0, pages - 1);
+        var (page, counter, pageRow) = Page(all, "репозиториев");
 
-        var projects = all.Skip(_page * PageSize).Take(PageSize).ToArray();
-
-        var lines = projects.Select(path =>
+        var lines = page.Select(path =>
             $"{Marker(ProjectCatalog.Same(path, current))} <b>{E(Path.GetFileName(path))}</b>\n   <code>{E(path)}</code>");
-
-        var counter = pages > 1
-            ? $"{Environment.NewLine}{Environment.NewLine}Страница {_page + 1} из {pages}, всего репозиториев: {all.Count}."
-            : "";
 
         var html = $"""
             📁 <b>{E(group ?? "Репозиторий")}</b>
@@ -162,24 +163,40 @@ public sealed class ProjectScreen(
             <i>У каждой папки своя сессия: переключение не смешивает контексты.{(group is null ? $" {Source()}" : "")}</i>{counter}
             """;
 
-        var buttons = projects
+        var buttons = page
             .Select(path => Button(
                 $"{(ProjectCatalog.Same(path, current) ? "▶ " : "")}{Path.GetFileName(path)}", $"proj:{ProjectKey(path)}"))
             .Chunk(2)
             .ToList();
 
-        if (pages > 1)
-        {
-            buttons.Add([
-                Button("◀", $"proj:{PagePrefix}{(_page - 1 + pages) % pages}"),
-                Button($"{_page + 1}/{pages}", $"proj:{PagePrefix}{_page}"),
-                Button("▶", $"proj:{PagePrefix}{(_page + 1) % pages}"),
-            ]);
-        }
-
+        if (pageRow is not null) buttons.Add(pageRow);
         buttons.Add(group is null ? [BackButton] : [Button("📂 К папкам", $"proj:{UpArgument}"), BackButton]);
 
         return (html, new InlineKeyboardMarkup(buttons));
+    }
+
+    /// <summary>
+    /// Текущая страница списка, счётчик для текста и ряд кнопок перелистывания (нет — если
+    /// страница одна). Страница зажимается в границы: список мог укоротиться после отрисовки.
+    /// </summary>
+    private (T[] Items, string Counter, InlineKeyboardButton[]? PageRow) Page<T>(IReadOnlyList<T> all, string noun)
+    {
+        var pages = Math.Max(1, (all.Count + PageSize - 1) / PageSize);
+        _page = Math.Clamp(_page, 0, pages - 1);
+
+        var items = all.Skip(_page * PageSize).Take(PageSize).ToArray();
+        if (pages == 1) return (items, "", null);
+
+        var counter = $"{Environment.NewLine}{Environment.NewLine}Страница {_page + 1} из {pages}, всего {noun}: {all.Count}.";
+
+        InlineKeyboardButton[] row =
+        [
+            Button("◀", $"proj:{PagePrefix}{(_page - 1 + pages) % pages}"),
+            Button($"{_page + 1}/{pages}", $"proj:{PagePrefix}{_page}"),
+            Button("▶", $"proj:{PagePrefix}{(_page + 1) % pages}"),
+        ];
+
+        return (items, counter, row);
     }
 
     private string Source() => options.Value switch
