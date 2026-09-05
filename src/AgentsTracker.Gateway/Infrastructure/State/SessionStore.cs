@@ -273,17 +273,27 @@ public sealed class SessionStore
 
     public void ResetUsage() => Mutate(s => s.Usage = new UsageStats { SinceUtc = DateTimeOffset.Now });
 
+    // Правила «всегда» живут в проекте: проверяются и правятся только для текущего.
+
     public bool IsAlwaysAllowed(string signature)
     {
-        lock (_gate) return _state.AlwaysAllow.Contains(signature, StringComparer.Ordinal);
+        lock (_gate)
+            return _state.AlwaysAllowByProject.GetValueOrDefault(ProjectPathLocked())?.Contains(signature, StringComparer.Ordinal) == true;
+    }
+
+    /// <summary>Правила «всегда» текущего проекта: копия, чтобы читать без замка.</summary>
+    public IReadOnlyList<string> AlwaysAllowRules()
+    {
+        lock (_gate)
+            return [.. _state.AlwaysAllowByProject.GetValueOrDefault(ProjectPathLocked()) ?? []];
     }
 
     public void AddAlwaysAllow(string signature)
     {
         Mutate(s =>
         {
-            if (!s.AlwaysAllow.Contains(signature, StringComparer.Ordinal))
-                s.AlwaysAllow.Add(signature);
+            var rules = RulesOf(s, ProjectPathLocked());
+            if (!rules.Contains(signature, StringComparer.Ordinal)) rules.Add(signature);
         });
     }
 
@@ -291,20 +301,33 @@ public sealed class SessionStore
     public bool RemoveAlwaysAllow(string signature)
     {
         var removed = false;
-        Mutate(s => removed = s.AlwaysAllow.Remove(signature));
+        Mutate(s =>
+        {
+            var project = ProjectPathLocked();
+            removed = s.AlwaysAllowByProject.GetValueOrDefault(project)?.Remove(signature) == true;
+            if (s.AlwaysAllowByProject.GetValueOrDefault(project) is { Count: 0 }) s.AlwaysAllowByProject.Remove(project);
+        });
         return removed;
     }
 
-    /// <summary>Снимает все разрешения «всегда». Возвращает, сколько их было.</summary>
+    /// <summary>Снимает все разрешения «всегда» текущего проекта. Возвращает, сколько их было.</summary>
     public int ClearAlwaysAllow()
     {
         var removed = 0;
         Mutate(s =>
         {
-            removed = s.AlwaysAllow.Count;
-            s.AlwaysAllow.Clear();
+            var project = ProjectPathLocked();
+            removed = s.AlwaysAllowByProject.GetValueOrDefault(project)?.Count ?? 0;
+            s.AlwaysAllowByProject.Remove(project);
         });
         return removed;
+    }
+
+    private static List<string> RulesOf(GatewayState state, string project)
+    {
+        if (!state.AlwaysAllowByProject.TryGetValue(project, out var rules))
+            state.AlwaysAllowByProject[project] = rules = [];
+        return rules;
     }
 
     /// <summary>Засчитывает запуск слэш-команды: «/plugin:skill» или «/skill», без аргументов.</summary>
@@ -377,11 +400,25 @@ public sealed class SessionStore
         }
     }
 
-    /// <summary>Переносит состояние старого формата: одна активная сессия без списка и без проекта.</summary>
+    /// <summary>
+    /// Переносит состояние старого формата: одна активная сессия без списка и без проекта;
+    /// общие правила «всегда» — в проект, который был текущим при обновлении.
+    /// </summary>
     private void Migrate()
     {
         lock (_gate)
         {
+            if (_state.AlwaysAllow.Count > 0)
+            {
+                var rules = RulesOf(_state, ProjectPathLocked());
+                foreach (var rule in _state.AlwaysAllow.Where(r => !rules.Contains(r, StringComparer.Ordinal)))
+                    rules.Add(rule);
+
+                _logger.LogInformation("Правил «всегда» перенесено в проект {Project}: {Count}", ProjectPathLocked(), _state.AlwaysAllow.Count);
+                _state.AlwaysAllow.Clear();
+                Save(_state);
+            }
+
             if (_state.SessionId is not { Length: > 0 } legacy) return;
 
             var project = ProjectPathLocked();
@@ -445,14 +482,18 @@ public sealed class SessionStore
     private static GatewayState Rehydrate(GatewayState state)
     {
         state.ActiveSessions = new Dictionary<string, string>(state.ActiveSessions, StringComparer.OrdinalIgnoreCase);
+        state.AlwaysAllowByProject = new Dictionary<string, List<string>>(state.AlwaysAllowByProject, StringComparer.OrdinalIgnoreCase);
 
         // Старая версия писала голое имя инструмента («WebSearch») — такая сигнатура разрешала
         // любые его аргументы. Теперь без ключевого поля в сигнатуру входит весь JSON, и голые
         // записи никогда не совпадут: убираем, чтобы не висели в /rules.
-        state.AlwaysAllow.RemoveAll(s => !s.Contains('(') && !s.Contains('{'));
+        state.AlwaysAllow.RemoveAll(IsBareToolName);
+        foreach (var rules in state.AlwaysAllowByProject.Values) rules.RemoveAll(IsBareToolName);
 
         return state;
     }
+
+    private static bool IsBareToolName(string signature) => !signature.Contains('(') && !signature.Contains('{');
 
     private void Save(GatewayState state)
     {

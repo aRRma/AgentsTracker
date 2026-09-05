@@ -60,7 +60,7 @@ public sealed class ChatCommandHandler(
             🚦 Осталось: {(plan.Length > 0 ? plan : "—")}
             ⚙️ {(worker.IsBusy ? "выполняется" : "простаивает")}, в очереди: {worker.QueueLength}
             🕔 Последняя активность: {state.LastActivityUtc?.ToLocalTime().ToString("g") ?? "—"}
-            ♾ Правил «всегда»: {state.AlwaysAllow.Count}
+            ♾ Правил «всегда» в этом проекте: {store.AlwaysAllowRules().Count}
             """;
     }
 }

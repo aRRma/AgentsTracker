@@ -24,10 +24,18 @@ public sealed class GatewayState
     public string? Effort { get; set; }
 
     /// <summary>
-    /// Сигнатуры действий, разрешённых кнопкой «Всегда» (когда CLI не прислал suggestions,
-    /// которые можно было бы записать в .claude/settings.local.json).
+    /// Правила «всегда» до разделения по проектам. Читаются при загрузке и переезжают
+    /// в <see cref="AlwaysAllowByProject"/> текущего проекта; новые версии сюда не пишут.
     /// </summary>
     public List<string> AlwaysAllow { get; set; } = [];
+
+    /// <summary>
+    /// Сигнатуры действий, разрешённых кнопкой «Всегда» (когда CLI не прислал suggestions,
+    /// которые можно было бы записать в .claude/settings.local.json). Ключ — нормализованный
+    /// путь проекта: «git push --force», разрешённый в одном репозитории, не должен
+    /// действовать во всех остальных.
+    /// </summary>
+    public Dictionary<string, List<string>> AlwaysAllowByProject { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Известные шлюзу сессии всех проектов.</summary>
     public List<SessionRecord> Sessions { get; set; } = [];

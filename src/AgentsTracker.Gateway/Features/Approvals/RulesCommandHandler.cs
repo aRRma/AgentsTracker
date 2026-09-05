@@ -26,15 +26,16 @@ public sealed class RulesCommandHandler(ITelegramBotClient bot, SessionStore sto
     private string Manage(TelegramCommandContext context)
     {
         var argument = context.Argument;
-        var rules = store.Snapshot().AlwaysAllow;
+        var rules = store.AlwaysAllowRules();
+        var project = Path.GetFileName(store.ProjectPath);
 
         if (argument.Equals("clear", StringComparison.OrdinalIgnoreCase))
         {
             var removed = store.ClearAlwaysAllow();
             if (removed > 0) Audit(context, $"clear ({removed})");
             return removed == 0
-                ? "Правил «всегда» и не было."
-                : $"♾ Снято правил: {removed}. Теперь всё снова спрашивается кнопками.";
+                ? $"Правил «всегда» в {project} и не было."
+                : $"♾ Снято правил в {project}: {removed}. Теперь всё снова спрашивается кнопками.";
         }
 
         if (argument.StartsWith("del", StringComparison.OrdinalIgnoreCase))
@@ -51,7 +52,7 @@ public sealed class RulesCommandHandler(ITelegramBotClient bot, SessionStore sto
         }
 
         if (rules.Count == 0)
-            return "Правил «всегда» у шлюза нет — каждое действие спрашивается кнопками." + CliNote;
+            return $"Правил «всегда» для {project} нет — каждое действие спрашивается кнопками." + CliNote;
 
         // Правил может накопиться сколько угодно, а сообщение Telegram ограничено:
         // набираем список по бюджету, остаток показываем числом.
@@ -70,8 +71,9 @@ public sealed class RulesCommandHandler(ITelegramBotClient bot, SessionStore sto
 
         var tail = shown < rules.Count ? $"\n…и ещё {rules.Count - shown}." : "";
 
+        // Правила у каждого проекта свои: заголовок говорит, чьи это.
         return $"""
-            Разрешено без вопросов ({rules.Count}):
+            Разрешено без вопросов в {project} ({rules.Count}):
             {list}{tail}
 
             Снять: /rules del <номер> | /rules clear
