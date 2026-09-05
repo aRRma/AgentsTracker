@@ -45,8 +45,34 @@ public sealed class SkillCatalog(IOptions<GatewayOptions> options, ILogger<Skill
     private static readonly string ClaudeHome =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude");
 
+    /// <summary>
+    /// Сколько держать результат обхода. Одно нажатие в меню — это Apply и Render подряд,
+    /// то есть два обхода диска и разбор всех SKILL.md; за несколько секунд плагин
+    /// включают редко, а лишний обход на каждое перелистывание заметен.
+    /// </summary>
+    private static readonly TimeSpan CacheFor = TimeSpan.FromSeconds(5);
+
+    private readonly Lock _gate = new();
+
+    private (string Project, DateTimeOffset At, IReadOnlyList<SkillGroup> Groups)? _cache;
+
     /// <summary>Группы в порядке показа: встроенные, проект, личные, потом плагины по алфавиту.</summary>
     public IReadOnlyList<SkillGroup> Grouped(string projectPath)
+    {
+        lock (_gate)
+        {
+            if (_cache is { } cached
+                && ProjectCatalog.Same(cached.Project, projectPath)
+                && DateTimeOffset.UtcNow - cached.At < CacheFor)
+                return cached.Groups;
+
+            var groups = Scan(projectPath);
+            _cache = (projectPath, DateTimeOffset.UtcNow, groups);
+            return groups;
+        }
+    }
+
+    private List<SkillGroup> Scan(string projectPath)
     {
         var groups = new List<SkillGroup>();
 
@@ -90,7 +116,7 @@ public sealed class SkillCatalog(IOptions<GatewayOptions> options, ILogger<Skill
             }
 
             result.Add(new SkillInfo(
-                command, Shorten(description), Clip(description, DetailsLimit), BuiltInGroup, hint,
+                command, Shorten(description), Text.Clip(description, DetailsLimit), BuiltInGroup, hint,
                 Flags(description + " " + hint)));
         }
 
@@ -98,36 +124,43 @@ public sealed class SkillCatalog(IOptions<GatewayOptions> options, ILogger<Skill
     }
 
     /// <summary>
-    /// <c>skills/*/SKILL.md</c> и <c>commands/**/*.md</c> под одной папкой. Команда с тем же
-    /// именем, что и скилл, не дублируется: CLI тоже показывает её один раз.
+    /// <c>skills/*/SKILL.md</c> (ровно один уровень: вложенный SKILL.md в examples — не скилл)
+    /// и <c>commands/**/*.md</c> под одной папкой. Команда в подпапке зовётся через двоеточие,
+    /// как у CLI: <c>commands/db/query.md</c> → <c>/db:query</c>. Команда с тем же именем,
+    /// что и скилл, не дублируется: CLI тоже показывает её один раз.
     /// </summary>
     private List<SkillInfo> ScanFolder(string root, string? prefix, string group)
     {
         var result = new List<SkillInfo>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var file in Enumerate(Path.Combine(root, "skills"), "SKILL.md", SearchOption.AllDirectories))
+        foreach (var folder in Enumerate(Path.Combine(root, "skills"), d => Directory.EnumerateDirectories(d)))
         {
-            var name = Path.GetFileName(Path.GetDirectoryName(file)!);
+            var file = Path.Combine(folder, "SKILL.md");
+            if (!File.Exists(file)) continue;
+
+            var name = Path.GetFileName(folder);
             if (seen.Add(name) && Parse(file, name, prefix, group) is { } skill) result.Add(skill);
         }
 
-        foreach (var file in Enumerate(Path.Combine(root, "commands"), "*.md", SearchOption.AllDirectories))
+        var commands = Path.Combine(root, "commands");
+        foreach (var file in Enumerate(commands, d => Directory.EnumerateFiles(d, "*.md", SearchOption.AllDirectories)))
         {
-            var name = Path.GetFileNameWithoutExtension(file);
+            var relative = Path.GetRelativePath(commands, file);
+            var name = Path.ChangeExtension(relative, null).Replace(Path.DirectorySeparatorChar, ':').Replace('/', ':');
             if (seen.Add(name) && Parse(file, name, prefix, group) is { } skill) result.Add(skill);
         }
 
         return result;
     }
 
-    private IEnumerable<string> Enumerate(string folder, string pattern, SearchOption option)
+    private IEnumerable<string> Enumerate(string folder, Func<string, IEnumerable<string>> list)
     {
         if (!Directory.Exists(folder)) return [];
 
         try
         {
-            return Directory.EnumerateFiles(folder, pattern, option).ToList();
+            return list(folder).ToList();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -169,7 +202,7 @@ public sealed class SkillCatalog(IOptions<GatewayOptions> options, ILogger<Skill
                              || body.Contains("$1", StringComparison.Ordinal);
 
         return new SkillInfo(
-            command, Shorten(full), Clip(full, DetailsLimit), group,
+            command, Shorten(full), Text.Clip(full, DetailsLimit), group,
             string.IsNullOrWhiteSpace(hint) ? null : hint.Trim(),
             Flags(takesArguments ? body : full + " " + hint));
     }
@@ -185,12 +218,6 @@ public sealed class SkillCatalog(IOptions<GatewayOptions> options, ILogger<Skill
             .Distinct(StringComparer.Ordinal)
             .Take(FlagsLimit)
             .ToList();
-
-    private static string Clip(string text, int limit)
-    {
-        var value = text.Trim();
-        return value.Length <= limit ? value : value[..(limit - 1)].TrimEnd() + "…";
-    }
 
     /// <summary>
     /// Блок между первыми двумя строками <c>---</c>. Разбор нарочно плоский: нужны только
@@ -249,7 +276,7 @@ public sealed class SkillCatalog(IOptions<GatewayOptions> options, ILogger<Skill
         var text = description.Trim();
         var stop = text.IndexOf(". ", StringComparison.Ordinal);
         if (stop > 0) text = text[..(stop + 1)];
-        return text.Length <= DescriptionLimit ? text : text[..(DescriptionLimit - 1)].TrimEnd() + "…";
+        return Text.Clip(text, DescriptionLimit);
     }
 
     /// <summary>

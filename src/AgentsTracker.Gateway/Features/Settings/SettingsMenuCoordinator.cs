@@ -24,9 +24,11 @@ public sealed class SettingsMenuCoordinator(
     public ISettingsScreen Screen(string key) => _screens.GetValueOrDefault(key) ?? _screens["root"];
 
     /// <summary>Показывает меню новым сообщением. screen — экран, с которого начать.</summary>
-    public async Task OpenAsync(long chatId, CancellationToken ct, string screen = "root")
+    public async Task OpenAsync(long chatId, long userId, CancellationToken ct, string screen = "root")
     {
-        var (html, keyboard) = await Screen(screen).RenderAsync(ct);
+        var target = Screen(screen);
+        target.Open(userId);
+        var (html, keyboard) = await target.RenderAsync(userId, ct);
         await bot.SendMessage(chatId, html, ParseMode.Html, replyMarkup: keyboard, cancellationToken: ct);
     }
 
@@ -44,13 +46,20 @@ public sealed class SettingsMenuCoordinator(
             return;
         }
 
+        var userId = query.From.Id;
+        var target = Screen(screen);
+
         // Применяем выбор до отрисовки: экран должен показать уже новое состояние.
-        var toast = argument.Length > 0 ? Screen(screen).Apply(argument, query.From.Id, query.Message?.Chat.Id ?? query.From.Id) : null;
+        // Нажатие без аргумента — переход на экран из корня: он открывается с начала.
+        string? toast = null;
+        if (argument.Length > 0) toast = target.Apply(argument, userId, query.Message?.Chat.Id ?? userId);
+        else target.Open(userId);
+
         await AnswerAsync(query.Id, toast, ct);
 
         if (query.Message is not { } message) return;
 
-        var (html, keyboard) = await Screen(screen).RenderAsync(ct);
+        var (html, keyboard) = await target.RenderAsync(userId, ct);
         await EditQuietlyAsync(message, html, keyboard, ct);
     }
 

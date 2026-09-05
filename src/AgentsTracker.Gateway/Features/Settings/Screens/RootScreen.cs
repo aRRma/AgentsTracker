@@ -13,7 +13,7 @@ public sealed class RootScreen(SessionStore store, ChatWorker worker, ClaudeLimi
 
     public string? Apply(string argument, long userId, long chatId) => null;
 
-    public async Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(CancellationToken ct)
+    public async Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(long userId, CancellationToken ct)
     {
         var project = store.ProjectPath;
         var session = ActiveSession();

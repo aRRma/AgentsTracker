@@ -32,8 +32,6 @@ public sealed class SkillLauncher(SessionStore store, ChatWorker worker, IAuditL
 
     public void Expect(long userId, string command) => _pending[userId] = command;
 
-    public string? Pending(long userId) => _pending.GetValueOrDefault(userId);
-
     public bool TryTake(long userId, out string command) => _pending.TryRemove(userId, out command!);
 
     public void Cancel(long userId) => _pending.TryRemove(userId, out _);

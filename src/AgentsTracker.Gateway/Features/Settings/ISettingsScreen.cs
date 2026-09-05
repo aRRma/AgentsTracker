@@ -10,9 +10,10 @@ public interface ISettingsScreen
 
     /// <summary>
     /// Отрисовка асинхронная: сводка тянет остаток тарифных окон, а это поход в сеть
-    /// (с кэшем на три минуты, но всё же).
+    /// (с кэшем на три минуты, но всё же). userId — для экранов с позицией в списке:
+    /// у каждого пользователя своя страница.
     /// </summary>
-    Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(CancellationToken ct);
+    Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(long userId, CancellationToken ct);
 
     /// <summary>
     /// Применяет аргумент нажатия (или текстовой команды). Возвращает короткий текст для
@@ -20,4 +21,10 @@ public interface ISettingsScreen
     /// который ставит задачу в очередь агента: ответ должен прийти в тот же чат.
     /// </summary>
     string? Apply(string argument, long userId, long chatId);
+
+    /// <summary>
+    /// Экран открыт заново — из корня или командой. Экран со списком сбрасывает позицию:
+    /// иначе вместо списка показалась бы карточка, открытая в прошлый раз.
+    /// </summary>
+    void Open(long userId) { }
 }

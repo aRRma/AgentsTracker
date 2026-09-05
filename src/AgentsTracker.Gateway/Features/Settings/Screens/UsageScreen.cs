@@ -26,7 +26,7 @@ public sealed class UsageScreen(SessionStore store, ClaudeLimits limits, IAuditL
         return "Статистика обнулена";
     }
 
-    public async Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(CancellationToken ct)
+    public async Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(long userId, CancellationToken ct)
     {
         var usage = store.Snapshot().Usage;
         var total = usage.Total;

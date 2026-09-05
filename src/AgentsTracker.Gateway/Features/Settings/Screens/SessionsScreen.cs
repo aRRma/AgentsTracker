@@ -42,7 +42,7 @@ public sealed class SessionsScreen(SessionStore store, ChatWorker worker, IAudit
         return worker.IsBusy ? "Сессия сменится со следующего запуска" : "Сессия выбрана";
     }
 
-    public Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(CancellationToken ct) =>
+    public Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(long userId, CancellationToken ct) =>
         Task.FromResult(Render());
 
     private (string Html, InlineKeyboardMarkup Keyboard) Render()

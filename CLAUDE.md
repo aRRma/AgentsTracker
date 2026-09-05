@@ -61,10 +61,15 @@ Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.
 `BotCommandsCatalog` (кнопка «Меню») и в тексте `HelpCommandHandler`.
 
 Новый экран настроек: класс с `ISettingsScreen` в `Features/Settings/Screens/`, регистрация
-в `SettingsModule`, кнопка на него — в `RootScreen`. `RenderAsync(ct)` асинхронный ради
+в `SettingsModule`, кнопка на него — в `RootScreen`. `RenderAsync(userId, ct)` асинхронный ради
 лимитов; экрану без сети хватает `Task.FromResult(Render())` поверх приватного `Render()`.
 `Apply` получает и `chatId`: экран может ставить задачу в очередь `ChatWorker` (так делает
-`SkillsScreen`), и ответ агента должен уйти в чат нажавшего.
+`SkillsScreen`), и ответ агента должен уйти в чат нажавшего. Экран со списком держит позицию
+(группа, страница, карточка) в `ScreenNavigation` — на каждого пользователя, потому что экраны
+синглтоны, а `AllowedUserIds` допускает нескольких людей; `Open(userId)` сбрасывает позицию при
+входе из корня или командой, иначе показалась бы прошлая карточка. Страницы и короткие ключи
+для callback_data — общие `SettingsKeyboard.Page`/`Key12`; однобуквенные префиксы аргументов
+экрана не должны быть hex-символами, иначе спутаются с ключом.
 
 Новая фича: папка в `Features/` с `*Module` и запись в списке модулей в `Program.cs`.
 `ChatModule` там остаётся последним.
@@ -207,12 +212,14 @@ CLI зовёт инструмент с `{"tool_name":…,"input":{…},"tool_use
 порядок `List` — текущий проект первым в своей группе, а после выбора страница сбрасывается
 на первую: иначе на длинном списке отметка `▶` оказывалась бы за пределами экрана.
 
-Экран «Скиллы» (`/skills`) — `SkillCatalog` собирает то же, что видит CLI: `skills/*/SKILL.md` и
-`commands/*.md` из `.claude` проекта и `~/.claude`, плюс из `installPath` включённых плагинов
+Экран «Скиллы» (`/skills`) — `SkillCatalog` собирает то же, что видит CLI: `skills/*/SKILL.md`
+(один уровень) и `commands/**/*.md` (подпапка → `/папка:имя`) из `.claude` проекта и `~/.claude`,
+плюс из `installPath` включённых плагинов
 (`~/.claude/plugins/installed_plugins.json`, флаги `enabledPlugins` наслаиваются: профиль →
 `.claude/settings.json` → `settings.local.json`; плагин без записи считается включённым).
 Плагинные скиллы зовутся `/плагин:имя`; `user-invocable: false` в списке нет. Frontmatter
-разбирается плоско, без YAML-библиотеки. Встроенные скиллы CLI (`/code-review`, `/init` и т.п.)
+разбирается плоско, без YAML-библиотеки. Результат обхода кэшируется на 5 секунд: одно нажатие
+в меню — это `Apply` и `Render` подряд, без кэша это два обхода диска. Встроенные скиллы CLI (`/code-review`, `/init` и т.п.)
 вшиты в `claude.exe`, перечислить их CLI не умеет — группа «Встроенные» берётся из
 `Gateway:BuiltInSkills` (список по умолчанию в `GatewayOptions` под CLI 2.1.x; после обновления
 CLI переопределяется конфигом без пересборки; третья часть строки — подсказка аргументов).
@@ -241,6 +248,8 @@ Id новой сессии выдаёт **шлюз** (`--session-id <uuid>`) и 
 
 `IAuditLog.Write(AuditEvent.Now(kind, summary, userId, chatId, project, session, outcome))` —
 короткая строка «кто, куда, что», без секретов и полных текстов (не длиннее 200 символов).
+Текст пользователя — промпт, аргументы команды, свободный ответ на вопрос агента — идёт в
+журнал только превью через `Text.Preview` (80 символов, одна строка): туда могли вставить токен.
 Виды — константы `AuditKinds`: `access.rejected`, `message`, `run.start`/`run.end`, `approval`,
 `question`, `settings`, `rules`, `session.reset`, `budget.refused`, `gateway`. Пишут: роутер
 (доступ, команды), `ChatEnqueueTextHandler` (промпт), `ChatWorker` (запуски, бюджет),

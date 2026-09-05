@@ -20,7 +20,7 @@ public sealed class ModelScreen(SessionStore store, IAuditLog audit) : ISettings
         return $"Модель: {model ?? "по умолчанию"}";
     }
 
-    public Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(CancellationToken ct) =>
+    public Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(long userId, CancellationToken ct) =>
         Task.FromResult(Render());
 
     private (string Html, InlineKeyboardMarkup Keyboard) Render()

@@ -1,3 +1,4 @@
+using AgentsTracker.Gateway.Features.Chat;
 using AgentsTracker.Gateway.Infrastructure.Telegram.Dispatch;
 using Telegram.Bot;
 
@@ -11,6 +12,7 @@ public sealed class SettingsCommandHandler(
     ITelegramBotClient bot,
     SettingsMenuCoordinator menu,
     SessionStore store,
+    ChatWorker worker,
     IOptions<GatewayOptions> options) : ITelegramCommandHandler
 {
     public IReadOnlyCollection<string> Commands { get; } =
@@ -23,27 +25,27 @@ public sealed class SettingsCommandHandler(
         switch (command)
         {
             case "/menu" or "/settings":
-                await menu.OpenAsync(chatId, ct);
+                await menu.OpenAsync(chatId, userId, ct);
                 break;
 
             case "/project":
-                await menu.OpenAsync(chatId, ct, "proj");
+                await menu.OpenAsync(chatId, userId, ct, "proj");
                 break;
 
             case "/sessions":
-                await menu.OpenAsync(chatId, ct, "sess");
+                await menu.OpenAsync(chatId, userId, ct, "sess");
                 break;
 
             case "/usage":
-                await menu.OpenAsync(chatId, ct, "usage");
+                await menu.OpenAsync(chatId, userId, ct, "usage");
                 break;
 
             case "/skills":
-                await menu.OpenAsync(chatId, ct, "skills");
+                await menu.OpenAsync(chatId, userId, ct, "skills");
                 break;
 
             case "/effort" when argument.Length == 0:
-                await menu.OpenAsync(chatId, ct, "effort");
+                await menu.OpenAsync(chatId, userId, ct, "effort");
                 break;
 
             case "/effort":
@@ -129,8 +131,10 @@ public sealed class SettingsCommandHandler(
 
         if (mode == store.EffectivePermissionMode) return $"Уже {PermissionModes.Describe(mode)}.";
 
-        var toast = menu.Screen("mode").Apply(mode, userId, chatId) ?? "";
-        var note = toast.Contains("со следующего запуска") ? "\nТекущий запуск доигрывает со старым уровнем." : "";
+        menu.Screen("mode").Apply(mode, userId, chatId);
+
+        // Занятость спрашиваем у воркера, а не угадываем по тексту тоста экрана.
+        var note = worker.IsBusy ? "\nТекущий запуск доигрывает со старым уровнем." : "";
         return $"🔐 {PermissionModes.Describe(mode)}.\nПрименится со следующего запуска.{note}";
     }
 }
