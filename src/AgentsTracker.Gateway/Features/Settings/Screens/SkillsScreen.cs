@@ -1,15 +1,14 @@
-using AgentsTracker.Gateway.Infrastructure.Claude;
 using Telegram.Bot.Types.ReplyMarkups;
 using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
 
 /// <summary>
-/// Скиллы Claude Code кнопками: источник (встроенные, проект, личные, плагин) → скилл →
+/// Скиллы агента кнопками: источник (встроенные, проект, личные, плагин) → скилл →
 /// карточка с описанием, подсказкой по аргументам и флагами. Из карточки скилл запускается
 /// сразу или после ввода аргументов следующим сообщением (<see cref="SkillLauncher"/>).
 /// </summary>
-public sealed class SkillsScreen(SessionStore store, SkillCatalog catalog, SkillLauncher launcher) : ISettingsScreen
+public sealed class SkillsScreen(SessionStore store, IAgentSkillCatalog catalog, SkillLauncher launcher) : ISettingsScreen
 {
     /// <summary>Префиксы callback-ов: не hex, чтобы не спутать с 12-значным ключом.</summary>
     private const string PagePrefix = "p";
@@ -112,12 +111,11 @@ public sealed class SkillsScreen(SessionStore store, SkillCatalog catalog, Skill
 
         if (sources.Count == 0)
         {
-            var empty = """
+            // Где агент ищет скиллы, знает только его каталог: подсказка приходит оттуда.
+            var empty = $"""
                 🧩 <b>Скиллы</b>
 
-                Ничего не найдено: ни <code>.claude/skills</code> в проекте и профиле,
-                ни включённых плагинов в <code>~/.claude/plugins</code>, ни строк
-                в <code>Gateway:BuiltInSkills</code>.
+                {catalog.EmptyHint}
 
                 <i>Неизвестные шлюзу слэш-команды и так уходят агенту как есть.</i>
                 """;

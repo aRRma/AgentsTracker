@@ -1,35 +1,23 @@
-using AgentsTracker.Gateway.Infrastructure.Mcp;
 using AgentsTracker.Gateway.Infrastructure.Modules;
 using AgentsTracker.Gateway.Infrastructure.Telegram.Dispatch;
 
 namespace AgentsTracker.Gateway.Features.Approvals;
 
 /// <summary>
-/// Подтверждения действий агента: MCP-инструмент, который зовёт CLI, карточки с кнопками
-/// в чате, свободные ответы и правила «всегда». Единственный модуль с HTTP-эндпоинтом.
+/// Подтверждения действий агента: карточки с кнопками в чате, свободные ответы, правила
+/// «всегда» и <see cref="IOperatorConsole"/>, через который бэкенд всё это спрашивает.
+/// Канал, по которому агент доставляет запрос (у Claude — MCP-эндпоинт), — дело бэкенда.
 /// </summary>
 public sealed class ApprovalsModule : IFeatureModule
 {
     public void AddServices(IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton<ApprovalBroker>();
+        services.AddSingleton<IOperatorConsole, OperatorConsole>();
         services.AddSingleton<ITelegramCallbackHandler, ApprovalCallbackHandler>();
         services.AddSingleton<ITelegramTextHandler, ApprovalTextHandler>();
         services.AddSingleton<ITelegramCommandHandler, RulesCommandHandler>();
-
-        services
-            .AddMcpServer()
-            .WithHttpTransport()
-            .WithTools<PermissionTool>();
     }
 
-    public void MapEndpoints(IEndpointRouteBuilder endpoints)
-    {
-        var mcp = endpoints.ServiceProvider.GetRequiredService<McpConfigFile>();
-
-        // Секрет — в заголовке, а не в пути: путь попадает в логи запросов, заголовок нет.
-        endpoints.MapMcp(McpConfigFile.RoutePattern)
-            .AddEndpointFilter(async (context, next) =>
-                mcp.Authorizes(context.HttpContext.Request) ? await next(context) : Results.Unauthorized());
-    }
+    public void MapEndpoints(IEndpointRouteBuilder endpoints) { }
 }

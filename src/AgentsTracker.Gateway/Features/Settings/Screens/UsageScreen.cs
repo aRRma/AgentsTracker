@@ -1,5 +1,4 @@
 using AgentsTracker.Gateway.Infrastructure.Audit;
-using AgentsTracker.Gateway.Infrastructure.Claude;
 using AgentsTracker.Gateway.Infrastructure.Telegram;
 using Telegram.Bot.Types.ReplyMarkups;
 using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
@@ -11,7 +10,7 @@ namespace AgentsTracker.Gateway.Features.Settings.Screens;
 /// Стоимость намеренно не показывается: на подписке она ни во что не превращается, а кредиты
 /// шлюз не тратит — упереться можно только в окно лимита, его и показываем первым.
 /// </summary>
-public sealed class UsageScreen(SessionStore store, ClaudeLimits limits, IAuditLog audit) : ISettingsScreen
+public sealed class UsageScreen(SessionStore store, IAgentLimits limits, IAuditLog audit) : ISettingsScreen
 {
     private const int MaxDaysShown = 5;
 

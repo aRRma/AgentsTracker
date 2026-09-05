@@ -20,7 +20,7 @@ public sealed class ChatEnqueueTextHandler(
         // может увидеть уже начавшуюся собственную обработку.
         var wasBusy = worker.IsBusy;
 
-        // Слэш-команды шлюза сюда не доходят — остались команды и скиллы самого Claude Code.
+        // Слэш-команды шлюза сюда не доходят — остались команды и скиллы самого агента.
         // Считаем их, чтобы экран скиллов знал, что запускают чаще всего.
         if (text.StartsWith('/')) store.RecordSkillUse(CommandName(text));
 

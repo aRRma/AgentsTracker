@@ -72,7 +72,7 @@
 <header>
   <h1>AgentsTracker</h1>
   <span class="kv">работает <b id="uptime">—</b></span>
-  <span class="kv">CLI <b id="cli">—</b></span>
+  <span class="kv"><span id="agent">Агент</span> <b id="cli">—</b></span>
   <span class="kv">проект <b id="project" class="mono">—</b></span>
   <span class="kv">модель <b id="model">—</b></span>
   <span class="kv">режим <b id="mode">—</b></span>
@@ -173,6 +173,7 @@
   function renderLive(s) {
     last = s;
     $('uptime').textContent = fmtDur(Date.now() - new Date(s.gatewayStartedUtc));
+    $('agent').textContent = s.agent || 'Агент';
     $('cli').textContent = s.cliVersion || '?';
     $('project').textContent = shortPath(s.project); $('project').title = s.project || '';
     $('model').textContent = s.model || 'по умолчанию';

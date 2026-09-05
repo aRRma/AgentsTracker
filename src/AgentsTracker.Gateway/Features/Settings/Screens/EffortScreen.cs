@@ -4,15 +4,20 @@ using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
 
-/// <summary>Сколько модели думать — уровень для <c>--effort</c>.</summary>
-public sealed class EffortScreen(SessionStore store, IAuditLog audit) : ISettingsScreen
+/// <summary>
+/// Сколько модели думать — уровни из <see cref="AgentCapabilities.Effort"/>. У агента без
+/// этой настройки экран отвечает отказом, а кнопку к нему корневой экран не показывает.
+/// </summary>
+public sealed class EffortScreen(SessionStore store, IAgentBackend agent, IAuditLog audit) : ISettingsScreen
 {
     public string Key => "effort";
 
     public string? Apply(string argument, long userId, long chatId)
     {
+        if (agent.Capabilities.Effort is not { } setting) return $"{agent.DisplayName} не поддерживает уровень усилий";
+
         var reset = argument.Equals("reset", StringComparison.OrdinalIgnoreCase);
-        var effort = reset ? null : EffortLevels.Resolve(argument);
+        var effort = reset ? null : setting.Resolve(argument);
         if (!reset && effort is null) return "Не знаю такой уровень";
 
         var previous = store.Effort;
@@ -26,18 +31,24 @@ public sealed class EffortScreen(SessionStore store, IAuditLog audit) : ISetting
 
     private (string Html, InlineKeyboardMarkup Keyboard) Render()
     {
+        if (agent.Capabilities.Effort is not { } setting)
+        {
+            return ($"🎚 <b>Effort</b>\n\n<i>{E(agent.DisplayName)} не поддерживает уровень усилий.</i>",
+                new InlineKeyboardMarkup([[BackButton]]));
+        }
+
         var current = store.EffectiveEffort;
 
         var html = $"""
             🎚 <b>Effort</b> — сколько модели думать
 
-            {string.Join("\n", EffortLevels.All.Select(l => $"{Marker(l == current)} {E(EffortLevels.Describe(l))}"))}
+            {string.Join("\n", setting.Values.Select(l => $"{Marker(l == current)} {E(setting.Describe(l))}"))}
 
             <i>Выше уровень — дольше и дороже ответ, но лучше на сложных задачах.
-            «По умолчанию» отдаёт выбор самому Claude Code.</i>
+            «По умолчанию» отдаёт выбор самому агенту.</i>
             """;
 
-        var buttons = EffortLevels.All
+        var buttons = setting.Selectable
             .Select(level => Button($"{Marker(level == current)} {level}", $"effort:{level}"))
             .Chunk(3)
             .ToList();

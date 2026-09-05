@@ -49,7 +49,7 @@ public sealed class GatewayState
     public UsageStats Usage { get; set; } = new();
 
     /// <summary>
-    /// Сколько раз запускали каждую слэш-команду Claude Code (кнопкой или текстом). Ключ —
+    /// Сколько раз запускали каждую слэш-команду агента (кнопкой или текстом). Ключ —
     /// команда в нижнем регистре. По этому счётчику экран скиллов выносит частые наверх.
     /// </summary>
     public Dictionary<string, int> SkillUsage { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -81,7 +81,7 @@ public sealed class RunRecord
     public long OutputTokens { get; set; }
 }
 
-/// <summary>Сессия Claude Code, о которой знает шлюз, — чтобы её можно было выбрать в меню.</summary>
+/// <summary>Сессия агента, о которой знает шлюз, — чтобы её можно было выбрать в меню.</summary>
 public sealed class SessionRecord
 {
     public string Id { get; set; } = "";
@@ -145,26 +145,3 @@ public sealed class UsageTotals
         CacheWriteTokens += usage.CacheWriteTokens;
     }
 }
-
-/// <summary>Расход одного запуска CLI — то, что шлюз кладёт в статистику.</summary>
-public sealed record RunUsage
-{
-    public int Turns { get; init; }
-    public decimal CostUsd { get; init; }
-    public long DurationMs { get; init; }
-    public long InputTokens { get; init; }
-    public long OutputTokens { get; init; }
-    public long CacheReadTokens { get; init; }
-    public long CacheWriteTokens { get; init; }
-
-    /// <summary>Разбивка по моделям из modelUsage: за один запуск их может быть несколько.</summary>
-    public IReadOnlyList<ModelRunUsage> Models { get; init; } = [];
-}
-
-public sealed record ModelRunUsage(
-    string Model,
-    decimal CostUsd,
-    long InputTokens,
-    long OutputTokens,
-    long CacheReadTokens,
-    long CacheWriteTokens);

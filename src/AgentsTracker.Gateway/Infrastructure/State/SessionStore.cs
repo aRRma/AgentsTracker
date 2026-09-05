@@ -34,7 +34,7 @@ public sealed class SessionStore
         Migrate();
     }
 
-    /// <summary>Папка, в которой запускается claude: выбранная из чата либо из конфига.</summary>
+    /// <summary>Папка, в которой запускается агент: выбранная из чата либо из конфига.</summary>
     public string ProjectPath
     {
         get { lock (_gate) return ProjectPathLocked(); }
@@ -205,7 +205,7 @@ public sealed class SessionStore
 
             if (sessionId is not { Length: > 0 }) return;
 
-            // Активной сессию здесь не делаем: это решает ClaudeRunner через TrySetSessionId,
+            // Активной сессию здесь не делаем: это решает ChatWorker через TrySetSessionId,
             // сверяясь с тем, что было активно на старте. Иначе запись расхода откатила бы
             // /new или смену сессии, сделанные во время запуска.
             var record = Touch(s, project, prompt, sessionId, now, activate: false);
@@ -216,7 +216,7 @@ public sealed class SessionStore
 
     /// <summary>
     /// Записывает итог запуска для монитора. Отдельно от <see cref="RecordRun"/>: расход
-    /// известен только CLI внутри ClaudeRunner, а исход, превью промпта и число вызовов — ChatWorker.
+    /// известен только по ответу агента, а исход, превью промпта и число вызовов — ChatWorker.
     /// </summary>
     public void RecordRunOutcome(RunRecord record)
     {

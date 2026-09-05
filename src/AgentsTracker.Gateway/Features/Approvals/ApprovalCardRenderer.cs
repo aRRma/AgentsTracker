@@ -1,7 +1,6 @@
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using AgentsTracker.Gateway.Infrastructure.Telegram;
 
 namespace AgentsTracker.Gateway.Features.Approvals;
@@ -64,13 +63,12 @@ public static class ApprovalCardRenderer
         }
     }
 
-    /// <param name="persistable">
-    /// Правила из permission_suggestions, которые CLI запишет в .claude/settings.local.json
-    /// проекта по кнопке «Всегда». Когда они есть, показываем их, а не сигнатуру шлюза:
-    /// правило CLI обычно префиксное и шире точного совпадения.
+    /// <param name="suggested">
+    /// Правила, которые агент сам запишет у себя по кнопке «Всегда». Когда они есть, показываем
+    /// их, а не сигнатуру шлюза: правило агента обычно префиксное и шире точного совпадения.
     /// </param>
     public static ApprovalCard Render(
-        string toolName, JsonElement? input, string signature, JsonArray? persistable, string projectPath)
+        string toolName, JsonElement? input, string signature, IReadOnlyList<PersistentRule>? suggested, string projectPath)
     {
         var obj = input is { ValueKind: JsonValueKind.Object } o ? o : (JsonElement?)null;
         var card = new StringBuilder();
@@ -89,10 +87,10 @@ public static class ApprovalCardRenderer
 
         if (truncated.Any)
             card.Append("\n⚠️ <b>Показано не всё</b> — полный текст в файле выше. Не разрешайте, не прочитав его.\n");
-        var rules = SuggestedRules(persistable);
+        var rules = suggested?.Take(MaxSuggestedRules).Select(rule => rule.Display).ToList() ?? [];
         if (rules.Count > 0)
         {
-            card.Append("\n<i>Кнопка «Всегда» запишет в .claude/settings.local.json проекта:</i>\n");
+            card.Append("\n<i>Кнопка «Всегда» запишет в настройки проекта у агента:</i>\n");
             foreach (var rule in rules)
                 card.Append("• <code>").Append(E(Shorten(rule, projectPath), SignatureBudget / rules.Count)).Append("</code>\n");
         }
@@ -106,36 +104,8 @@ public static class ApprovalCardRenderer
         return new ApprovalCard(card.ToString(), truncated.Any ? truncated.Render() : null);
     }
 
-    /// <summary>Сколько правил из suggestions показывать: больше и не пришлёт, и не влезет.</summary>
+    /// <summary>Сколько предложенных агентом правил показывать: больше и не пришлёт, и не влезет.</summary>
     private const int MaxSuggestedRules = 4;
-
-    /// <summary>
-    /// Правила из permission_suggestions в виде «Tool(содержимое)». Форма элемента:
-    /// {type:"addRules", rules:[{toolName, ruleContent}], behavior, destination}.
-    /// </summary>
-    private static List<string> SuggestedRules(JsonArray? suggestions)
-    {
-        var result = new List<string>();
-        if (suggestions is null) return result;
-
-        foreach (var suggestion in suggestions.OfType<JsonObject>())
-        {
-            if (suggestion["rules"] is not JsonArray rules) continue;
-
-            foreach (var rule in rules.OfType<JsonObject>())
-            {
-                var tool = rule["toolName"]?.GetValue<string>();
-                if (tool is not { Length: > 0 }) continue;
-
-                var content = rule["ruleContent"]?.GetValue<string>();
-                result.Add(content is { Length: > 0 } ? $"{tool}({content})" : tool);
-
-                if (result.Count >= MaxSuggestedRules) return result;
-            }
-        }
-
-        return result;
-    }
 
     /// <summary>Короткое пояснение к имени инструмента: человеку в чате «Glob» ничего не говорит.</summary>
     private static string? Caption(string toolName) => toolName switch

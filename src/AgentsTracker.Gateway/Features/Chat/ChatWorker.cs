@@ -3,7 +3,6 @@ using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using AgentsTracker.Gateway.Features.Approvals;
 using AgentsTracker.Gateway.Infrastructure.Audit;
-using AgentsTracker.Gateway.Infrastructure.Claude;
 using AgentsTracker.Gateway.Infrastructure.Monitoring;
 using AgentsTracker.Gateway.Infrastructure.Telegram;
 using Telegram.Bot;
@@ -14,15 +13,17 @@ using Telegram.Bot.Types.Enums;
 namespace AgentsTracker.Gateway.Features.Chat;
 
 /// <summary>
-/// Обрабатывает сообщения строго по одному: пока идёт запуск claude, новые сообщения
-/// копятся в очереди, а не запускают второй процесс.
+/// Обрабатывает сообщения строго по одному: пока идёт запуск агента, новые сообщения
+/// копятся в очереди, а не запускают второй процесс. Сессии — тоже здесь: бэкенд только
+/// сообщает, что сессия началась или что агент её не нашёл, а помнит их шлюз.
 /// </summary>
 public sealed partial class ChatWorker(
     ITelegramBotClient bot,
-    ClaudeRunner runner,
-    ClaudeLimits limits,
+    IAgentBackend agent,
+    IAgentLimits limits,
     ApprovalBroker broker,
     SessionStore store,
+    IOptions<GatewayOptions> options,
     IAuditLog audit,
     RunMonitor monitor,
     ILogger<ChatWorker> logger) : BackgroundService
@@ -125,14 +126,28 @@ public sealed partial class ChatWorker(
         var preview = Text.Preview(prompt.Text);
         monitor.RunStarted(new RunStart(project, session, preview, model, store.EffectivePermissionMode, store.EffectiveEffort));
 
-        ClaudeRunResult result;
+        // Сессию и папку фиксируем до запуска: переключение из меню посреди работы не должно
+        // развести рабочий каталог процесса и проект, которому запишется сессия. Id новой
+        // сессии выдаём сами — так /stop или падение первого запуска не теряют ветку.
+        var request = new AgentRunRequest(
+            prompt.Text, project,
+            ResumeSessionId: session,
+            NewSessionId: Guid.NewGuid().ToString(),
+            Model: model,
+            Effort: store.EffectiveEffort,
+            PermissionMode: PermissionMode(),
+            MaxBudgetUsd: store.RunBudgetUsd,
+            Timeout: TimeSpan.FromMinutes(options.Value.RunTimeoutMinutes));
+
+        // Тот же id нужен после запуска: активной становится только сессия, с которой
+        // он шёл, — иначе итог перетёр бы /new или смену сессии, сделанные по ходу.
+        var runSessionId = session is { Length: > 0 } ? session : request.NewSessionId;
+
+        AgentRunResult result;
         CurrentRun? finished;
         try
         {
-            result = await runner.RunAsync(
-                prompt.Text,
-                activity => { status.Report(activity); monitor.Step(activity); },
-                runCts.Token);
+            result = await agent.RunAsync(request, new RunObserver(store, monitor, request, status), runCts.Token);
         }
         finally
         {
@@ -143,6 +158,13 @@ public sealed partial class ChatWorker(
             broker.CancelAll();
             await DeleteQuietlyAsync(prompt.ChatId, status.MessageId, stoppingToken);
         }
+
+        // Неудачный запуск тоже стоит денег, поэтому пишем расход и по нему — лишь бы агент
+        // успел его сообщить.
+        if (result.Usage is { } usage)
+            store.RecordRun(project, prompt.Text, result.SessionId, usage);
+
+        var note = SettleSession(project, session, runSessionId, result);
 
         var outcome = result switch
         {
@@ -171,11 +193,65 @@ public sealed partial class ChatWorker(
         });
 
         var text = result.Ok ? result.Text : $"⚠️ {result.Text}";
-        await SendRenderedAsync(prompt.ChatId, text + Footer(result), stoppingToken);
+        await SendRenderedAsync(prompt.ChatId, text + note + Footer(result), stoppingToken);
 
         // Запуск упёрся в лимит тарифа: следующие задачи упрутся в тот же лимит, а платить
         // за них кредитами шлюзу запрещено — очередь чистим, чтобы не жечь её на отказах.
         if (result.RateLimited) await DropQueueAsync(prompt.ChatId, stoppingToken);
+    }
+
+    /// <summary>
+    /// Режим работы: выбранный командой /mode, иначе из конфига. Значение из state.json
+    /// проверяем — файл правится руками, а неизвестный режим уронил бы каждый запуск.
+    /// </summary>
+    private string PermissionMode() =>
+        store.PermissionMode is { Length: > 0 } mode && agent.Capabilities.PermissionMode.IsValid(mode)
+            ? mode
+            : options.Value.PermissionMode;
+
+    /// <summary>
+    /// Что делать с активной сессией проекта по итогу запуска. Возвращает приписку к ответу.
+    /// Сбрасываем только когда агент прямо сказал, что не нашёл сессию: битый id переживает
+    /// перезапуск в state.json и валил бы каждый следующий запуск. Пишем в проект запуска,
+    /// а не в текущий, и только если активная сессия там не менялась, пока шёл запуск:
+    /// /new или выбор другой сессии из меню важнее.
+    /// </summary>
+    private string SettleSession(string project, string? resumed, string runSessionId, AgentRunResult result)
+    {
+        if (result.SessionLost && resumed is { Length: > 0 })
+        {
+            if (!store.TrySetSessionId(project, null, onlyIfActive: resumed)) return "";
+
+            logger.LogWarning("Сессия {SessionId} сброшена: агент не нашёл её", resumed);
+            audit.Write(AuditEvent.Now(AuditKinds.SessionReset, "агент не нашёл сессию", project: project, session: resumed));
+            return "\n\n_Сессия сброшена — следующее сообщение начнёт новую._";
+        }
+
+        if (result.SessionId is { Length: > 0 } reported
+            && !store.TrySetSessionId(project, reported, onlyIfActive: runSessionId))
+        {
+            logger.LogInformation(
+                "Сессия {SessionId} не сделана активной: пользователь сменил сессию во время запуска", reported);
+        }
+
+        return "";
+    }
+
+    /// <summary>
+    /// Мост между бэкендом и шлюзом на время запуска: новая сессия сразу попадает
+    /// в state.json, шаги — в статусное сообщение и монитор.
+    /// </summary>
+    private sealed class RunObserver(
+        SessionStore store, RunMonitor monitor, AgentRunRequest request, RunStatusMessage status) : IAgentRunObserver
+    {
+        public void SessionStarted(string sessionId) =>
+            store.RegisterSession(request.ProjectPath, request.Prompt, sessionId);
+
+        public void Activity(RunActivity activity)
+        {
+            status.Report(activity);
+            monitor.Step(activity);
+        }
     }
 
     private void Audit(QueuedPrompt prompt, string kind, string summary, string? session = null, string? outcome = null) =>
@@ -183,10 +259,10 @@ public sealed partial class ChatWorker(
 
     /// <summary>
     /// Подпись под ответом: id сессии, которой отвечал агент. По нему ответ узнаётся в
-    /// <c>/sessions</c> и <c>/status</c>, а из терминала сессия продолжается
-    /// как <c>claude --resume &lt;id&gt;</c> в той же папке.
+    /// <c>/sessions</c> и <c>/status</c>, а из терминала агента сессия продолжается
+    /// по этому id в той же папке.
     /// </summary>
-    private static string Footer(ClaudeRunResult result)
+    private static string Footer(AgentRunResult result)
     {
         if (result.SessionId is not { Length: > 0 } session) return "";
 

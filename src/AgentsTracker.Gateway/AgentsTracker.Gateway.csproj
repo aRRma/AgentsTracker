@@ -12,9 +12,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
     <PackageReference Include="Telegram.Bot" Version="22.10.3" />
+  </ItemGroup>
+
+  <!-- Единственное место, где хост знает о конкретном агенте, — выбор модуля в Program.cs. -->
+  <ItemGroup>
+    <ProjectReference Include="..\AgentsTracker.Agents.Abstractions\AgentsTracker.Agents.Abstractions.csproj" />
+    <ProjectReference Include="..\AgentsTracker.Agents.Claude\AgentsTracker.Agents.Claude.csproj" />
   </ItemGroup>
 
 </Project>

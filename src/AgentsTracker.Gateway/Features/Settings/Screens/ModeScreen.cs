@@ -6,11 +6,12 @@ using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
 
 /// <summary>
-/// Режим работы агента (<c>--permission-mode</c>). Из чата переключаются только
-/// <see cref="PermissionModes.Selectable"/>: снять подтверждения полностью можно лишь конфигом.
+/// Режим работы агента — режимы разрешений из <see cref="AgentCapabilities.PermissionMode"/>.
+/// Из чата переключаются только <see cref="AgentSetting.Selectable"/>: снять подтверждения
+/// полностью можно лишь конфигом.
 /// </summary>
 public sealed class ModeScreen(
-    SessionStore store, ChatWorker worker, IAuditLog audit, IOptions<GatewayOptions> options) : ISettingsScreen
+    SessionStore store, IAgentBackend agent, ChatWorker worker, IAuditLog audit, IOptions<GatewayOptions> options) : ISettingsScreen
 {
     public string Key => "mode";
 
@@ -25,8 +26,9 @@ public sealed class ModeScreen(
             return $"Режим: {options.Value.PermissionMode} (из конфига)";
         }
 
-        var mode = PermissionModes.Resolve(argument);
-        if (mode is null || !PermissionModes.Selectable.Contains(mode, StringComparer.Ordinal))
+        var setting = agent.Capabilities.PermissionMode;
+        var mode = setting.Resolve(argument);
+        if (mode is null || !setting.IsSelectable(mode))
             return "Этот режим из чата не переключается";
 
         if (mode == previous) return $"Уже {mode}";
@@ -43,18 +45,19 @@ public sealed class ModeScreen(
 
     private (string Html, InlineKeyboardMarkup Keyboard) Render()
     {
+        var setting = agent.Capabilities.PermissionMode;
         var current = store.EffectivePermissionMode;
 
         var html = $"""
             🔐 <b>Режим работы агента</b>
 
-            {string.Join("\n", PermissionModes.Selectable.Select(m => $"{Marker(m == current)} {E(PermissionModes.Describe(m))}"))}
+            {string.Join("\n", setting.Selectable.Select(m => $"{Marker(m == current)} {E(setting.Describe(m))}"))}
 
             <i>Меняется со следующего запуска. Полностью снять подтверждения из чата нельзя —
             только правкой <code>appsettings.Local.json</code> на самой машине.</i>
             """;
 
-        var buttons = PermissionModes.Selectable
+        var buttons = setting.Selectable
             .Select(mode => Button($"{Marker(mode == current)} {mode}", $"mode:{mode}"))
             .Chunk(2)
             .ToList();

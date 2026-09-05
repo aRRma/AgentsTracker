@@ -4,16 +4,17 @@ using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
 
-/// <summary>Выбор модели: алиасы семейств кнопками, полное имя — командой /model.</summary>
-public sealed class ModelScreen(SessionStore store, IAuditLog audit) : ISettingsScreen
+/// <summary>Выбор модели: алиасы из <see cref="AgentCapabilities.Model"/> кнопками, полное имя — командой /model.</summary>
+public sealed class ModelScreen(SessionStore store, IAgentBackend agent, IAuditLog audit) : ISettingsScreen
 {
-    private static readonly string[] Aliases = ["opus", "sonnet", "haiku", "fable"];
-
     public string Key => "model";
 
     public string? Apply(string argument, long userId, long chatId)
     {
-        var model = argument.Equals("reset", StringComparison.OrdinalIgnoreCase) ? null : argument;
+        var reset = argument.Equals("reset", StringComparison.OrdinalIgnoreCase);
+        var model = reset ? null : agent.Capabilities.Model.Resolve(argument);
+        if (!reset && model is null) return "Не знаю такую модель";
+
         var previous = store.Model;
         store.SetModel(model);
         audit.Changed(store, userId, "model", previous, model);
@@ -30,13 +31,13 @@ public sealed class ModelScreen(SessionStore store, IAuditLog audit) : ISettings
         var html = $"""
             🧠 <b>Модель</b>
 
-            Сейчас: <b>{E(current ?? "по умолчанию — как настроен Claude Code")}</b>
+            Сейчас: <b>{E(current ?? $"по умолчанию — как настроен {agent.DisplayName}")}</b>
 
-            <i>Кнопки задают алиас последней модели семейства. Полное имя
-            (например <code>claude-sonnet-5</code>) можно задать командой <code>/model claude-sonnet-5</code>.</i>
+            <i>Кнопки задают алиас последней модели семейства. Полное имя модели
+            можно задать командой <code>/model &lt;имя&gt;</code>.</i>
             """;
 
-        var buttons = Aliases
+        var buttons = agent.Capabilities.Model.Selectable
             .Select(alias => Button($"{Marker(alias == current)} {alias}", $"model:{alias}"))
             .Chunk(2)
             .ToList();

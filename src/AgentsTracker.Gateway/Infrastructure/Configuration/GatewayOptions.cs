@@ -32,27 +32,15 @@ public sealed class GatewayOptions
     public int ProjectsRootDepth { get; set; } = 3;
 
     /// <summary>
-    /// Встроенные скиллы Claude Code для экрана «Скиллы»: они вшиты в claude.exe, на диске их
-    /// нет и перечислить их CLI не умеет. Формат строки — «/команда | описание | подсказка
-    /// аргументов» (третья часть необязательна). Список по умолчанию соответствует CLI 2.1.x;
-    /// после обновления CLI его можно переопределить здесь, не пересобирая шлюз.
+    /// Какой агент стоит за шлюзом: ключ модуля бэкенда (<c>claude</c>). Настройки самого
+    /// агента — в одноимённой подсекции (<c>Gateway:Claude</c>), хост их не читает.
     /// </summary>
-    public string[] BuiltInSkills { get; set; } =
-    [
-        "/code-review | Ревью текущего диффа или PR: баги, упрощения, эффективность. Уровень low/medium — меньше находок, но точнее; high…max — шире. --fix применяет правки после ревью, --comment пишет замечания в PR. | [low|medium|high|xhigh|max] [номер PR|ветка|путь] [--fix] [--comment]",
-        "/simplify | Упростить изменённый код: повторное использование, лишние абстракции, эффективность. Правки применяются сразу.",
-        "/security-review | Проверка безопасности изменений в текущей ветке.",
-        "/init | Создать CLAUDE.md с описанием кодовой базы.",
-        "/fewer-permission-prompts | Разобрать историю и разрешить частые безопасные команды в .claude/settings.json, чтобы меньше спрашивать.",
-    ];
+    public string Agent { get; set; } = "claude";
 
-    /// <summary>Путь к claude.exe. null = автопоиск.</summary>
-    public string? ClaudeExecutable { get; set; }
-
-    /// <summary>Алиас модели (sonnet / opus / haiku) или null для модели по умолчанию.</summary>
+    /// <summary>Модель или её алиас по умолчанию; null — как решит агент. Из чата меняется меню.</summary>
     public string? Model { get; set; }
 
-    /// <summary>Уровень усилий по умолчанию (low…max) или null — как решит CLI. Из чата меняется меню.</summary>
+    /// <summary>Уровень усилий по умолчанию; null — как решит агент. Из чата меняется меню.</summary>
     public string? Effort { get; set; }
 
     /// <summary>
@@ -66,10 +54,11 @@ public sealed class GatewayOptions
     public decimal? RunBudgetUsd { get; set; }
 
     /// <summary>
-    /// Режим разрешений по умолчанию, с которым запускается CLI; из чата его меняет /mode.
-    /// Задаётся явно, потому что иначе действует
-    /// defaultMode из ~/.claude/settings.json: при "auto" решения принимает классификатор,
-    /// кнопки в чате не появляются вовсе. "default" — спрашивать всё, что не разрешено правилами.
+    /// Режим разрешений по умолчанию, с которым запускается агент; из чата его меняет /mode.
+    /// Допустимые значения объявляет бэкенд (<see cref="AgentCapabilities.PermissionMode"/>),
+    /// проверка — при старте, когда бэкенд уже выбран. Задаётся явно: у Claude Code без флага
+    /// действовал бы defaultMode из настроек пользователя, и при "auto" кнопки в чате
+    /// не появлялись бы вовсе.
     /// </summary>
     public string PermissionMode { get; set; } = "default";
 
@@ -85,7 +74,7 @@ public sealed class GatewayOptions
     /// <summary>Сколько ждать нажатия кнопки, прежде чем автоматически отклонить.</summary>
     public int ApprovalTimeoutMinutes { get; set; } = 15;
 
-    /// <summary>Предельная длительность одного запуска claude.</summary>
+    /// <summary>Предельная длительность одного запуска агента.</summary>
     public int RunTimeoutMinutes { get; set; } = 60;
 
     /// <summary>HTTP-прокси для Telegram API, например "http://127.0.0.1:2080". null = без прокси.</summary>
@@ -123,11 +112,8 @@ public sealed class GatewayOptions
         if (ApprovalTimeoutMinutes is < 1 or > 1440)
             errors.Add($"{SectionName}:ApprovalTimeoutMinutes = {ApprovalTimeoutMinutes}. Допустимо 1..1440 минут.");
 
-        if (!PermissionModes.All.Contains(PermissionMode, StringComparer.Ordinal))
-            errors.Add($"{SectionName}:PermissionMode = '{PermissionMode}'. Допустимо: {string.Join(", ", PermissionModes.All)}.");
-
-        if (Effort is { Length: > 0 } effort && EffortLevels.Resolve(effort) is null)
-            errors.Add($"{SectionName}:Effort = '{effort}'. Допустимо: {string.Join(", ", EffortLevels.All)}.");
+        if (string.IsNullOrWhiteSpace(Agent))
+            errors.Add($"{SectionName}:Agent не задан.");
 
         if (DailyBudgetUsd is <= 0)
             errors.Add($"{SectionName}:DailyBudgetUsd = {DailyBudgetUsd}. Нужна положительная сумма или null.");
@@ -149,6 +135,28 @@ public sealed class GatewayOptions
         // Значение в текст ошибки не подставляем: в URI прокси бывает user:pass, а ошибка идёт в лог.
         if (Proxy is { Length: > 0 } && !Uri.TryCreate(Proxy, UriKind.Absolute, out _))
             errors.Add($"{SectionName}:Proxy — некорректный URI (ожидается вида http://host:port).");
+
+        return errors;
+    }
+
+    /// <summary>
+    /// Проверка значений, допустимость которых знает только бэкенд. Отдельно от
+    /// <see cref="Validate"/>: тот работает до выбора агента, а этот — когда агент уже есть.
+    /// </summary>
+    public IReadOnlyList<string> ValidateFor(AgentCapabilities capabilities)
+    {
+        var errors = new List<string>();
+
+        if (!capabilities.PermissionMode.IsValid(PermissionMode))
+            errors.Add($"{SectionName}:PermissionMode = '{PermissionMode}'. Допустимо: {string.Join(", ", capabilities.PermissionMode.Values)}.");
+
+        if (Effort is { Length: > 0 } effort)
+        {
+            if (capabilities.Effort is null)
+                errors.Add($"{SectionName}:Effort задан, а агент уровень усилий не поддерживает.");
+            else if (capabilities.Effort.Resolve(effort) is null)
+                errors.Add($"{SectionName}:Effort = '{effort}'. Допустимо: {string.Join(", ", capabilities.Effort.Values)}.");
+        }
 
         return errors;
     }

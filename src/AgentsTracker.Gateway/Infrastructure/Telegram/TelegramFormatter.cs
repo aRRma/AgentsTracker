@@ -11,7 +11,7 @@ public sealed record OutgoingPart(string? Html, string? DocumentText, string? Do
 }
 
 /// <summary>
-/// Переводит markdown из ответа Claude в подмножество HTML, которое понимает Telegram,
+/// Переводит markdown из ответа агента в подмножество HTML, которое понимает Telegram,
 /// и режет результат под лимит сообщения (4096 символов).
 /// </summary>
 public static partial class TelegramFormatter

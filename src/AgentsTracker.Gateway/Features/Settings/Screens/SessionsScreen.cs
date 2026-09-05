@@ -7,7 +7,7 @@ using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
 
 /// <summary>Сессии текущего проекта: переключение, новая, очистка списка.</summary>
-public sealed class SessionsScreen(SessionStore store, ChatWorker worker, IAuditLog audit) : ISettingsScreen
+public sealed class SessionsScreen(SessionStore store, IAgentBackend agent, ChatWorker worker, IAuditLog audit) : ISettingsScreen
 {
     private const int MaxShown = 8;
 
@@ -62,8 +62,8 @@ public sealed class SessionsScreen(SessionStore store, ChatWorker worker, IAudit
 
             {body}
 
-            <i>Переключение подставляет сессию в <code>--resume</code> со следующего сообщения.
-            «Очистить» убирает записи только из списка шлюза — сами сессии остаются в Claude Code.</i>
+            <i>Выбранная сессия продолжается со следующего сообщения.
+            «Очистить» убирает записи только из списка шлюза — сами сессии остаются у {E(agent.DisplayName)}.</i>
             """;
 
         var buttons = sessions

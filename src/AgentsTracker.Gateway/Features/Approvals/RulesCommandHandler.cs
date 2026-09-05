@@ -13,10 +13,10 @@ public sealed class RulesCommandHandler(ITelegramBotClient bot, SessionStore sto
     private const int RuleListBudget = 3500;
     private const int RuleDisplayLimit = 200;
 
-    // Правила, которые по «Всегда» записал сам CLI, живут в .claude/settings.local.json
-    // проекта — шлюз их не видит и снять не может; об этом стоит сказать.
-    private const string CliNote = "\n\nПравила, записанные Claude Code (когда карточка показывала «запишет в "
-        + ".claude/settings.local.json»), правятся в этом файле в папке проекта.";
+    // Правила, которые по «Всегда» записал сам агент, живут в его настройках проекта
+    // (у Claude Code — .claude/settings.local.json) — шлюз их не видит и снять не может.
+    private const string CliNote = "\n\nПравила, записанные самим агентом (когда карточка показывала «запишет в "
+        + "настройки проекта у агента»), правятся в его файле настроек в папке проекта.";
 
     public IReadOnlyCollection<string> Commands { get; } = ["/rules"];
 

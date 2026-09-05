@@ -5,7 +5,6 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using AgentsTracker.Gateway.Features.Chat;
 using AgentsTracker.Gateway.Infrastructure.Audit;
-using AgentsTracker.Gateway.Infrastructure.Claude;
 using AgentsTracker.Gateway.Infrastructure.Modules;
 using AgentsTracker.Gateway.Infrastructure.Monitoring;
 
@@ -44,13 +43,13 @@ public sealed class MonitorModule : IFeatureModule
 
         api.MapGet("/", () => Results.Bytes(Page.Value, "text/html; charset=utf-8"));
 
-        api.MapGet("/api/snapshot", (RunMonitor monitor, SessionStore store, ChatWorker worker) =>
-            Results.Json(Snapshot(monitor.Current, store, worker), Json));
+        api.MapGet("/api/snapshot", (RunMonitor monitor, SessionStore store, ChatWorker worker, IAgentBackend agent) =>
+            Results.Json(Snapshot(monitor.Current, store, worker, agent), Json));
 
-        api.MapGet("/api/events", (RunMonitor monitor, SessionStore store, ChatWorker worker, CancellationToken ct) =>
-            TypedResults.ServerSentEvents(Events(monitor, store, worker, ct)));
+        api.MapGet("/api/events", (RunMonitor monitor, SessionStore store, ChatWorker worker, IAgentBackend agent, CancellationToken ct) =>
+            TypedResults.ServerSentEvents(Events(monitor, store, worker, agent, ct)));
 
-        api.MapGet("/api/limits", async (ClaudeLimits limits, SessionStore store, CancellationToken ct) =>
+        api.MapGet("/api/limits", async (IAgentLimits limits, SessionStore store, CancellationToken ct) =>
         {
             var snapshot = await limits.GetAsync(ct);
             return Results.Json(new
@@ -83,10 +82,11 @@ public sealed class MonitorModule : IFeatureModule
             Results.Json(log.Tail(Math.Clamp(count ?? 200, 1, 500), RingBufferLog.Level(level ?? "Information")), Json));
     }
 
-    private static object Snapshot(LiveState live, SessionStore store, ChatWorker worker) => new
+    private static object Snapshot(LiveState live, SessionStore store, ChatWorker worker, IAgentBackend agent) => new
     {
         At = DateTimeOffset.UtcNow,
         live.GatewayStartedUtc,
+        Agent = agent.DisplayName,
         live.CliVersion,
         Project = store.ProjectPath,
         Session = store.SessionId,
@@ -102,7 +102,7 @@ public sealed class MonitorModule : IFeatureModule
 
     /// <summary>Снимок при подключении, затем по каждому изменению; между ними — пустой кадр раз в 5 с.</summary>
     private static async IAsyncEnumerable<SseItem<string>> Events(
-        RunMonitor monitor, SessionStore store, ChatWorker worker,
+        RunMonitor monitor, SessionStore store, ChatWorker worker, IAgentBackend agent,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         await using var changes = monitor.Changes(ct).GetAsyncEnumerator(ct);
@@ -120,7 +120,7 @@ public sealed class MonitorModule : IFeatureModule
 
             if (!await next) yield break;
 
-            yield return new SseItem<string>(JsonSerializer.Serialize(Snapshot(changes.Current, store, worker), Json), "state");
+            yield return new SseItem<string>(JsonSerializer.Serialize(Snapshot(changes.Current, store, worker, agent), Json), "state");
             next = changes.MoveNextAsync().AsTask();
         }
     }

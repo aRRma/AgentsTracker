@@ -1,5 +1,4 @@
 using AgentsTracker.Gateway.Infrastructure.Audit;
-using AgentsTracker.Gateway.Infrastructure.Claude;
 using AgentsTracker.Gateway.Infrastructure.Telegram.Dispatch;
 using Telegram.Bot;
 
@@ -10,7 +9,7 @@ public sealed class ChatCommandHandler(
     ITelegramBotClient bot,
     ChatWorker worker,
     SessionStore store,
-    ClaudeLimits limits,
+    IAgentLimits limits,
     IAuditLog audit) : ITelegramCommandHandler
 {
     public IReadOnlyCollection<string> Commands { get; } = ["/new", "/stop", "/status"];

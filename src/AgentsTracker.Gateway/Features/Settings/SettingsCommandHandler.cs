@@ -12,6 +12,7 @@ public sealed class SettingsCommandHandler(
     ITelegramBotClient bot,
     SettingsMenuCoordinator menu,
     SessionStore store,
+    IAgentBackend agent,
     ChatWorker worker,
     IOptions<GatewayOptions> options) : ITelegramCommandHandler
 {
@@ -75,15 +76,18 @@ public sealed class SettingsCommandHandler(
     /// <summary>Меняет уровень усилий модели. Применяется со следующего запуска.</summary>
     private string ChangeEffort(string argument, long userId, long chatId)
     {
-        if (!argument.Equals("reset", StringComparison.OrdinalIgnoreCase) && EffortLevels.Resolve(argument) is null)
-            return $"Не знаю уровень «{argument}». Доступно: {string.Join(", ", EffortLevels.All)}, reset.";
+        if (agent.Capabilities.Effort is not { } setting)
+            return $"{agent.DisplayName} не поддерживает уровень усилий.";
+
+        if (!argument.Equals("reset", StringComparison.OrdinalIgnoreCase) && setting.Resolve(argument) is null)
+            return $"Не знаю уровень «{argument}». Доступно: {string.Join(", ", setting.Selectable)}, reset.";
 
         menu.Screen("effort").Apply(argument, userId, chatId);
 
         // Именно выбранный из чата уровень, а не действующий: после reset он null,
         // и ответ должен говорить про конфиг, а не повторять его значение как выбранное.
         return store.Effort is { } level
-            ? $"🎚 {EffortLevels.Describe(level)}. Применится со следующего запуска."
+            ? $"🎚 {setting.Describe(level)}. Применится со следующего запуска."
             : $"🎚 Effort: {options.Value.Effort ?? "по умолчанию"} — как в конфиге.";
     }
 
@@ -99,24 +103,25 @@ public sealed class SettingsCommandHandler(
             return $"🔐 Режим: {options.Value.PermissionMode} — как в конфиге. Применится со следующего запуска.";
         }
 
-        var mode = PermissionModes.Resolve(argument);
+        var setting = agent.Capabilities.PermissionMode;
+        var mode = setting.Resolve(argument);
 
-        if (mode is null || !PermissionModes.Selectable.Contains(mode, StringComparer.Ordinal))
+        if (mode is null || !setting.IsSelectable(mode))
         {
-            // dontAsk и bypassPermissions сюда не попадают намеренно: полное снятие
+            // Режимы без подтверждений сюда не попадают намеренно: полное снятие
             // подтверждений остаётся правкой конфига на самой машине.
             return $"""
-                Не знаю режим «{argument}». Доступно: {string.Join(", ", PermissionModes.Selectable)}, reset.
+                Не знаю режим «{argument}». Доступно: {string.Join(", ", setting.Selectable)}, reset.
                 Снять подтверждения полностью можно только в appsettings.Local.json на самой машине.
                 """;
         }
 
-        if (mode == store.EffectivePermissionMode) return $"Уже {PermissionModes.Describe(mode)}.";
+        if (mode == store.EffectivePermissionMode) return $"Уже {setting.Describe(mode)}.";
 
         menu.Screen("mode").Apply(mode, userId, chatId);
 
         // Занятость спрашиваем у воркера, а не угадываем по тексту тоста экрана.
         var note = worker.IsBusy ? "\nТекущий запуск доигрывает со старым режимом." : "";
-        return $"🔐 {PermissionModes.Describe(mode)}.\nПрименится со следующего запуска.{note}";
+        return $"🔐 {setting.Describe(mode)}.\nПрименится со следующего запуска.{note}";
     }
 }
