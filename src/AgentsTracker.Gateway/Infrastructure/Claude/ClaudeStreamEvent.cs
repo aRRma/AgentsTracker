@@ -9,33 +9,54 @@ namespace AgentsTracker.Gateway.Infrastructure.Claude;
 /// </summary>
 public static class ClaudeStreamEvent
 {
-    /// <summary>Строка потока — итог запуска (её и разбирает <see cref="ClaudeCliJson"/>).</summary>
-    public static bool IsResult(string line) =>
-        TryParse(line, out var root) && TypeOf(root) == "result";
+    /// <summary>Что в строке потока: итог, вызовы инструментов, прочее событие или не JSON вовсе.</summary>
+    public sealed record Line(bool IsJson, bool IsResult, IReadOnlyList<RunActivity> ToolCalls)
+    {
+        public static readonly Line Text = new(false, false, []);
+        public static readonly Line Other = new(true, false, []);
+        public static readonly Line Result = new(true, true, []);
+    }
 
     /// <summary>
-    /// Вызовы инструментов из этой строки — то, что стоит показать пользователю. Текст
+    /// Разбирает строку один раз: на долгом запуске их тысячи, и в <c>user</c>-событиях
+    /// лежит содержимое прочитанных файлов — парсить такое дважды накладно.
+    /// </summary>
+    public static Line Classify(string line)
+    {
+        if (!TryParse(line, out var root)) return Line.Text;
+
+        return String(root, "type") switch
+        {
+            "result" => Line.Result,
+            "assistant" => ToolCalls(root) is { Count: > 0 } calls ? new Line(true, false, calls) : Line.Other,
+            _ => Line.Other,
+        };
+    }
+
+    /// <summary>
+    /// Вызовы инструментов из события — то, что стоит показать пользователю. Текст
     /// и «размышления» агента не показываем: они приходят кусками и в статусе смысла не имеют.
     /// </summary>
-    public static IReadOnlyList<(string Description, bool Nested)> ToolCalls(string line)
+    private static List<RunActivity> ToolCalls(JsonElement root)
     {
-        if (!TryParse(line, out var root) || TypeOf(root) != "assistant") return [];
         if (!root.TryGetProperty("message", out var message)
             || !message.TryGetProperty("content", out var content)
             || content.ValueKind != JsonValueKind.Array)
             return [];
 
+        // parent_tool_use_id стоит в корне события (проверено на CLI 2.1.261): у шагов
+        // сабагента это id вызова Agent, у основного хода — null.
         var nested = root.TryGetProperty("parent_tool_use_id", out var parent)
                      && parent.ValueKind == JsonValueKind.String;
 
-        var calls = new List<(string, bool)>();
+        var calls = new List<RunActivity>();
         foreach (var block in content.EnumerateArray())
         {
             if (String(block, "type") != "tool_use") continue;
             if (String(block, "name") is not { Length: > 0 } name) continue;
 
             block.TryGetProperty("input", out var input);
-            calls.Add((Describe(name, input), nested));
+            calls.Add(new RunActivity(Describe(name, input), nested));
         }
 
         return calls;
@@ -71,8 +92,6 @@ public static class ClaudeStreamEvent
     private static string? FileName(string? path) =>
         path is { Length: > 0 } ? Path.GetFileName(path) : path;
 
-    private static string? TypeOf(JsonElement root) => String(root, "type");
-
     private static string? String(JsonElement element, string property) =>
         element.ValueKind == JsonValueKind.Object
         && element.TryGetProperty(property, out var value)
@@ -83,7 +102,7 @@ public static class ClaudeStreamEvent
     private static bool TryParse(string line, out JsonElement root)
     {
         root = default;
-        if (!line.StartsWith('{')) return false;
+        if (!line.AsSpan().TrimStart().StartsWith('{')) return false;
 
         try
         {

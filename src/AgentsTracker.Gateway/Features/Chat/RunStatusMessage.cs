@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using AgentsTracker.Gateway.Infrastructure.Telegram;
 using Telegram.Bot;
-using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types.Enums;
 
 namespace AgentsTracker.Gateway.Features.Chat;
@@ -14,7 +13,9 @@ namespace AgentsTracker.Gateway.Features.Chat;
 /// </summary>
 internal sealed class RunStatusMessage : IAsyncDisposable
 {
-    private static readonly TimeSpan Tick = TimeSpan.FromSeconds(5);
+    // Четыре, а не пять секунд: индикатор «печатает» Telegram гасит через пять, и на ровно
+    // пяти он мигал бы.
+    private static readonly TimeSpan Tick = TimeSpan.FromSeconds(4);
     private static readonly string[] Clock = ["🕐", "🕑", "🕒", "🕓", "🕔", "🕕", "🕖", "🕗", "🕘", "🕙", "🕚", "🕛"];
     private const int RecentSteps = 3;
 
@@ -59,7 +60,7 @@ internal sealed class RunStatusMessage : IAsyncDisposable
     {
         lock (_lock)
         {
-            _toolCalls = activity.ToolCalls;
+            _toolCalls++;
             _recent.Enqueue((activity.Nested ? "  ↳ " : "▸ ") + activity.Description);
             while (_recent.Count > RecentSteps) _recent.Dequeue();
         }
@@ -67,8 +68,9 @@ internal sealed class RunStatusMessage : IAsyncDisposable
 
     private string Render()
     {
-        var frame = Clock[(int)(_elapsed.Elapsed.TotalSeconds / Tick.TotalSeconds) % Clock.Length];
-        var lines = new List<string> { $"{frame} Работаю… {_elapsed.Elapsed.Elapsed} · 🧵 {_thread}" };
+        var elapsed = _elapsed.Elapsed;
+        var frame = Clock[(int)(elapsed.TotalSeconds / Tick.TotalSeconds) % Clock.Length];
+        var lines = new List<string> { $"{frame} Работаю… {elapsed.Elapsed} · 🧵 {_thread}" };
 
         lock (_lock)
         {
@@ -89,34 +91,49 @@ internal sealed class RunStatusMessage : IAsyncDisposable
             try
             {
                 await Task.Delay(Tick, _cts.Token);
-                await _bot.SendChatAction(_chatId, ChatAction.Typing, cancellationToken: _cts.Token);
-
-                var text = Render();
-                if (text == _lastRendered) continue;
-
-                await _bot.EditMessageText(_chatId, _messageId, text, cancellationToken: _cts.Token);
-                _lastRendered = text;
             }
             catch (OperationCanceledException) { return; }
-            catch (ApiRequestException ex)
-            {
-                // Сообщение удалили или Telegram просит подождать — пропускаем такт, не выходим:
-                // иначе один сбой сети оставит статус замершим до конца запуска.
-                _logger.LogDebug(ex, "Статус запуска не обновлён");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Обновление статуса запуска прервано");
-                return;
-            }
+
+            // Два вызова — по отдельности: сбой индикатора не должен задерживать текст статуса.
+            await TryAsync(() => _bot.SendChatAction(_chatId, ChatAction.Typing, cancellationToken: _cts.Token));
+
+            var text = Render();
+            if (text == _lastRendered) continue;
+
+            if (await TryAsync(() => _bot.EditMessageText(_chatId, _messageId, text, cancellationToken: _cts.Token)))
+                _lastRendered = text;
         }
     }
 
-    /// <summary>Останавливает обновления и дожидается их: иначе правка догнала бы удаление сообщения.</summary>
+    /// <summary>
+    /// Сетевой вызов с поглощением ошибок: сообщение удалили или Telegram просит подождать —
+    /// пропускаем такт, не выходим из цикла, иначе один сбой сети оставит статус замершим
+    /// до конца запуска.
+    /// </summary>
+    private async Task<bool> TryAsync(Func<Task> call)
+    {
+        try
+        {
+            await call();
+            return true;
+        }
+        catch (OperationCanceledException) { return false; }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Статус запуска не обновлён");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Останавливает обновления и дожидается их: иначе правка догнала бы удаление сообщения.
+    /// Ждём ограниченно — зависший HTTP-вызов не должен держать очередь чата.
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         if (!_cts.IsCancellationRequested) _cts.Cancel();
-        try { await _loop; } catch { /* цикл сам гасит свои ошибки */ }
+        try { await _loop.WaitAsync(TimeSpan.FromSeconds(10)); }
+        catch (Exception ex) { _logger.LogDebug(ex, "Цикл статуса не завершился вовремя"); }
         _cts.Dispose();
     }
 }

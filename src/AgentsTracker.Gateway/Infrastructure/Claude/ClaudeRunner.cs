@@ -120,7 +120,7 @@ public sealed class ClaudeRunner(
             try { await process.WaitForExitAsync(CancellationToken.None); } catch { /* уже мёртв */ }
         }
 
-        var stdout = await stdoutTask;
+        var output = await stdoutTask;
         var stderr = await stderrTask;
 
         if (cancelled)
@@ -139,7 +139,7 @@ public sealed class ClaudeRunner(
             };
         }
 
-        var result = Parse(stdout, stderr, process.ExitCode, started.Elapsed, projectPath, resumedSessionId, sessionId);
+        var result = Parse(output, stderr, process.ExitCode, started.Elapsed, projectPath, resumedSessionId, sessionId);
 
         // Неудачный запуск тоже стоит денег, поэтому пишем расход и по нему — лишь бы CLI
         // успел его сообщить.
@@ -149,41 +149,56 @@ public sealed class ClaudeRunner(
         return result;
     }
 
+    /// <summary>То, что нужно разбору итога из stdout: строка <c>result</c> и всё, что ею не было.</summary>
+    /// <param name="ResultLine">Последняя строка <c>"type":"result"</c>; null — CLI умер, не дойдя до итога.</param>
+    /// <param name="Noise">
+    /// Не-JSON строки (баннер обновления, текст ошибки до потока) и, если итога не было,
+    /// последнее событие — единственная подсказка, на чём всё оборвалось.
+    /// </param>
+    private sealed record StreamOutput(string? ResultLine, string Noise);
+
     /// <summary>
-    /// Читает stdout построчно: события потока отдаёт в <paramref name="onActivity"/>, а
-    /// возвращает то, что нужно разбору итога, — строку <c>result</c> и всё, что не было
-    /// событием (баннер обновления, текст ошибки до JSON). Промежуточные события не копим:
-    /// в долгом запуске их мегабайты, а для ответа они не нужны.
+    /// Читает stdout построчно: вызовы инструментов отдаёт в <paramref name="onActivity"/>,
+    /// остальные события не копит — в долгом запуске их мегабайты, а для ответа они не нужны.
     /// </summary>
-    private static async Task<string> ReadStreamAsync(StreamReader stdout, Action<RunActivity>? onActivity)
+    private async Task<StreamOutput> ReadStreamAsync(StreamReader stdout, Action<RunActivity>? onActivity)
     {
-        var kept = new StringBuilder();
-        var toolCalls = 0;
+        var noise = new StringBuilder();
+        string? resultLine = null;
+        string? lastEvent = null;
 
         while (await stdout.ReadLineAsync(CancellationToken.None) is { } line)
         {
             if (line.Length == 0) continue;
 
-            if (ClaudeStreamEvent.IsResult(line))
+            var parsed = ClaudeStreamEvent.Classify(line);
+
+            if (parsed.IsResult)
             {
-                kept.AppendLine(line);
+                resultLine = line;
                 continue;
             }
 
-            var calls = ClaudeStreamEvent.ToolCalls(line);
-            if (calls.Count > 0)
+            if (!parsed.IsJson)
             {
-                foreach (var (description, nested) in calls)
-                    onActivity?.Invoke(new RunActivity(description, ++toolCalls, nested));
+                noise.AppendLine(line);
                 continue;
             }
 
-            // Остальные события (init, user, rate_limit_event…) не нужны; не-JSON сохраняем —
-            // это единственное, что расскажет о падении до первого события.
-            if (!line.StartsWith('{')) kept.AppendLine(line);
+            lastEvent = line;
+
+            foreach (var activity in parsed.ToolCalls)
+            {
+                // Обработчик — чужой код (статус в чате). Его исключение уронило бы чтение
+                // stdout, пайп заполнился бы, и процесс завис бы до таймаута.
+                try { onActivity?.Invoke(activity); }
+                catch (Exception ex) { logger.LogWarning(ex, "Обработчик шага запуска бросил исключение"); }
+            }
         }
 
-        return kept.ToString().TrimEnd();
+        if (resultLine is null && lastEvent is not null) noise.AppendLine(lastEvent);
+
+        return new StreamOutput(resultLine, noise.ToString().TrimEnd());
     }
 
     private IEnumerable<string> BuildArguments(string prompt, string? resumedSessionId, string sessionId)
@@ -255,15 +270,11 @@ public sealed class ClaudeRunner(
             : _options.PermissionMode;
 
     private ClaudeRunResult Parse(
-        string stdout, string stderr, int exitCode, TimeSpan duration,
+        StreamOutput output, string stderr, int exitCode, TimeSpan duration,
         string projectPath, string? resumedSessionId, string sessionId)
     {
-        // Итог — последняя JSON-строка; перед ней может стоять текст, который CLI печатает
-        // до потока событий (баннер обновления), и разбирать его как JSON нельзя.
-        var resultLine = stdout.Split('\n').Select(l => l.Trim()).LastOrDefault(l => l.StartsWith('{'));
-
         ClaudeCliJson? payload = null;
-        if (resultLine is { Length: > 0 })
+        if (output.ResultLine is { } resultLine)
         {
             try
             {
@@ -271,15 +282,15 @@ public sealed class ClaudeRunner(
             }
             catch (JsonException ex)
             {
-                // Полный stdout — на Debug: это может быть ответ агента с содержимым файлов.
-                logger.LogWarning(ex, "Ответ CLI не разобран как JSON: {Stdout}", Truncate(resultLine, ErrorDetailsLimit));
-                logger.LogDebug("stdout целиком: {Stdout}", Truncate(stdout, 2000));
+                // Полная строка — на Debug: это может быть ответ агента с содержимым файлов.
+                logger.LogWarning(ex, "Итог CLI не разобран как JSON: {Line}", Truncate(resultLine, ErrorDetailsLimit));
+                logger.LogDebug("итог целиком: {Line}", Truncate(resultLine, 2000));
             }
         }
 
         if (payload is null)
         {
-            var details = string.IsNullOrWhiteSpace(stderr) ? Truncate(stdout, 3000) : Truncate(stderr, 3000);
+            var details = string.IsNullOrWhiteSpace(stderr) ? Truncate(output.Noise, 3000) : Truncate(stderr, 3000);
             logger.LogError("claude завершился с кодом {Code}: {Details}", exitCode, Truncate(details, ErrorDetailsLimit));
             logger.LogDebug("вывод целиком: {Details}", details);
 
@@ -299,9 +310,14 @@ public sealed class ClaudeRunner(
             };
         }
 
+        // В stream-json текст ошибки CLI часто оставляет в stderr, а result присылает пустым
+        // (так с «No conversation found» при битом --resume): без stderr пользователь
+        // увидел бы безликое «ошибка без текста», а сброс сессии не сработал бы.
         var text = payload.Result;
         if (string.IsNullOrWhiteSpace(text))
-            text = payload.IsError ? "Агент завершился с ошибкой без текста ответа." : "(пустой ответ)";
+            text = payload.IsError
+                ? (string.IsNullOrWhiteSpace(stderr) ? "Агент завершился с ошибкой без текста ответа." : Truncate(stderr.Trim(), 3000))
+                : "(пустой ответ)";
 
         var failed = payload.IsError || exitCode != 0;
 
@@ -310,7 +326,7 @@ public sealed class ClaudeRunner(
         // compare-and-set внутри ResetSession — битый id остался бы активным навсегда.
         var reset = failed
             && resumedSessionId is { Length: > 0 }
-            && ResetSession(projectPath, resumedSessionId, text);
+            && ResetSession(projectPath, resumedSessionId, text + "\n" + stderr);
 
         // Пишем в проект запуска, а не в текущий, и только если активная сессия там не
         // менялась, пока шёл запуск: /new или выбор другой сессии из меню важнее.
@@ -338,7 +354,7 @@ public sealed class ClaudeRunner(
                 CostUsd = payload.TotalCostUsd,
                 Duration = duration,
                 Usage = payload.ToRunUsage(),
-                RateLimited = HitPlanLimit(text) || HitPlanLimit(payload.Subtype),
+                RateLimited = HitPlanLimit(text) || HitPlanLimit(stderr) || HitPlanLimit(payload.Subtype),
             };
         }
 
