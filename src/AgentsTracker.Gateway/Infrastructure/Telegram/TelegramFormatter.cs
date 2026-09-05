@@ -140,7 +140,7 @@ public static partial class TelegramFormatter
                 {
                     if (buffer.Length > 0)
                     {
-                        yield return new Block(false, buffer.ToString(), null);
+                        foreach (var block in SplitTables(buffer.ToString())) yield return block;
                         buffer.Clear();
                     }
 
@@ -162,8 +162,85 @@ public static partial class TelegramFormatter
             buffer.Append(line).Append('\n');
         }
 
-        if (buffer.Length > 0)
-            yield return new Block(inCode, buffer.ToString().TrimEnd('\n'), language);
+        if (buffer.Length == 0) yield break;
+
+        if (inCode) yield return new Block(true, buffer.ToString().TrimEnd('\n'), language);
+        else foreach (var block in SplitTables(buffer.ToString())) yield return block;
+    }
+
+    /// <summary>
+    /// Выделяет из обычного текста markdown-таблицы и отдаёт их как блоки кода.
+    /// В HTML Telegram таблиц нет: без выравнивания моноширинным шрифтом столбцы
+    /// расползаются и читать нечего.
+    /// </summary>
+    private static IEnumerable<Block> SplitTables(string content)
+    {
+        var lines = content.Split('\n');
+        var text = new StringBuilder();
+
+        for (var i = 0; i < lines.Length;)
+        {
+            var isTable = i + 1 < lines.Length
+                && lines[i].Contains('|', StringComparison.Ordinal)
+                && TableDividerRegex().IsMatch(lines[i + 1]);
+
+            if (!isTable)
+            {
+                text.Append(lines[i]).Append('\n');
+                i++;
+                continue;
+            }
+
+            var rows = new List<string[]> { ParseTableRow(lines[i]) };
+            var j = i + 2;
+            while (j < lines.Length && lines[j].Contains('|', StringComparison.Ordinal) && lines[j].Trim().Length > 0)
+                rows.Add(ParseTableRow(lines[j++]));
+
+            if (text.Length > 0)
+            {
+                yield return new Block(false, text.ToString(), null);
+                text.Clear();
+            }
+
+            yield return new Block(true, FormatTable(rows), null);
+            i = j;
+        }
+
+        if (text.Length > 0) yield return new Block(false, text.ToString(), null);
+    }
+
+    private static string[] ParseTableRow(string line)
+    {
+        var trimmed = line.Trim();
+        if (trimmed.StartsWith('|')) trimmed = trimmed[1..];
+        if (trimmed.EndsWith('|')) trimmed = trimmed[..^1];
+        return [.. trimmed.Split('|').Select(c => c.Trim())];
+    }
+
+    private static string FormatTable(List<string[]> rows)
+    {
+        var columns = rows.Max(r => r.Length);
+        var widths = new int[columns];
+
+        foreach (var row in rows)
+            for (var c = 0; c < row.Length; c++)
+                widths[c] = Math.Max(widths[c], row[c].Length);
+
+        var result = new StringBuilder();
+
+        for (var r = 0; r < rows.Count; r++)
+        {
+            var cells = Enumerable.Range(0, columns)
+                .Select(c => (c < rows[r].Length ? rows[r][c] : "").PadRight(widths[c]));
+
+            result.Append(string.Join(" | ", cells).TrimEnd()).Append('\n');
+
+            // Линия под шапкой: без неё заголовок сливается с данными.
+            if (r == 0)
+                result.Append(string.Join("-+-", widths.Select(w => new string('-', w)))).Append('\n');
+        }
+
+        return result.ToString().TrimEnd('\n');
     }
 
     /// <summary>Режет обычный текст по абзацам, затем по строкам, затем жёстко.</summary>
@@ -235,13 +312,61 @@ public static partial class TelegramFormatter
         html = StrikeRegex().Replace(html, "<s>$1</s>");
         html = HeadingRegex().Replace(html, "<b>$1</b>");
 
-        // Курсив намеренно не разбираем: одиночные * и _ слишком часто встречаются
-        // в путях, именах и коде, и разметка ломается чаще, чем помогает.
+        // Курсив только с «*» и только когда звёздочки вплотную к тексту: «*.cs и *.md»
+        // или «2 * 3 * 4» иначе превращались бы в курсив. «_» не разбираем вовсе —
+        // он встречается в именах (__init__.py, snake_case) чаще, чем как разметка.
+        html = ItalicRegex().Replace(html, "<i>$1</i>");
+
+        html = ApplyLineBlocks(html);
 
         for (var i = 0; i < spans.Count; i++)
             html = html.Replace($"{Sentinel}{i}{Sentinel}", $"<code>{Escape(spans[i])}</code>", StringComparison.Ordinal);
 
         return html;
+    }
+
+    /// <summary>
+    /// Построчные элементы markdown, которых в HTML Telegram нет: маркеры списка,
+    /// горизонтальная линия, цитата. Без этого «- пункт» и «---» уходят в чат как есть.
+    /// </summary>
+    private static string ApplyLineBlocks(string html)
+    {
+        var result = new StringBuilder();
+        var quote = new List<string>();
+
+        void FlushQuote()
+        {
+            if (quote.Count == 0) return;
+            result.Append("<blockquote>").Append(string.Join('\n', quote)).Append("</blockquote>").Append('\n');
+            quote.Clear();
+        }
+
+        foreach (var line in html.Split('\n'))
+        {
+            var quoted = QuoteRegex().Match(line);
+            if (quoted.Success)
+            {
+                quote.Add(quoted.Groups[1].Value);
+                continue;
+            }
+
+            FlushQuote();
+
+            if (HorizontalRuleRegex().IsMatch(line))
+            {
+                result.Append("──────────").Append('\n');
+                continue;
+            }
+
+            // Вложенный уровень отличаем пустым кружком — отступ в Telegram сохраняется,
+            // но одинаковые маркеры на разных уровнях сливаются в одну кашу.
+            result
+                .Append(BulletRegex().Replace(line, m => m.Groups[1].Value.Length > 0 ? $"{m.Groups[1].Value}◦ " : "• "))
+                .Append('\n');
+        }
+
+        FlushQuote();
+        return result.ToString().TrimEnd('\n');
     }
 
     /// <summary>
@@ -297,4 +422,22 @@ public static partial class TelegramFormatter
 
     [GeneratedRegex(@"^#{1,6}[ \t]+(.+)$", RegexOptions.Multiline)]
     private static partial Regex HeadingRegex();
+
+    // Звёздочки вплотную к содержимому и на границе слова: «2 * 3» и «*.cs» не курсив.
+    [GeneratedRegex(@"(?<![\w*])\*([^\s*][^*\n]*[^\s*]|[^\s*])\*(?![\w*])")]
+    private static partial Regex ItalicRegex();
+
+    // Строка уже экранирована, поэтому «>» ищем как &gt;.
+    [GeneratedRegex(@"^&gt;[ \t]?(.*)$")]
+    private static partial Regex QuoteRegex();
+
+    [GeneratedRegex(@"^[ \t]*([-*_])(?:[ \t]*\1){2,}[ \t]*$")]
+    private static partial Regex HorizontalRuleRegex();
+
+    [GeneratedRegex(@"^([ \t]*)[-*+][ \t]+")]
+    private static partial Regex BulletRegex();
+
+    // Вторая строка таблицы: |---|:--:| — минимум один дефис и только служебные символы.
+    [GeneratedRegex(@"^[ \t]*\|?[ \t:|-]*-[ \t:|-]*\|[ \t:|-]*$")]
+    private static partial Regex TableDividerRegex();
 }
