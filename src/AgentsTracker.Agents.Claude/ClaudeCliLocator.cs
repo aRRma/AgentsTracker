@@ -1,15 +1,15 @@
 using System.Diagnostics;
 
-namespace AgentsTracker.Gateway.Infrastructure.Claude;
+namespace AgentsTracker.Agents.Claude;
 
 /// <summary>
 /// Ищет исполняемый файл Claude Code: явный путь из конфига → стандартная установка → PATH →
 /// бинарник, вложенный в расширение VS Code (последний вариант привязан к версии расширения
 /// и исчезает при её обновлении, поэтому используется только как запасной).
 /// </summary>
-public sealed class ClaudeCliLocator(IOptions<GatewayOptions> options, ILogger<ClaudeCliLocator> logger)
+public sealed class ClaudeCliLocator(IOptions<ClaudeOptions> options, ILogger<ClaudeCliLocator> logger)
 {
-    private readonly GatewayOptions _options = options.Value;
+    private readonly ClaudeOptions _options = options.Value;
     private string? _resolved;
 
     /// <summary>Сколько ждать ответа на <c>claude --version</c>: это диагностика, а не работа.</summary>
@@ -27,7 +27,7 @@ public sealed class ClaudeCliLocator(IOptions<GatewayOptions> options, ILogger<C
 
         _resolved = Locate() ?? throw new InvalidOperationException(
             "Не найден claude.exe. Установите CLI командой  irm https://claude.ai/install.ps1 | iex  " +
-            "или укажите путь в Gateway:ClaudeExecutable.");
+            "или укажите путь в Gateway:Claude:Executable.");
 
         logger.LogInformation("Claude CLI: {Path}", _resolved);
 
@@ -89,10 +89,10 @@ public sealed class ClaudeCliLocator(IOptions<GatewayOptions> options, ILogger<C
 
     private string? Locate()
     {
-        if (_options.ClaudeExecutable is { Length: > 0 } configured)
+        if (_options.Executable is { Length: > 0 } configured)
         {
             if (File.Exists(configured)) return configured;
-            logger.LogWarning("Gateway:ClaudeExecutable указывает на несуществующий файл: {Path}", configured);
+            logger.LogWarning("Gateway:Claude:Executable указывает на несуществующий файл: {Path}", configured);
         }
 
         foreach (var candidate in Candidates())

@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace AgentsTracker.Gateway.Infrastructure.Claude;
+namespace AgentsTracker.Agents.Claude;
 
 /// <summary>
 /// Разбор строк <c>claude -p --output-format stream-json</c>. Поток нужен ради одного:

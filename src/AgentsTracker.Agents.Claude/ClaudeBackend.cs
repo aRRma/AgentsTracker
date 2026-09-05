@@ -2,58 +2,49 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
-using AgentsTracker.Gateway.Infrastructure.Audit;
-using AgentsTracker.Gateway.Infrastructure.Mcp;
+using AgentsTracker.Agents.Claude.Mcp;
 
-namespace AgentsTracker.Gateway.Infrastructure.Claude;
+namespace AgentsTracker.Agents.Claude;
 
 /// <summary>
 /// Запускает <c>claude -p</c> одним процессом на сообщение. Непрерывность диалога держится
-/// на сессии: id новой шлюз выдаёт сам (<c>--session-id</c>) и сохраняет в SessionStore сразу
-/// после старта процесса, следующий запуск продолжает её через <c>--resume &lt;id&gt;</c>.
+/// на сессии: id новой выдаёт хост (<c>--session-id</c>), следующий запуск продолжает её
+/// через <c>--resume &lt;id&gt;</c>. Что с сессией делать дальше — регистрировать, сбрасывать
+/// на «не найдена» — решает хост по <see cref="AgentRunResult"/>: здесь только процесс и разбор вывода.
 /// </summary>
-public sealed class ClaudeRunner(
-    IOptions<GatewayOptions> options,
+public sealed class ClaudeBackend(
     ClaudeCliLocator locator,
-    SessionStore store,
     McpConfigFile mcpConfig,
-    IAuditLog audit,
-    ILogger<ClaudeRunner> logger)
+    ILogger<ClaudeBackend> logger) : IAgentBackend
 {
-    private readonly GatewayOptions _options = options.Value;
+    public const string BackendId = "claude";
 
     /// <summary>Сколько stdout/stderr показывать в логе на уровне Error: полный дамп — на Debug.</summary>
     private const int ErrorDetailsLimit = 200;
 
-    /// <param name="onActivity">
-    /// Вызывается на каждом инструменте, который позвал агент, — из потока чтения stdout.
-    /// Обработчик должен быть быстрым и не бросать: иначе застопорит разбор вывода.
-    /// </param>
-    public async Task<ClaudeRunResult> RunAsync(string prompt, Action<RunActivity>? onActivity, CancellationToken ct)
+    public string Id => BackendId;
+
+    public string DisplayName => "Claude Code";
+
+    public AgentCapabilities Capabilities => ClaudeCapabilities.Instance;
+
+    public AgentProbe Probe() => new(locator.Resolve(), locator.TryGetVersion());
+
+    public async Task<AgentRunResult> RunAsync(AgentRunRequest request, IAgentRunObserver observer, CancellationToken ct)
     {
         var started = Stopwatch.StartNew();
 
-        // Фиксируем id один раз: тот же id нужен при разборе ответа, чтобы понять,
-        // что упавший запуск шёл с --resume.
-        var resumedSessionId = store.SessionId;
+        var resumedSessionId = request.ResumeSessionId is { Length: > 0 } resumed ? resumed : null;
+        var sessionId = resumedSessionId ?? request.NewSessionId;
 
-        // Новой сессии id выдаём сами и передаём в --session-id. Иначе id известен только из
-        // ответа CLI, и /stop, таймаут или падение первого запуска теряют ветку целиком:
-        // продолжать нечего, следующее сообщение начинает разговор заново.
-        var sessionId = resumedSessionId is { Length: > 0 } ? resumedSessionId : Guid.NewGuid().ToString();
-
-        // И папку тоже: переключение репозитория из меню посреди запуска не должно
-        // развести рабочий каталог процесса и проект, которому запишется сессия.
-        var projectPath = store.ProjectPath;
-
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(_options.RunTimeoutMinutes));
+        using var timeoutCts = new CancellationTokenSource(request.Timeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
         var runToken = linkedCts.Token;
 
         var psi = new ProcessStartInfo
         {
             FileName = locator.Resolve(),
-            WorkingDirectory = projectPath,
+            WorkingDirectory = request.ProjectPath,
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
@@ -68,17 +59,11 @@ public sealed class ClaudeRunner(
         // может только владелец аккаунта в claude.ai — переменная закрывает путь через агента.
         psi.Environment["DISABLE_EXTRA_USAGE_COMMAND"] = "1";
 
-        // Дочерний процесс наследует окружение шлюза целиком. Переопределения конфига через
-        // переменные агенту видеть незачем: и «Gateway__BotToken», и «Gateway:BotToken» —
-        // на Windows AddEnvironmentVariables понимает обе формы разделителя.
-        foreach (var name in psi.Environment.Keys.Where(IsGatewaySetting).ToArray())
-            psi.Environment.Remove(name);
-
-        foreach (var arg in BuildArguments(prompt, resumedSessionId, sessionId))
+        foreach (var arg in BuildArguments(request, resumedSessionId, sessionId))
             psi.ArgumentList.Add(arg);
 
         // Промпт в лог не пишем целиком: это сообщение пользователя, ему хватит короткого начала.
-        logger.LogInformation("claude -p «{Prompt}» {Args}", Truncate(prompt.ReplaceLineEndings(" "), 80),
+        logger.LogInformation("claude -p «{Prompt}» {Args}", Truncate(request.Prompt.ReplaceLineEndings(" "), 80),
             string.Join(' ', psi.ArgumentList.Skip(2)));
 
         using var process = new Process { StartInfo = psi };
@@ -90,22 +75,22 @@ public sealed class ClaudeRunner(
         catch (Exception ex)
         {
             logger.LogError(ex, "Не удалось запустить claude");
-            return ClaudeRunResult.Failure($"Не удалось запустить claude: {ex.Message}", started.Elapsed);
+            return AgentRunResult.Failure($"Не удалось запустить claude: {ex.Message}", started.Elapsed);
         }
 
-        // Процесс живёт — запоминаем сессию сразу, не дожидаясь ответа: с этого момента её
-        // можно продолжить, даже если запуск оборвут.
-        if (resumedSessionId is not { Length: > 0 })
+        // Процесс живёт — хост запоминает сессию сразу, не дожидаясь ответа: с этого момента
+        // её можно продолжить, даже если запуск оборвут.
+        if (resumedSessionId is null)
         {
-            store.RegisterSession(projectPath, prompt, sessionId);
-            logger.LogInformation("Новая сессия {SessionId} в {Project}", sessionId, projectPath);
+            observer.SessionStarted(sessionId);
+            logger.LogInformation("Новая сессия {SessionId} в {Project}", sessionId, request.ProjectPath);
         }
 
         // Промпт уже передан аргументом; stdin закрываем, иначе CLI ждёт данных.
         process.StandardInput.Close();
 
         // Оба потока читаем одновременно — иначе заполненный пайп заблокирует процесс.
-        var stdoutTask = ReadStreamAsync(process.StandardOutput, onActivity);
+        var stdoutTask = ReadStreamAsync(process.StandardOutput, observer);
         var stderrTask = process.StandardError.ReadToEndAsync(CancellationToken.None);
 
         var cancelled = false;
@@ -126,10 +111,10 @@ public sealed class ClaudeRunner(
         if (cancelled)
         {
             var reason = timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested
-                ? $"Превышен лимит в {_options.RunTimeoutMinutes} мин — процесс остановлен."
+                ? $"Превышен лимит в {request.Timeout.TotalMinutes:0} мин — процесс остановлен."
                 : "Остановлено.";
 
-            return new ClaudeRunResult
+            return new AgentRunResult
             {
                 Ok = false,
                 Cancelled = true,
@@ -139,14 +124,7 @@ public sealed class ClaudeRunner(
             };
         }
 
-        var result = Parse(output, stderr, process.ExitCode, started.Elapsed, projectPath, resumedSessionId, sessionId);
-
-        // Неудачный запуск тоже стоит денег, поэтому пишем расход и по нему — лишь бы CLI
-        // успел его сообщить.
-        if (result.Usage is { } usage)
-            store.RecordRun(projectPath, prompt, result.SessionId, usage);
-
-        return result;
+        return Parse(output, stderr, process.ExitCode, started.Elapsed, resumedSessionId, sessionId);
     }
 
     /// <summary>То, что нужно разбору итога из stdout: строка <c>result</c> и всё, что ею не было.</summary>
@@ -158,10 +136,10 @@ public sealed class ClaudeRunner(
     private sealed record StreamOutput(string? ResultLine, string Noise);
 
     /// <summary>
-    /// Читает stdout построчно: вызовы инструментов отдаёт в <paramref name="onActivity"/>,
-    /// остальные события не копит — в долгом запуске их мегабайты, а для ответа они не нужны.
+    /// Читает stdout построчно: вызовы инструментов отдаёт наблюдателю, остальные события
+    /// не копит — в долгом запуске их мегабайты, а для ответа они не нужны.
     /// </summary>
-    private async Task<StreamOutput> ReadStreamAsync(StreamReader stdout, Action<RunActivity>? onActivity)
+    private async Task<StreamOutput> ReadStreamAsync(StreamReader stdout, IAgentRunObserver observer)
     {
         var noise = new StringBuilder();
         string? resultLine = null;
@@ -189,9 +167,9 @@ public sealed class ClaudeRunner(
 
             foreach (var activity in parsed.ToolCalls)
             {
-                // Обработчик — чужой код (статус в чате). Его исключение уронило бы чтение
+                // Наблюдатель — чужой код (статус в чате). Его исключение уронило бы чтение
                 // stdout, пайп заполнился бы, и процесс завис бы до таймаута.
-                try { onActivity?.Invoke(activity); }
+                try { observer.Activity(activity); }
                 catch (Exception ex) { logger.LogWarning(ex, "Обработчик шага запуска бросил исключение"); }
             }
         }
@@ -201,10 +179,10 @@ public sealed class ClaudeRunner(
         return new StreamOutput(resultLine, noise.ToString().TrimEnd());
     }
 
-    private IEnumerable<string> BuildArguments(string prompt, string? resumedSessionId, string sessionId)
+    private IEnumerable<string> BuildArguments(AgentRunRequest request, string? resumedSessionId, string sessionId)
     {
         yield return "-p";
-        yield return prompt;
+        yield return request.Prompt;
 
         // Поток событий, а не один JSON в конце: по нему чат показывает, что агент делает
         // сейчас. Итог приходит последней строкой той же формы, что у --output-format json.
@@ -215,7 +193,7 @@ public sealed class ClaudeRunner(
 
         // Продолжаем известную сессию либо создаём новую с заранее выданным id: CLI принимает
         // его как есть и возвращает тем же. Оба флага вместе передавать нельзя.
-        if (resumedSessionId is { Length: > 0 })
+        if (resumedSessionId is not null)
         {
             yield return "--resume";
             yield return resumedSessionId;
@@ -232,46 +210,33 @@ public sealed class ClaudeRunner(
         // Без явного режима действует defaultMode из настроек пользователя: при "auto"
         // решения принимает классификатор и карточки в чате не появляются.
         yield return "--permission-mode";
-        yield return PermissionMode;
+        yield return request.PermissionMode;
 
         yield return "--mcp-config";
         yield return mcpConfig.Path;
 
-        var model = store.EffectiveModel;
-        if (model is { Length: > 0 })
+        if (request.Model is { Length: > 0 } model)
         {
             yield return "--model";
             yield return model;
         }
 
-        if (store.EffectiveEffort is { Length: > 0 } effort && EffortLevels.Resolve(effort) is { } level)
+        if (request.Effort is { Length: > 0 } effort && EffortLevels.Resolve(effort) is { } level)
         {
             yield return "--effort";
             yield return level;
         }
 
-        // Предел стоимости одного запуска: из конфига, но не больше остатка дневного бюджета,
-        // иначе один запуск мог бы перескочить лимит целиком.
-        if (store.RunBudgetUsd is { } budget)
+        if (request.MaxBudgetUsd is { } budget)
         {
             yield return "--max-budget-usd";
             yield return budget.ToString("0.####", CultureInfo.InvariantCulture);
         }
     }
 
-    /// <summary>
-    /// Режим работы: выбранный командой /mode, иначе из конфига. Значение из state.json
-    /// проверяем — файл правится руками, а неизвестный режим уронил бы каждый запуск.
-    /// </summary>
-    private string PermissionMode =>
-        store.PermissionMode is { Length: > 0 } mode
-        && PermissionModes.All.Contains(mode, StringComparer.Ordinal)
-            ? mode
-            : _options.PermissionMode;
-
-    private ClaudeRunResult Parse(
+    private AgentRunResult Parse(
         StreamOutput output, string stderr, int exitCode, TimeSpan duration,
-        string projectPath, string? resumedSessionId, string sessionId)
+        string? resumedSessionId, string sessionId)
     {
         ClaudeCliJson? payload = null;
         if (output.ResultLine is { } resultLine)
@@ -294,18 +259,17 @@ public sealed class ClaudeRunner(
             logger.LogError("claude завершился с кодом {Code}: {Details}", exitCode, Truncate(details, ErrorDetailsLimit));
             logger.LogDebug("вывод целиком: {Details}", details);
 
-            // Сбрасываем сессию только когда CLI прямо говорит, что --resume не нашёл её:
-            // битый id переживает перезапуск в state.json и валит каждый следующий запуск.
-            // На любой другой сбой (баннер обновления перед JSON, падение процесса) сессия
+            // Сессию объявляем потерянной только когда CLI прямо говорит, что --resume не нашёл
+            // её. На любой другой сбой (баннер обновления перед JSON, падение процесса) сессия
             // цела, и терять её контекст было бы хуже, чем повторить запуск.
-            var dropped = resumedSessionId is { Length: > 0 } && ResetSession(projectPath, resumedSessionId, details);
-            var note = dropped ? "\n\n_Сессия сброшена — следующее сообщение начнёт новую._" : "";
+            var lost = resumedSessionId is not null && LooksLikeMissingSession(details, resumedSessionId);
 
-            return ClaudeRunResult.Failure(
-                $"claude завершился с кодом {exitCode}.\n\n```\n{details}\n```{note}",
+            return AgentRunResult.Failure(
+                $"claude завершился с кодом {exitCode}.\n\n```\n{details}\n```",
                 duration) with
             {
-                SessionId = dropped ? null : sessionId,
+                SessionId = lost ? null : sessionId,
+                SessionLost = lost,
                 RateLimited = HitPlanLimit(details),
             };
         }
@@ -321,36 +285,22 @@ public sealed class ClaudeRunner(
 
         var failed = payload.IsError || exitCode != 0;
 
-        // Проверяем «сессия не найдена» до того, как сделать активным id из ответа: на неудачном
-        // --resume CLI возвращает свой session_id, и запись активной сессии сбила бы
-        // compare-and-set внутри ResetSession — битый id остался бы активным навсегда.
-        var reset = failed
-            && resumedSessionId is { Length: > 0 }
-            && ResetSession(projectPath, resumedSessionId, text + "\n" + stderr);
-
-        // Пишем в проект запуска, а не в текущий, и только если активная сессия там не
-        // менялась, пока шёл запуск: /new или выбор другой сессии из меню важнее.
-        if (!reset
-            && payload.SessionId is { Length: > 0 }
-            && !store.TrySetSessionId(projectPath, payload.SessionId, onlyIfActive: sessionId))
-        {
-            logger.LogInformation(
-                "Сессия {SessionId} не сделана активной: пользователь сменил сессию во время запуска", payload.SessionId);
-        }
-
         if (failed)
         {
             logger.LogWarning("Запуск завершился ошибкой ({Subtype}, код {Code})", payload.Subtype, exitCode);
             var suffix = payload.Subtype is { Length: > 0 } s ? $"\n\n_({s})_" : "";
 
             // Тот же случай, но в валидном JSON: «No conversation found with session ID …».
-            if (reset) suffix += "\n\n_Сессия сброшена — следующее сообщение начнёт новую._";
+            // На неудачном --resume CLI возвращает свой session_id — его отдавать нельзя,
+            // иначе хост сделал бы битый id активным.
+            var lost = resumedSessionId is not null && LooksLikeMissingSession(text + "\n" + stderr, resumedSessionId);
 
-            return new ClaudeRunResult
+            return new AgentRunResult
             {
                 Ok = false,
                 Text = text + suffix,
-                SessionId = reset ? null : payload.SessionId,
+                SessionId = lost ? null : payload.SessionId,
+                SessionLost = lost,
                 CostUsd = payload.TotalCostUsd,
                 Duration = duration,
                 Usage = payload.ToRunUsage(),
@@ -358,7 +308,7 @@ public sealed class ClaudeRunner(
             };
         }
 
-        return new ClaudeRunResult
+        return new AgentRunResult
         {
             Ok = true,
             Text = text,
@@ -367,20 +317,6 @@ public sealed class ClaudeRunner(
             Duration = duration,
             Usage = payload.ToRunUsage(),
         };
-    }
-
-    /// <summary>
-    /// Сбрасывает активную сессию проекта, если по тексту ошибки видно, что CLI не нашёл
-    /// сессию для --resume. Возвращает, произошёл ли сброс.
-    /// </summary>
-    private bool ResetSession(string projectPath, string resumedSessionId, string? details)
-    {
-        if (!LooksLikeMissingSession(details, resumedSessionId)) return false;
-        if (!store.TrySetSessionId(projectPath, null, onlyIfActive: resumedSessionId)) return false;
-
-        logger.LogWarning("Сессия {SessionId} сброшена: CLI не нашёл её для --resume", resumedSessionId);
-        audit.Write(AuditEvent.Now(AuditKinds.SessionReset, "CLI не нашёл сессию для --resume", project: projectPath, session: resumedSessionId));
-        return true;
     }
 
     /// <summary>
@@ -431,11 +367,6 @@ public sealed class ClaudeRunner(
             logger.LogWarning(ex, "Не удалось завершить процесс claude");
         }
     }
-
-    /// <summary>Переменная окружения, перекрывающая секцию Gateway конфига, в любой из двух форм.</summary>
-    private static bool IsGatewaySetting(string name) =>
-        name.StartsWith($"{GatewayOptions.SectionName}__", StringComparison.OrdinalIgnoreCase)
-        || name.StartsWith($"{GatewayOptions.SectionName}:", StringComparison.OrdinalIgnoreCase);
 
     private static string Truncate(string value, int max) =>
         value.Length <= max ? value : value[..max] + "…";

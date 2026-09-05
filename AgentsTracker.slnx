@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/AgentsTracker.Agents.Abstractions/AgentsTracker.Agents.Abstractions.csproj" />
+    <Project Path="src/AgentsTracker.Agents.Claude/AgentsTracker.Agents.Claude.csproj" />
     <Project Path="src/AgentsTracker.Gateway/AgentsTracker.Gateway.csproj" />
   </Folder>
 </Solution>

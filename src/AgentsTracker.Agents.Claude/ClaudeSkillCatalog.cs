@@ -1,25 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
-namespace AgentsTracker.Gateway.Infrastructure.Claude;
-
-/// <summary>Один скилл (или пользовательская команда) Claude Code: что набрать и что оно делает.</summary>
-/// <param name="Command">Полная слэш-команда: <c>/name</c> или <c>/plugin:name</c>.</param>
-/// <param name="Description">Первое предложение описания — для списка.</param>
-/// <param name="Details">Описание целиком (в разумных пределах) — для карточки скилла.</param>
-/// <param name="Group">Откуда скилл: «Проект», «Личные» или имя плагина.</param>
-/// <param name="ArgumentHint">Подсказка по аргументам из frontmatter; null — подсказки нет.</param>
-/// <param name="Flags">Флаги вида <c>--name</c>, упомянутые в тексте скилла; пусто — не нашлось.</param>
-public sealed record SkillInfo(
-    string Command,
-    string Description,
-    string Details,
-    string Group,
-    string? ArgumentHint,
-    IReadOnlyList<string> Flags);
-
-/// <summary>Группа скиллов с общим источником: папка проекта, личная папка или плагин.</summary>
-public sealed record SkillGroup(string Name, IReadOnlyList<SkillInfo> Skills);
+namespace AgentsTracker.Agents.Claude;
 
 /// <summary>
 /// Собирает скиллы и команды Claude Code с диска: у CLI нет способа их перечислить
@@ -27,9 +9,9 @@ public sealed record SkillGroup(string Name, IReadOnlyList<SkillInfo> Skills);
 /// Смотрит туда же, куда сам CLI: <c>.claude/skills</c> и <c>.claude/commands</c> проекта
 /// и пользователя, плюс включённые плагины из <c>~/.claude/plugins</c>.
 /// Встроенные скиллы CLI (<c>/code-review</c> и подобные) на диске не лежат — они берутся
-/// из <c>Gateway:BuiltInSkills</c>.
+/// из <c>Gateway:Claude:BuiltInSkills</c>.
 /// </summary>
-public sealed class SkillCatalog(IOptions<GatewayOptions> options, ILogger<SkillCatalog> logger)
+public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<ClaudeSkillCatalog> logger) : IAgentSkillCatalog
 {
     public const string BuiltInGroup = "Встроенные";
 
@@ -62,7 +44,7 @@ public sealed class SkillCatalog(IOptions<GatewayOptions> options, ILogger<Skill
         lock (_gate)
         {
             if (_cache is { } cached
-                && ProjectCatalog.Same(cached.Project, projectPath)
+                && SamePath(cached.Project, projectPath)
                 && DateTimeOffset.UtcNow - cached.At < CacheFor)
                 return cached.Groups;
 
@@ -71,6 +53,17 @@ public sealed class SkillCatalog(IOptions<GatewayOptions> options, ILogger<Skill
             return groups;
         }
     }
+
+    public string EmptyHint =>
+        "Ничего не найдено: ни <code>.claude/skills</code> в проекте и профиле, "
+        + "ни включённых плагинов в <code>~/.claude/plugins</code>, ни строк "
+        + "в <code>Gateway:Claude:BuiltInSkills</code>.";
+
+    /// <summary>Тот же проект с точностью до регистра и хвостового слэша: ключ кэша — путь, как его прислал хост.</summary>
+    private static bool SamePath(string left, string right) =>
+        string.Equals(
+            Path.GetFullPath(left).TrimEnd('\\', '/'), Path.GetFullPath(right).TrimEnd('\\', '/'),
+            StringComparison.OrdinalIgnoreCase);
 
     private List<SkillGroup> Scan(string projectPath)
     {
@@ -111,7 +104,7 @@ public sealed class SkillCatalog(IOptions<GatewayOptions> options, ILogger<Skill
 
             if (command.Length < 2 || command[0] != '/' || command.Any(char.IsWhiteSpace))
             {
-                logger.LogWarning("Gateway:BuiltInSkills — пропущена строка без команды: {Line}", line);
+                logger.LogWarning("Gateway:Claude:BuiltInSkills — пропущена строка без команды: {Line}", line);
                 continue;
             }
 

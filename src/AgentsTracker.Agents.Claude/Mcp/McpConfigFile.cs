@@ -1,8 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
 
-namespace AgentsTracker.Gateway.Infrastructure.Mcp;
+namespace AgentsTracker.Agents.Claude.Mcp;
 
 /// <summary>
 /// Пишет --mcp-config для запусков CLI: единственный HTTP-сервер «tg» с инструментом подтверждений.
@@ -11,7 +12,7 @@ namespace AgentsTracker.Gateway.Infrastructure.Mcp;
 /// а сам токен не попадает в URL и в логи запросов.
 ///
 /// Конструктор классический, а не primary: файл нужно записать ровно один раз при создании
-/// singleton-а, до того как Program.cs смонтирует эндпоинт.
+/// singleton-а, до того как хост смонтирует эндпоинт.
 /// </summary>
 public sealed class McpConfigFile : IDisposable
 {
@@ -24,11 +25,11 @@ public sealed class McpConfigFile : IDisposable
 
     private readonly ILogger<McpConfigFile> _logger;
 
-    public McpConfigFile(IOptions<GatewayOptions> options, ILogger<McpConfigFile> logger)
+    public McpConfigFile(AgentHost host, ILogger<McpConfigFile> logger)
     {
         _logger = logger;
         Token = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
-        Path = System.IO.Path.Combine(AppPaths.DataDirectory, "mcp-gateway.json");
+        Path = System.IO.Path.Combine(host.DataDirectory, "mcp-gateway.json");
 
         var config = new
         {
@@ -37,7 +38,7 @@ public sealed class McpConfigFile : IDisposable
                 [ServerName] = new
                 {
                     type = "http",
-                    url = $"http://127.0.0.1:{options.Value.McpPort}{RoutePattern}",
+                    url = $"http://127.0.0.1:{host.LocalPort}{RoutePattern}",
                     headers = new Dictionary<string, string> { ["Authorization"] = $"Bearer {Token}" },
                 },
             },

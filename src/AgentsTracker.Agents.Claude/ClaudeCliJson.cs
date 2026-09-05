@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace AgentsTracker.Gateway.Infrastructure.Claude;
+namespace AgentsTracker.Agents.Claude;
 
 /// <summary>Payload от <c>claude -p --output-format json</c>.</summary>
 public sealed class ClaudeCliJson

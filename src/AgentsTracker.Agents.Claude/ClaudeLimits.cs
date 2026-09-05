@@ -3,23 +3,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 
-namespace AgentsTracker.Gateway.Infrastructure.Claude;
-
-/// <summary>
-/// Окно лимита тарифа. Key — ключ из ответа: <c>five_hour</c>, <c>seven_day</c> или
-/// <c>seven_day_&lt;модель&gt;</c>. Used — доля израсходованного окна, 0..1.
-/// </summary>
-public sealed record LimitWindow(string Key, double Used, DateTimeOffset? ResetsAt);
-
-/// <summary>Состояние кредитов («extra usage») на аккаунте: их шлюз тратить не даёт.</summary>
-public sealed record ExtraUsageState(bool IsEnabled, double? UsedCredits);
-
-/// <summary>Ответ эндпоинта лимитов либо причина, по которой его не удалось получить.</summary>
-public sealed record LimitsSnapshot(
-    IReadOnlyList<LimitWindow> Windows,
-    ExtraUsageState? ExtraUsage,
-    DateTimeOffset FetchedUtc,
-    string? Error);
+namespace AgentsTracker.Agents.Claude;
 
 /// <summary>
 /// Следит за лимитами тарифа Claude (пятичасовое окно, недельные — общее и на отдельные модели)
@@ -30,7 +14,7 @@ public sealed record LimitsSnapshot(
 /// не отдаёт ни командой, ни флагом. Токен подписки не запрашивается заново: берётся тот,
 /// что Claude Code держит в <c>~/.claude/.credentials.json</c> (или из CLAUDE_CODE_OAUTH_TOKEN).
 /// </summary>
-public sealed class ClaudeLimits(IOptions<GatewayOptions> options, ILogger<ClaudeLimits> logger)
+public sealed class ClaudeLimits(AgentHost host, ILogger<ClaudeLimits> logger) : IAgentLimits
 {
     private const string Endpoint = "https://api.anthropic.com/api/oauth/usage";
 
@@ -45,7 +29,7 @@ public sealed class ClaudeLimits(IOptions<GatewayOptions> options, ILogger<Claud
 
     private static readonly CultureInfo Russian = CultureInfo.GetCultureInfo("ru-RU");
 
-    private readonly HttpClient _http = CreateClient(options.Value);
+    private readonly HttpClient _http = CreateClient(host);
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     private LimitsSnapshot? _cached;
@@ -368,11 +352,11 @@ public sealed class ClaudeLimits(IOptions<GatewayOptions> options, ILogger<Claud
 
     private static string Truncate(string value) => value.Length <= 500 ? value : value[..500] + "…";
 
-    private static HttpClient CreateClient(GatewayOptions options)
+    private static HttpClient CreateClient(AgentHost host)
     {
         var handler = new HttpClientHandler();
 
-        if (options.Proxy is { Length: > 0 } proxy)
+        if (host.Proxy is { Length: > 0 } proxy)
         {
             handler.Proxy = new WebProxy(proxy);
             handler.UseProxy = true;
