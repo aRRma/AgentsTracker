@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text;
 using AgentsTracker.Gateway.Infrastructure.Telegram;
 using Telegram.Bot;
 using Telegram.Bot.Types;
@@ -78,6 +79,19 @@ public sealed class ApprovalBroker(
         {
             _choices.TryRemove(id, out _);
         }
+    }
+
+    /// <summary>
+    /// Отправляет в активный чат текст файлом — полный вход инструмента, который в карточку
+    /// не влез. Идёт перед карточкой: решение принимается по тому, что прочитано целиком.
+    /// </summary>
+    public async Task SendAttachmentAsync(string fileName, string content, CancellationToken ct)
+    {
+        var chatId = ActiveChatId
+            ?? throw new InvalidOperationException("Нет активного чата — некому показать запрос.");
+
+        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+        await bot.SendDocument(chatId, InputFile.FromStream(stream, fileName), cancellationToken: ct);
     }
 
     /// <summary>Просит пользователя прислать свободный текст следующим сообщением.</summary>

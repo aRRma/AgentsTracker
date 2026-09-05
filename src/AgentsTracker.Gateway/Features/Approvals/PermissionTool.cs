@@ -56,7 +56,8 @@ public sealed class PermissionTool(
         var toolInput = input ?? Read(arguments, "input", "tool_input", "toolInput");
         var suggestions = Read(arguments, "permission_suggestions", "suggestions", "permissionSuggestions");
 
-        logger.LogInformation("Запрос разрешения: {Tool} {Key}", toolName, Highlight(toolName, toolInput) ?? "");
+        // Только начало: полная команда может нести токен в заголовке curl, ему в логе не место.
+        logger.LogInformation("Запрос разрешения: {Tool} {Key}", toolName, Text.Preview(Highlight(toolName, toolInput) ?? ""));
 
         try
         {
@@ -108,7 +109,12 @@ public sealed class PermissionTool(
         };
 
         var card = ApprovalCardRenderer.Render(toolName, input, signature, persistable, store.ProjectPath);
-        var (key, userId) = await broker.AskChoiceAsync(card, buttons, ct);
+
+        // Обрезанный вход — файлом до карточки: разрешать команду, хвост которой не виден, нельзя.
+        if (card.FullText is { } fullText)
+            await broker.SendAttachmentAsync($"{SafeFileName(toolName)}-input.txt", fullText, ct);
+
+        var (key, userId) = await broker.AskChoiceAsync(card.Html, buttons, ct);
         Audit(AuditKinds.Approval, signature, key, userId);
 
         switch (key)
@@ -129,6 +135,13 @@ public sealed class PermissionTool(
             default:
                 return Deny("Пользователь отклонил это действие.");
         }
+    }
+
+    /// <summary>Имя инструмента приходит от CLI: в имени файла ему нечего делать с разделителями путей.</summary>
+    private static string SafeFileName(string toolName)
+    {
+        var safe = new string(toolName.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
+        return Text.Clip(safe.Length == 0 ? "tool" : safe, 40);
     }
 
     /// <summary>Самое важное поле инструмента — команда или путь к файлу.</summary>
