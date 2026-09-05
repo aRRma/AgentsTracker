@@ -104,6 +104,7 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 | `/stop` | прервать текущую задачу |
 | `/status` | что сейчас происходит |
 | `/project` | сменить папку проекта |
+| `/skills` | скиллы Claude Code: список и запуск кнопкой |
 | `/sessions` | переключиться на другой разговор |
 | `/model` | сменить модель (opus / sonnet / haiku) |
 | `/effort` | сколько модели думать (low … max) |

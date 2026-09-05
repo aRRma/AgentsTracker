@@ -16,6 +16,7 @@ public sealed class SettingsModule : IFeatureModule
         services.AddSingleton<ISettingsScreen, ModeScreen>();
         services.AddSingleton<ISettingsScreen, SessionsScreen>();
         services.AddSingleton<ISettingsScreen, UsageScreen>();
+        services.AddSingleton<ISettingsScreen, SkillsScreen>();
 
         services.AddSingleton<SettingsMenuCoordinator>();
         services.AddSingleton<ITelegramCallbackHandler, SettingsCallbackHandler>();

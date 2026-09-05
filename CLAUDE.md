@@ -63,6 +63,8 @@ Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.
 Новый экран настроек: класс с `ISettingsScreen` в `Features/Settings/Screens/`, регистрация
 в `SettingsModule`, кнопка на него — в `RootScreen`. `RenderAsync(ct)` асинхронный ради
 лимитов; экрану без сети хватает `Task.FromResult(Render())` поверх приватного `Render()`.
+`Apply` получает и `chatId`: экран может ставить задачу в очередь `ChatWorker` (так делает
+`SkillsScreen`), и ответ агента должен уйти в чат нажавшего.
 
 Новая фича: папка в `Features/` с `*Module` и запись в списке модулей в `Program.cs`.
 `ChatModule` там остаётся последним.
@@ -80,7 +82,8 @@ src/AgentsTracker.Gateway/
                         ClaudeRunResult, GatewayState (state.json), AuditEvent
   Infrastructure/       техническая часть, общая для фич (AppPaths, GatewayInfrastructure — в корне):
     Configuration/      GatewayOptions (+Validate), ProjectCatalog (Normalize/Same — ключ сессий)
-    Claude/             ClaudeRunner (процесс claude -p), ClaudeCliLocator, ClaudeLimits, ClaudeCliJson
+    Claude/             ClaudeRunner (процесс claude -p), ClaudeCliLocator, ClaudeLimits, ClaudeCliJson,
+                        SkillCatalog — скиллы и команды с диска (.claude проекта/профиля, плагины)
     Mcp/                McpConfigFile — mcp-gateway.json, токен в заголовке, RoutePattern = /mcp
     State/              SessionStore — state.json под Lock, атомарная запись
     Telegram/           TelegramBotService (роутер), TelegramClientFactory, TelegramFormatter,
@@ -92,7 +95,7 @@ src/AgentsTracker.Gateway/
   Features/             вертикальные слайсы, каждый со своим *Module:
     Approvals/          PermissionTool (MCP), ApprovalBroker, ApprovalCardRenderer, /rules; единственный HTTP-эндпоинт
     Chat/               ChatWorker (очередь и запуск), /new /stop /status, fallback-обработчик текста
-    Settings/           SettingsMenuCoordinator + Screens/*Screen (ISettingsScreen), /menu /model /effort /mode …
+    Settings/           SettingsMenuCoordinator + Screens/*Screen (ISettingsScreen), /menu /model /effort /mode /skills …
     Help/               /start /help
     Audit/              /audit
 ```
@@ -202,6 +205,15 @@ CLI зовёт инструмент с `{"tool_name":…,"input":{…},"tool_use
 чем влезает в клавиатуру: без папок и страниц они были бы недостижимы. `Grouped` сохраняет
 порядок `List` — текущий проект первым в своей группе, а после выбора страница сбрасывается
 на первую: иначе на длинном списке отметка `▶` оказывалась бы за пределами экрана.
+
+Экран «Скиллы» (`/skills`) — `SkillCatalog` собирает то же, что видит CLI: `skills/*/SKILL.md` и
+`commands/*.md` из `.claude` проекта и `~/.claude`, плюс из `installPath` включённых плагинов
+(`~/.claude/plugins/installed_plugins.json`, флаги `enabledPlugins` наслаиваются: профиль →
+`.claude/settings.json` → `settings.local.json`; плагин без записи считается включённым).
+Плагинные скиллы зовутся `/плагин:имя`; `user-invocable: false` в списке нет. Frontmatter
+разбирается плоско, без YAML-библиотеки. Встроенные команды CLI (`/init` и т.п.) на диске не
+лежат и в список не попадают. Нажатие кнопки кладёт в очередь ровно слэш-команду без аргументов —
+как если бы её набрали в чате; скилл с `argument-hint` показывается с подсказкой.
 
 Сессии Claude Code ключуются **нормализованным путём проекта** (`ProjectCatalog.Normalize`):
 `--resume` работает только в той папке, где сессия создана. Переключение репозитория из меню меняет

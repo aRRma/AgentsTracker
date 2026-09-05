@@ -40,6 +40,7 @@ public static class GatewayInfrastructure
             services.AddSingleton<McpConfigFile>();
             services.AddSingleton<ClaudeRunner>();
             services.AddSingleton<ClaudeLimits>();
+            services.AddSingleton<SkillCatalog>();
 
             services.AddSingleton<ITelegramBotClient>(sp =>
                 TelegramClientFactory.Create(sp.GetRequiredService<IOptions<GatewayOptions>>().Value));

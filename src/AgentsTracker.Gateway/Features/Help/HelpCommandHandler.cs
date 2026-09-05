@@ -21,6 +21,7 @@ public sealed class HelpCommandHandler(ITelegramBotClient bot) : ITelegramComman
         /status — где работаем и что происходит
         /sessions — список сессий проекта и переключение между ними
         /project — сменить репозиторий
+        /skills — какие скиллы есть и запуск их кнопкой
         /usage — расход: запуски, токены, стоимость
         /model sonnet|opus|haiku|reset — сменить модель
         /effort low|medium|high|xhigh|max|reset — сколько модели думать
@@ -29,6 +30,6 @@ public sealed class HelpCommandHandler(ITelegramBotClient bot) : ITelegramComman
         /audit [n] — последние записи журнала действий
 
         Когда агенту нужно разрешение, придёт карточка с кнопками.
-        Слэш-команды самого Claude Code (например /review) передаются агенту как есть.
+        Слэш-команды самого Claude Code (например /init или /plugin:skill) передаются агенту как есть.
         """;
 }
