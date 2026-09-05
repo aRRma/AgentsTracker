@@ -40,7 +40,7 @@ public sealed class ProjectScreen(
 
     public string Key => "proj";
 
-    public string? Apply(string argument, long userId)
+    public string? Apply(string argument, long userId, long chatId)
     {
         if (argument == UpArgument)
         {

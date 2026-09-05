@@ -14,7 +14,7 @@ public sealed class SettingsCommandHandler(
     IOptions<GatewayOptions> options) : ITelegramCommandHandler
 {
     public IReadOnlyCollection<string> Commands { get; } =
-        ["/menu", "/settings", "/project", "/sessions", "/usage", "/model", "/effort", "/mode"];
+        ["/menu", "/settings", "/project", "/sessions", "/usage", "/skills", "/model", "/effort", "/mode"];
 
     public async Task HandleAsync(TelegramCommandContext context, CancellationToken ct)
     {
@@ -38,12 +38,16 @@ public sealed class SettingsCommandHandler(
                 await menu.OpenAsync(chatId, ct, "usage");
                 break;
 
+            case "/skills":
+                await menu.OpenAsync(chatId, ct, "skills");
+                break;
+
             case "/effort" when argument.Length == 0:
                 await menu.OpenAsync(chatId, ct, "effort");
                 break;
 
             case "/effort":
-                await bot.SendMessage(chatId, ChangeEffort(argument, userId), cancellationToken: ct);
+                await bot.SendMessage(chatId, ChangeEffort(argument, userId, chatId), cancellationToken: ct);
                 break;
 
             case "/model" when argument.Length == 0:
@@ -53,7 +57,7 @@ public sealed class SettingsCommandHandler(
                 break;
 
             case "/model":
-                await bot.SendMessage(chatId, menu.Screen("model").Apply(argument, userId) ?? "", cancellationToken: ct);
+                await bot.SendMessage(chatId, menu.Screen("model").Apply(argument, userId, chatId) ?? "", cancellationToken: ct);
                 break;
 
             case "/mode" when argument.Length == 0:
@@ -61,18 +65,18 @@ public sealed class SettingsCommandHandler(
                 break;
 
             case "/mode":
-                await bot.SendMessage(chatId, ChangeMode(argument, userId), cancellationToken: ct);
+                await bot.SendMessage(chatId, ChangeMode(argument, userId, chatId), cancellationToken: ct);
                 break;
         }
     }
 
     /// <summary>Меняет уровень усилий модели. Применяется со следующего запуска.</summary>
-    private string ChangeEffort(string argument, long userId)
+    private string ChangeEffort(string argument, long userId, long chatId)
     {
         if (!argument.Equals("reset", StringComparison.OrdinalIgnoreCase) && EffortLevels.Resolve(argument) is null)
             return $"Не знаю уровень «{argument}». Доступно: {string.Join(", ", EffortLevels.All)}, reset.";
 
-        menu.Screen("effort").Apply(argument, userId);
+        menu.Screen("effort").Apply(argument, userId, chatId);
 
         // Именно выбранный из чата уровень, а не действующий: после reset он null,
         // и ответ должен говорить про конфиг, а не повторять его значение как выбранное.
@@ -103,11 +107,11 @@ public sealed class SettingsCommandHandler(
     /// Меняет уровень доступа агента к машине. Новый режим ложится в state.json
     /// и переживает перезапуск; текущий запуск доигрывает со старым.
     /// </summary>
-    private string ChangeMode(string argument, long userId)
+    private string ChangeMode(string argument, long userId, long chatId)
     {
         if (argument.Equals("reset", StringComparison.OrdinalIgnoreCase))
         {
-            menu.Screen("mode").Apply(argument, userId);
+            menu.Screen("mode").Apply(argument, userId, chatId);
             return $"Уровень доступа: {options.Value.PermissionMode} — как в конфиге. Применится со следующего запуска.";
         }
 
@@ -125,7 +129,7 @@ public sealed class SettingsCommandHandler(
 
         if (mode == store.EffectivePermissionMode) return $"Уже {PermissionModes.Describe(mode)}.";
 
-        var toast = menu.Screen("mode").Apply(mode, userId) ?? "";
+        var toast = menu.Screen("mode").Apply(mode, userId, chatId) ?? "";
         var note = toast.Contains("со следующего запуска") ? "\nТекущий запуск доигрывает со старым уровнем." : "";
         return $"🔐 {PermissionModes.Describe(mode)}.\nПрименится со следующего запуска.{note}";
     }

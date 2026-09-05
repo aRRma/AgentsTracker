@@ -11,7 +11,7 @@ public sealed class ModelScreen(SessionStore store, IAuditLog audit) : ISettings
 
     public string Key => "model";
 
-    public string? Apply(string argument, long userId)
+    public string? Apply(string argument, long userId, long chatId)
     {
         var model = argument.Equals("reset", StringComparison.OrdinalIgnoreCase) ? null : argument;
         var previous = store.Model;

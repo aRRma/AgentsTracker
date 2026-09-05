@@ -45,7 +45,7 @@ public sealed class SettingsMenuCoordinator(
         }
 
         // Применяем выбор до отрисовки: экран должен показать уже новое состояние.
-        var toast = argument.Length > 0 ? Screen(screen).Apply(argument, query.From.Id) : null;
+        var toast = argument.Length > 0 ? Screen(screen).Apply(argument, query.From.Id, query.Message?.Chat.Id ?? query.From.Id) : null;
         await AnswerAsync(query.Id, toast, ct);
 
         if (query.Message is not { } message) return;

@@ -17,7 +17,7 @@ public sealed class UsageScreen(SessionStore store, ClaudeLimits limits, IAuditL
 
     public string Key => "usage";
 
-    public string? Apply(string argument, long userId)
+    public string? Apply(string argument, long userId, long chatId)
     {
         if (argument != "reset") return null;
 

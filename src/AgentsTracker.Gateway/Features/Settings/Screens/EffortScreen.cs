@@ -9,7 +9,7 @@ public sealed class EffortScreen(SessionStore store, IAuditLog audit) : ISetting
 {
     public string Key => "effort";
 
-    public string? Apply(string argument, long userId)
+    public string? Apply(string argument, long userId, long chatId)
     {
         var reset = argument.Equals("reset", StringComparison.OrdinalIgnoreCase);
         var effort = reset ? null : EffortLevels.Resolve(argument);

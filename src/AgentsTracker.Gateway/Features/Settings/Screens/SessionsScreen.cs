@@ -13,7 +13,7 @@ public sealed class SessionsScreen(SessionStore store, ChatWorker worker, IAudit
 
     public string Key => "sess";
 
-    public string? Apply(string argument, long userId)
+    public string? Apply(string argument, long userId, long chatId)
     {
         var project = store.ProjectPath;
         var previous = store.SessionId;

@@ -11,7 +11,7 @@ public sealed class RootScreen(SessionStore store, ChatWorker worker, ClaudeLimi
 {
     public string Key => "root";
 
-    public string? Apply(string argument, long userId) => null;
+    public string? Apply(string argument, long userId, long chatId) => null;
 
     public async Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(CancellationToken ct)
     {
@@ -40,7 +40,7 @@ public sealed class RootScreen(SessionStore store, ChatWorker worker, ClaudeLimi
             [Button("📁 Репозиторий", "proj"), Button("🧠 Модель", "model")],
             [Button("🎚 Effort", "effort"), Button("🔐 Доступ", "mode")],
             [Button("🧵 Сессии", "sess"), Button("📊 Статистика", "usage")],
-            [Button("✖️ Закрыть", "close")],
+            [Button("🧩 Скиллы", "skills"), Button("✖️ Закрыть", "close")],
         ]);
 
         return (html, keyboard);

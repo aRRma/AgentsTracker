@@ -14,7 +14,7 @@ public sealed class ModeScreen(
 {
     public string Key => "mode";
 
-    public string? Apply(string argument, long userId)
+    public string? Apply(string argument, long userId, long chatId)
     {
         var previous = store.EffectivePermissionMode;
 
