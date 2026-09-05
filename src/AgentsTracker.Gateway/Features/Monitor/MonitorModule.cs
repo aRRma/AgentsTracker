@@ -95,7 +95,7 @@ public sealed class MonitorModule : IFeatureModule
         Effort = store.EffectiveEffort,
         worker.IsBusy,
         live.Run,
-        live.Approval,
+        live.Approvals,
         live.Queue,
         Budget = new { Daily = store.DailyBudgetUsd, SpentToday = store.SpentToday() },
     };
@@ -145,9 +145,13 @@ public sealed class MonitorModule : IFeatureModule
         };
     }
 
-    /// <summary>По дням, «;» и BOM — так файл открывается в Excel на русской локали без мастера импорта.</summary>
+    /// <summary>
+    /// По дням, «;», BOM и десятичная запятая — так файл открывается в Excel на русской локали
+    /// без мастера импорта, и дробные читаются числами, а не текстом.
+    /// </summary>
     private static byte[] Csv(UsageStats usage)
     {
+        var ru = CultureInfo.GetCultureInfo("ru-RU");
         var sb = new StringBuilder();
         sb.AppendLine("Дата;Запусков;Ходов;Стоимость USD;Входные токены;Выходные токены;Кэш чтение;Кэш запись;Минут");
 
@@ -156,12 +160,12 @@ public sealed class MonitorModule : IFeatureModule
             sb.Append(day).Append(';')
               .Append(t.Runs).Append(';')
               .Append(t.Turns).Append(';')
-              .Append(t.CostUsd.ToString("0.####", CultureInfo.InvariantCulture)).Append(';')
+              .Append(t.CostUsd.ToString("0.####", ru)).Append(';')
               .Append(t.InputTokens).Append(';')
               .Append(t.OutputTokens).Append(';')
               .Append(t.CacheReadTokens).Append(';')
               .Append(t.CacheWriteTokens).Append(';')
-              .Append((t.DurationMs / 60000.0).ToString("0.#", CultureInfo.InvariantCulture))
+              .Append((t.DurationMs / 60000.0).ToString("0.#", ru))
               .AppendLine();
         }
 

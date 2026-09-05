@@ -182,13 +182,13 @@
 
     const dot = $('dot'); dot.className = 'dot';
     let text = 'Свободен';
-    if (s.approval) { dot.classList.add('wait'); text = 'Ждёт подтверждения'; }
+    const approvals = s.approvals || [];
+    if (approvals.length) { dot.classList.add('wait'); text = approvals.length > 1 ? `Ждёт подтверждений: ${approvals.length}` : 'Ждёт подтверждения'; }
     else if (s.run) { dot.classList.add('busy'); text = 'Работает · ' + fmtDur(Date.now() - new Date(s.run.startedUtc)); }
     $('state-text').textContent = text;
 
-    $('approval').innerHTML = s.approval
-      ? `<div class="approval">⏳ <b>${esc(s.approval.tool)}</b> <span class="mono">${esc(s.approval.brief)}</span><div class="muted">ждёт ${fmtDur(Date.now() - new Date(s.approval.sinceUtc))} — кнопки в Telegram</div></div>`
-      : '';
+    $('approval').innerHTML = approvals.map(a =>
+      `<div class="approval">⏳ <b>${esc(a.tool)}</b> <span class="mono">${esc(a.brief)}</span><div class="muted">ждёт ${fmtDur(Date.now() - new Date(a.sinceUtc))} — кнопки в Telegram</div></div>`).join('');
 
     if (s.run) {
       const r = s.run, st = r.start;

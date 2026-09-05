@@ -75,12 +75,12 @@ public sealed class PermissionTool(
         catch (TimeoutException)
         {
             logger.LogWarning("Разрешение на {Tool} не получено за отведённое время", toolName);
-            Audit(AuditKinds.Approval, BuildSignature(toolName, toolInput), "timeout");
+            Audit(AuditKinds.Approval, AuditSignature(toolName, toolInput, brief), "timeout");
             return Deny("Пользователь не ответил на запрос разрешения за отведённое время. Не повторяйте это действие.");
         }
         catch (OperationCanceledException)
         {
-            Audit(AuditKinds.Approval, BuildSignature(toolName, toolInput), "cancel");
+            Audit(AuditKinds.Approval, AuditSignature(toolName, toolInput, brief), "cancel");
             return Deny("Запрос отменён пользователем.");
         }
         catch (Exception ex)
@@ -142,6 +142,15 @@ public sealed class PermissionTool(
                 return Deny("Пользователь отклонил это действие.");
         }
     }
+
+    /// <summary>
+    /// Что писать в аудит о неотвеченном запросе. У вопроса сигнатуры нет — правил «всегда» для
+    /// него не бывает, а полный текст вопроса в журнале лишний: хватает того же превью, что в логе.
+    /// </summary>
+    private static string AuditSignature(string toolName, JsonElement? input, string brief) =>
+        string.Equals(toolName, AskUserQuestionTool, StringComparison.Ordinal)
+            ? $"{toolName}({brief})"
+            : BuildSignature(toolName, input);
 
     /// <summary>Имя инструмента приходит от CLI: в имени файла ему нечего делать с разделителями путей.</summary>
     private static string SafeFileName(string toolName)

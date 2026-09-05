@@ -18,11 +18,15 @@ public sealed record CurrentRun(
 public sealed record PendingApproval(DateTimeOffset SinceUtc, string Tool, string Brief);
 
 /// <summary>Всё живое состояние шлюза одним снимком — его получает страница монитора.</summary>
+/// <param name="Approvals">
+/// Все открытые карточки, а не одна: CLI зовёт инструмент параллельно на несколько tool_use
+/// одного хода, и одно поле после ответа на первую показывало бы «свободен» при висящей второй.
+/// </param>
 public sealed record LiveState(
     DateTimeOffset GatewayStartedUtc,
     string? CliVersion,
     CurrentRun? Run,
-    PendingApproval? Approval,
+    IReadOnlyList<PendingApproval> Approvals,
     IReadOnlyList<string> Queue);
 
 /// <summary>
@@ -39,12 +43,12 @@ public sealed class RunMonitor
     private readonly List<Channel<LiveState>> _subscribers = [];
     private readonly List<string> _queue = [];
     private readonly List<StepRecord> _steps = [];
+    private readonly Dictionary<long, PendingApproval> _approvals = [];
 
     private RunStart? _run;
     private DateTimeOffset _runStartedUtc;
     private int _toolCalls;
-    private int _droppedSteps;
-    private PendingApproval? _approval;
+    private long _nextApprovalId;
 
     public DateTimeOffset StartedUtc { get; } = DateTimeOffset.UtcNow;
 
@@ -68,7 +72,6 @@ public sealed class RunMonitor
         _run = start;
         _runStartedUtc = DateTimeOffset.UtcNow;
         _toolCalls = 0;
-        _droppedSteps = 0;
         _steps.Clear();
     });
 
@@ -77,10 +80,7 @@ public sealed class RunMonitor
     {
         _toolCalls++;
         _steps.Add(new StepRecord(DateTimeOffset.UtcNow, activity.Description, activity.Nested));
-
-        if (_steps.Count <= StepsKept) return;
-        _steps.RemoveAt(0);
-        _droppedSteps++;
+        if (_steps.Count > StepsKept) _steps.RemoveAt(0);
     });
 
     /// <summary>Снимает текущий запуск и возвращает его — ChatWorker кладёт число вызовов в историю.</summary>
@@ -99,8 +99,9 @@ public sealed class RunMonitor
     /// <summary>Отмечает ожидание карточки; Dispose снимает отметку, как бы ожидание ни кончилось.</summary>
     public IDisposable Approval(string tool, string brief)
     {
-        Change(() => _approval = new PendingApproval(DateTimeOffset.UtcNow, tool, brief));
-        return new Scope(() => Change(() => _approval = null));
+        long id = 0;
+        Change(() => _approvals[id = ++_nextApprovalId] = new PendingApproval(DateTimeOffset.UtcNow, tool, brief));
+        return new Scope(() => Change(() => _approvals.Remove(id)));
     }
 
     /// <summary>
@@ -142,10 +143,14 @@ public sealed class RunMonitor
         }
     }
 
-    private LiveState Build() => new(StartedUtc, CliVersion, BuildRun(), _approval, [.. _queue]);
+    private LiveState Build() => new(
+        StartedUtc, CliVersion, BuildRun(), [.. _approvals.OrderBy(p => p.Key).Select(p => p.Value)], [.. _queue]);
 
+    // Отброшенные шаги не считаем отдельно: список обрезан до StepsKept, разница со счётчиком вызовов и есть они.
     private CurrentRun? BuildRun() =>
-        _run is { } run ? new CurrentRun(run, _runStartedUtc, _toolCalls, [.. _steps], _droppedSteps) : null;
+        _run is { } run
+            ? new CurrentRun(run, _runStartedUtc, _toolCalls, [.. _steps], Math.Max(0, _toolCalls - StepsKept))
+            : null;
 
     private sealed class Scope(Action onDispose) : IDisposable
     {

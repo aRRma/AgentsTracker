@@ -122,8 +122,8 @@ public sealed partial class ChatWorker(
         var startedUtc = DateTimeOffset.UtcNow;
         var project = store.ProjectPath;
         var model = store.EffectiveModel;
-        monitor.RunStarted(new RunStart(
-            project, session, Text.Preview(prompt.Text), model, store.EffectivePermissionMode, store.EffectiveEffort));
+        var preview = Text.Preview(prompt.Text);
+        monitor.RunStarted(new RunStart(project, session, preview, model, store.EffectivePermissionMode, store.EffectiveEffort));
 
         ClaudeRunResult result;
         CurrentRun? finished;
@@ -159,7 +159,7 @@ public sealed partial class ChatWorker(
             StartedUtc = startedUtc,
             ProjectPath = project,
             SessionId = result.SessionId ?? session,
-            Prompt = Text.Preview(prompt.Text),
+            Prompt = preview,
             Model = model,
             Outcome = outcome,
             DurationMs = (long)result.Duration.TotalMilliseconds,
