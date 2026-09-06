@@ -1,3 +1,4 @@
+using System.Net;
 using AgentsTracker.Agents.Claude.Mcp;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -25,6 +26,25 @@ public sealed class ClaudeAgentModule : IAgentBackendModule
         services.AddSingleton<IAgentBackend, ClaudeBackend>();
         services.AddSingleton<IAgentLimits, ClaudeLimits>();
         services.AddSingleton<IAgentSkillCatalog, ClaudeSkillCatalog>();
+
+        // Клиент лимитов — через фабрику: обработчик ротируется, DNS не залипает на весь срок
+        // жизни процесса. BaseAddress не задаём намеренно — полный URL в запросе.
+        // Стандартный конвейер устойчивости: ретраи с backoff, таймауты, предохранитель.
+        services.AddHttpClient(ClaudeLimits.HttpClientName, http =>
+            {
+                http.DefaultRequestHeaders.UserAgent.ParseAdd(ClaudeLimits.UserAgent);
+            })
+            .ConfigurePrimaryHttpMessageHandler(sp =>
+            {
+                var handler = new SocketsHttpHandler();
+                if (sp.GetRequiredService<AgentHost>().Proxy is { Length: > 0 } proxy)
+                {
+                    handler.Proxy = new WebProxy(proxy);
+                    handler.UseProxy = true;
+                }
+                return handler;
+            })
+            .AddStandardResilienceHandler();
 
         services
             .AddMcpServer()

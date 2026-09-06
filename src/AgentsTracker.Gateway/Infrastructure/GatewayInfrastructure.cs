@@ -4,7 +4,6 @@ using AgentsTracker.Gateway.Infrastructure.Modules;
 using AgentsTracker.Gateway.Infrastructure.Monitoring;
 using AgentsTracker.Gateway.Infrastructure.Security;
 using AgentsTracker.Gateway.Infrastructure.Telegram;
-using Telegram.Bot;
 
 namespace AgentsTracker.Gateway.Infrastructure;
 
@@ -40,8 +39,7 @@ public static class GatewayInfrastructure
             services.AddSingleton<RingBufferLog>();
             services.AddSingleton<ILoggerProvider, RingBufferLoggerProvider>();
 
-            services.AddSingleton<ITelegramBotClient>(sp =>
-                TelegramClientFactory.Create(sp.GetRequiredService<IOptions<GatewayOptions>>().Value));
+            services.AddTelegramBotClient();
             services.AddSingleton<BotCommandsCatalog>();
             services.AddSingleton<StartupNotice>();
             services.AddHostedService<TelegramBotService>();
