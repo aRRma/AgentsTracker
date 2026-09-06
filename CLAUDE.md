@@ -67,6 +67,12 @@ Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.
 `Microsoft.AspNetCore: Warning` тонул в логах каждого запроса. Проверка: строка
 `Content root path` в логе указывает на `bin\Debug\net10.0`.
 
+Перед `Stop-Process` — `git status`: в `main` параллельно работают другие сессии, и их
+незакоммиченные правки могут не собираться, когда шлюз уже остановлен. Выход — собрать
+чистый HEAD в ту же папку: `git worktree add --detach ..\AgentsTracker-run HEAD`,
+`dotnet build ..\AgentsTracker-run\src\AgentsTracker.Gateway -o src\AgentsTracker.Gateway\bin\Debug\net10.0`,
+`git worktree remove --force ..\AgentsTracker-run`, запуск как обычно.
+
 Если сессия запущена самим шлюзом (из Telegram), перезапускать его из неё нельзя: Stop-Process
 убьёт и текущий `claude -p`, а отложенный перезапуск через `schtasks /SC ONCE` не срабатывал.
 Дайте пользователю три команды выше и попросите выполнить руками. Симптом того, что шлюз
@@ -346,8 +352,17 @@ callback, что у `RunStatusMessage`) и финиш; `OperatorConsole` — о�
 
 `index.html` — один файл без сборки и CDN, `EmbeddedResource` в csproj: publish не зависит
 от папки рядом с exe. Все данные из `/api/*` в camelCase (`JsonSerializerDefaults.Web`),
-кириллица без `\u`-экранирования. Проверять пробным экземпляром без остановки рабочего
-шлюза нельзя — см. «Команды».
+кириллица без `\u`-экранирования. Пробный экземпляр без остановки рабочего шлюза
+невозможен (см. «Команды»), но вёрстку смотреть можно: копия `index.html` в scratchpad с
+`<script src="mock.js">` перед основным скриптом — мок подменяет `window.fetch` и
+`window.EventSource` (`?state=run|wait|idle`); раздать `python -m http.server <порт>
+--bind 127.0.0.1` из scratchpad (Playwright не открывает `file://`), тёмная тема —
+`page.emulateMedia({colorScheme:'dark'})`. Скриншоты Playwright падают в корень
+репозитория — убрать `*.png` и `.playwright-mcp/` до коммита.
+Строй страницы — «рейка + лента»: слева фиксированная рейка (лампа состояния, секундомер,
+факты, сегментные шкалы лимитов), справа лента шагов и разделы через линии, без карточек;
+цвет только как сигнал (`--run`, `--wait`, `--fail`), шрифты `Bahnschrift` / `Segoe UI` /
+`Cascadia Mono` — есть в Windows, CDN нет.
 
 ### `--permission-mode` передаётся всегда
 
