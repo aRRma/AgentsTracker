@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using Polly.CircuitBreaker;
+using Polly.Timeout;
 
 namespace AgentsTracker.Agents.Claude;
 
@@ -14,22 +16,28 @@ namespace AgentsTracker.Agents.Claude;
 /// не отдаёт ни командой, ни флагом. Токен подписки не запрашивается заново: берётся тот,
 /// что Claude Code держит в <c>~/.claude/.credentials.json</c> (или из CLAUDE_CODE_OAUTH_TOKEN).
 /// </summary>
-public sealed class ClaudeLimits(AgentHost host, ILogger<ClaudeLimits> logger) : IAgentLimits
+public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<ClaudeLimits> logger) : IAgentLimits
 {
+    /// <summary>Имя клиента в <see cref="IHttpClientFactory"/>; регистрирует <see cref="ClaudeAgentModule"/>.</summary>
+    public const string HttpClientName = "claude-limits";
+
+    /// <summary>
+    /// Полный URL в каждом запросе, не BaseAddress: адрес разрешается на момент вызова, а не
+    /// на момент сборки клиента, и не переживает переезд эндпоинта.
+    /// </summary>
     private const string Endpoint = "https://api.anthropic.com/api/oauth/usage";
 
     /// <summary>
     /// Эндпоинт отвечает 429 всем, кто не похож на CLI, поэтому User-Agent обязателен.
     /// Версия здесь фиксированная: узнать настоящую можно только запуском claude --version.
     /// </summary>
-    private const string UserAgent = "claude-code/2.1.260 (external, cli)";
+    public const string UserAgent = "claude-code/2.1.260 (external, cli)";
 
     /// <summary>Кэш: у эндпоинта жёсткий rate limit, частый опрос упирается в 429.</summary>
     private static readonly TimeSpan CacheFor = TimeSpan.FromMinutes(3);
 
     private static readonly CultureInfo Russian = CultureInfo.GetCultureInfo("ru-RU");
 
-    private readonly HttpClient _http = CreateClient(host);
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     private LimitsSnapshot? _cached;
@@ -211,7 +219,10 @@ public sealed class ClaudeLimits(AgentHost host, ILogger<ClaudeLimits> logger) :
 
         try
         {
-            using var response = await _http.SendAsync(request, ct);
+            // Клиент на каждый запрос: фабрика меняет обработчик по расписанию, и смена DNS
+            // у api.anthropic.com не требует перезапуска шлюза. Ретраи и таймауты — в конвейере.
+            using var http = httpClientFactory.CreateClient(HttpClientName);
+            using var response = await http.SendAsync(request, ct);
             var body = await response.Content.ReadAsStringAsync(ct);
 
             if (!response.IsSuccessStatusCode)
@@ -237,9 +248,16 @@ public sealed class ClaudeLimits(AgentHost host, ILogger<ClaudeLimits> logger) :
             return new LimitsSnapshot(
                 [], null, DateTimeOffset.UtcNow, $"не достучаться до api.anthropic.com: {ex.Message}");
         }
+        // Таймаут конвейера — TimeoutRejectedException, разомкнутый предохранитель —
+        // BrokenCircuitException; своя отмена сюда не попадает.
+        catch (Exception ex) when (ex is TimeoutRejectedException or BrokenCircuitException)
+        {
+            logger.LogWarning(ex, "Эндпоинт лимитов недоступен");
+            return new LimitsSnapshot([], null, DateTimeOffset.UtcNow, "api.anthropic.com не отвечает");
+        }
         catch (TaskCanceledException) when (!ct.IsCancellationRequested)
         {
-            return new LimitsSnapshot([], null, DateTimeOffset.UtcNow, "api.anthropic.com не ответил за 15 секунд");
+            return new LimitsSnapshot([], null, DateTimeOffset.UtcNow, "api.anthropic.com не ответил вовремя");
         }
     }
 
@@ -368,20 +386,4 @@ public sealed class ClaudeLimits(AgentHost host, ILogger<ClaudeLimits> logger) :
         key.StartsWith("five_hour", StringComparison.Ordinal) || key.StartsWith("seven_day", StringComparison.Ordinal);
 
     private static string Truncate(string value) => value.Length <= 500 ? value : value[..500] + "…";
-
-    private static HttpClient CreateClient(AgentHost host)
-    {
-        var handler = new HttpClientHandler();
-
-        if (host.Proxy is { Length: > 0 } proxy)
-        {
-            handler.Proxy = new WebProxy(proxy);
-            handler.UseProxy = true;
-        }
-
-        var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(15) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
-
-        return http;
-    }
 }
