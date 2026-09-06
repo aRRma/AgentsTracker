@@ -6,7 +6,11 @@ using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
 
-/// <summary>Сессии текущего проекта: переключение, новая, очистка списка.</summary>
+/// <summary>
+/// Сессии текущего проекта: какая активна, переключение, новая, остановка идущего запуска,
+/// очистка списка. «Остановить» здесь же: запуск и сессия — одна рабочая единица,
+/// и прерывать его удобнее там, где видно, в какой ветке он идёт.
+/// </summary>
 public sealed class SessionsScreen(SessionStore store, IAgentBackend agent, ChatWorker worker, IAuditLog audit) : ISettingsScreen
 {
     private const int MaxShown = 8;
@@ -23,6 +27,14 @@ public sealed class SessionsScreen(SessionStore store, IAgentBackend agent, Chat
             store.SetSessionId(null);
             audit.Changed(store, userId, "session", previous, "новая");
             return "Следующее сообщение начнёт новую сессию";
+        }
+
+        if (argument == "stop")
+        {
+            var stopped = worker.Stop();
+            audit.Write(AuditEvent.Now(AuditKinds.Gateway, "/stop", userId, chatId, project, previous,
+                stopped ? "stopped" : "idle"));
+            return stopped ? "Остановлено" : "Сейчас ничего не выполняется";
         }
 
         if (argument == "clear")
@@ -50,6 +62,14 @@ public sealed class SessionsScreen(SessionStore store, IAgentBackend agent, Chat
         var project = store.ProjectPath;
         var active = store.SessionId;
         var sessions = store.SessionsFor(project).Take(MaxShown).ToArray();
+        var current = sessions.FirstOrDefault(s => s.Id == active);
+        var busy = worker.IsBusy;
+
+        var now = busy
+            ? $"🟢 <b>Выполняется</b>{(current is null ? "" : $" в «{E(current.Title)}»")}, в очереди: {worker.QueueLength}"
+            : current is null
+                ? "⚪ Активной сессии нет — следующее сообщение начнёт новую"
+                : $"▶ Активна: <b>{E(current.Title)}</b>";
 
         var body = sessions.Length == 0
             ? "<i>Сессий ещё нет — первое сообщение создаст первую.</i>"
@@ -59,6 +79,8 @@ public sealed class SessionsScreen(SessionStore store, IAgentBackend agent, Chat
 
         var html = $"""
             🧵 <b>Сессии</b> — {E(Path.GetFileName(project))}
+
+            {now}
 
             {body}
 
@@ -71,7 +93,9 @@ public sealed class SessionsScreen(SessionStore store, IAgentBackend agent, Chat
             .Chunk(4)
             .ToList();
 
-        buttons.Add([Button("🆕 Новая", "sess:new"), Button("🗑 Очистить", "sess:clear")]);
+        buttons.Add(busy
+            ? [Button("🆕 Новая", "sess:new"), Button("🛑 Остановить", "sess:stop")]
+            : [Button("🆕 Новая", "sess:new"), Button("🗑 Очистить", "sess:clear")]);
         buttons.Add([BackButton]);
 
         return (html, new InlineKeyboardMarkup(buttons));

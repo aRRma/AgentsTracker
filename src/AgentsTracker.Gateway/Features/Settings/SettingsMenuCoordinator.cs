@@ -28,8 +28,15 @@ public sealed class SettingsMenuCoordinator(
     {
         var target = Screen(screen);
         target.Open(userId);
-        var (html, keyboard) = await target.RenderAsync(userId, ct);
-        await bot.SendMessage(chatId, html, ParseMode.Html, replyMarkup: keyboard, cancellationToken: ct);
+
+        Message? message = null;
+        await foreach (var (html, keyboard) in target.RenderFramesAsync(userId, ct))
+        {
+            if (message is null)
+                message = await bot.SendMessage(chatId, html, ParseMode.Html, replyMarkup: keyboard, cancellationToken: ct);
+            else
+                await EditQuietlyAsync(message, html, keyboard, ct);
+        }
     }
 
     public async Task HandleCallbackAsync(CallbackQuery query, CancellationToken ct)
@@ -59,8 +66,8 @@ public sealed class SettingsMenuCoordinator(
 
         if (query.Message is not { } message) return;
 
-        var (html, keyboard) = await target.RenderAsync(userId, ct);
-        await EditQuietlyAsync(message, html, keyboard, ct);
+        await foreach (var (html, keyboard) in target.RenderFramesAsync(userId, ct))
+            await EditQuietlyAsync(message, html, keyboard, ct);
     }
 
     private async Task EditQuietlyAsync(
@@ -72,10 +79,31 @@ public sealed class SettingsMenuCoordinator(
                 message.Chat.Id, message.MessageId, html, ParseMode.Html,
                 replyMarkup: keyboard, cancellationToken: ct);
         }
+        catch (ApiRequestException ex) when (ex.Parameters?.RetryAfter is { } seconds and <= 5)
+        {
+            // Кадры анимации идут чаще, чем Telegram позволяет править одно сообщение; выждав,
+            // повторяем один раз — иначе шкала осталась бы застывшей на промежуточном кадре.
+            await Task.Delay(TimeSpan.FromSeconds(seconds), ct);
+            await EditOnceAsync(message, html, keyboard, ct);
+        }
         catch (ApiRequestException ex)
         {
             // «message is not modified» — нормальный исход: пользователь нажал ту же кнопку.
             logger.LogDebug(ex, "Не удалось перерисовать меню");
+        }
+    }
+
+    private async Task EditOnceAsync(Message message, string html, InlineKeyboardMarkup keyboard, CancellationToken ct)
+    {
+        try
+        {
+            await bot.EditMessageText(
+                message.Chat.Id, message.MessageId, html, ParseMode.Html,
+                replyMarkup: keyboard, cancellationToken: ct);
+        }
+        catch (ApiRequestException ex)
+        {
+            logger.LogDebug(ex, "Не удалось перерисовать меню после паузы");
         }
     }
 

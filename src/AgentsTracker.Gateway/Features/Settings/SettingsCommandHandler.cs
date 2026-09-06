@@ -6,7 +6,7 @@ namespace AgentsTracker.Gateway.Features.Settings;
 
 /// <summary>
 /// Команды, открывающие меню, и их текстовые формы: <c>/mode plan</c>, <c>/model sonnet</c>,
-/// <c>/effort high</c> применяются через тот же экран, что и кнопка, — логика одна.
+/// <c>/effort high</c> применяются через тот же экран «Агент», что и кнопки, — логика одна.
 /// </summary>
 public sealed class SettingsCommandHandler(
     ITelegramBotClient bot,
@@ -17,7 +17,7 @@ public sealed class SettingsCommandHandler(
     IOptions<GatewayOptions> options) : ITelegramCommandHandler
 {
     public IReadOnlyCollection<string> Commands { get; } =
-        ["/menu", "/settings", "/project", "/sessions", "/usage", "/skills", "/model", "/effort", "/mode"];
+        ["/menu", "/settings", "/status", "/sessions", "/model", "/effort", "/mode", "/skills", "/project", "/usage"];
 
     public async Task HandleAsync(TelegramCommandContext context, CancellationToken ct)
     {
@@ -29,42 +29,38 @@ public sealed class SettingsCommandHandler(
                 await menu.OpenAsync(chatId, userId, ct);
                 break;
 
-            case "/project":
-                await menu.OpenAsync(chatId, userId, ct, "proj");
+            case "/status":
+                await menu.OpenAsync(chatId, userId, ct, "status");
                 break;
 
             case "/sessions":
                 await menu.OpenAsync(chatId, userId, ct, "sess");
                 break;
 
-            case "/usage":
-                await menu.OpenAsync(chatId, userId, ct, "usage");
-                break;
-
             case "/skills":
                 await menu.OpenAsync(chatId, userId, ct, "skills");
                 break;
 
-            case "/effort" when argument.Length == 0:
-                await menu.OpenAsync(chatId, userId, ct, "effort");
+            case "/project":
+                await menu.OpenAsync(chatId, userId, ct, "proj");
                 break;
 
-            case "/effort":
-                await bot.SendMessage(chatId, ChangeEffort(argument, userId, chatId), cancellationToken: ct);
+            case "/usage":
+                await menu.OpenAsync(chatId, userId, ct, "usage");
                 break;
 
             // Команда без аргумента открывает тот же экран с кнопками, что и меню: набирать
             // значение руками после подсказки текстом — лишний шаг с телефона.
-            case "/model" when argument.Length == 0:
-                await menu.OpenAsync(chatId, userId, ct, "model");
+            case "/model" or "/effort" or "/mode" when argument.Length == 0:
+                await menu.OpenAsync(chatId, userId, ct, "agent");
                 break;
 
             case "/model":
-                await bot.SendMessage(chatId, menu.Screen("model").Apply(argument, userId, chatId) ?? "", cancellationToken: ct);
+                await bot.SendMessage(chatId, Agent().Apply("model:" + argument, userId, chatId) ?? "", cancellationToken: ct);
                 break;
 
-            case "/mode" when argument.Length == 0:
-                await menu.OpenAsync(chatId, userId, ct, "mode");
+            case "/effort":
+                await bot.SendMessage(chatId, ChangeEffort(argument, userId, chatId), cancellationToken: ct);
                 break;
 
             case "/mode":
@@ -72,6 +68,8 @@ public sealed class SettingsCommandHandler(
                 break;
         }
     }
+
+    private ISettingsScreen Agent() => menu.Screen("agent");
 
     /// <summary>Меняет уровень усилий модели. Применяется со следующего запуска.</summary>
     private string ChangeEffort(string argument, long userId, long chatId)
@@ -82,7 +80,7 @@ public sealed class SettingsCommandHandler(
         if (!argument.Equals("reset", StringComparison.OrdinalIgnoreCase) && setting.Resolve(argument) is null)
             return $"Не знаю уровень «{argument}». Доступно: {string.Join(", ", setting.Selectable)}, reset.";
 
-        menu.Screen("effort").Apply(argument, userId, chatId);
+        Agent().Apply("effort:" + argument, userId, chatId);
 
         // Именно выбранный из чата уровень, а не действующий: после reset он null,
         // и ответ должен говорить про конфиг, а не повторять его значение как выбранное.
@@ -99,7 +97,7 @@ public sealed class SettingsCommandHandler(
     {
         if (argument.Equals("reset", StringComparison.OrdinalIgnoreCase))
         {
-            menu.Screen("mode").Apply(argument, userId, chatId);
+            Agent().Apply("mode:reset", userId, chatId);
             return $"🔐 Режим: {options.Value.PermissionMode} — как в конфиге. Применится со следующего запуска.";
         }
 
@@ -118,7 +116,7 @@ public sealed class SettingsCommandHandler(
 
         if (mode == store.EffectivePermissionMode) return $"Уже {setting.Describe(mode)}.";
 
-        menu.Screen("mode").Apply(mode, userId, chatId);
+        Agent().Apply("mode:" + mode, userId, chatId);
 
         // Занятость спрашиваем у воркера, а не угадываем по тексту тоста экрана.
         var note = worker.IsBusy ? "\nТекущий запуск доигрывает со старым режимом." : "";

@@ -21,17 +21,19 @@ public sealed class HelpCommandHandler(ITelegramBotClient bot, IAgentBackend age
         return $"""
             Шлюз к {agent.DisplayName}. Пишите задачу обычным сообщением.
 
-            /menu — настройки кнопками: репозиторий, модель, сессии, статистика
+            /menu — настройки кнопками: статус, сессии, агент, скиллы, репозиторий
 
+            /status — где работаем, что происходит, остаток тарифа шкалами
+            /sessions — сессии проекта: активная, переключение, новая, остановка запуска
             /new — начать новую сессию (сбросить контекст)
             /stop — прервать текущий запуск
-            /status — где работаем и что происходит
-            /sessions — список сессий проекта и переключение между ними
-            /project — сменить репозиторий
-            /skills — какие скиллы есть и запуск их кнопкой
-            /usage — расход: запуски, токены, стоимость
-            /model {string.Join('|', caps.Model.Selectable)}|reset — сменить модель{effort}
+
+            /model {string.Join('|', caps.Model.Selectable)}|reset — сменить модель; без аргумента — экран «Агент»{effort}
             /mode {string.Join('|', caps.PermissionMode.Selectable)}|reset — режим работы агента
+
+            /skills — какие скиллы есть и запуск их кнопкой
+            /project — сменить репозиторий
+            /usage — остаток тарифа и расход: запуски, токены
             /rules — что разрешено без вопросов; /rules del <n>, /rules clear
             /audit [n] — последние записи журнала действий
 

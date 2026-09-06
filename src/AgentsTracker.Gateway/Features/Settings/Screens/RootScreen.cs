@@ -1,11 +1,14 @@
 using AgentsTracker.Gateway.Features.Chat;
-using AgentsTracker.Gateway.Infrastructure.Telegram;
 using Telegram.Bot.Types.ReplyMarkups;
 using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
 
-/// <summary>Корневой экран: сводка и переходы к остальным.</summary>
+/// <summary>
+/// Корневой экран: сводка и переходы к остальным. Кнопки — по частоте использования:
+/// сначала то, что нужно в каждой сессии (статус, сессии), потом настройки агента и
+/// скиллы, в конце репозиторий и статистика — их трогают раз в день.
+/// </summary>
 public sealed class RootScreen(SessionStore store, IAgentBackend agent, ChatWorker worker, IAgentLimits limits) : ISettingsScreen
 {
     public string Key => "root";
@@ -21,9 +24,10 @@ public sealed class RootScreen(SessionStore store, IAgentBackend agent, ChatWork
         // а упереться можно только в окно лимита.
         var plan = await limits.ShortSummaryAsync(store.EffectiveModel, ct);
 
-        // Строку и кнопку effort показываем только агенту, который его понимает.
-        var hasEffort = agent.Capabilities.Effort is not null;
-        var effort = hasEffort ? $"\n🎚 Effort: <b>{E(store.EffectiveEffort ?? "по умолчанию")}</b>" : "";
+        // Строку effort показываем только агенту, который его понимает.
+        var effort = agent.Capabilities.Effort is not null
+            ? $"\n🎚 Effort: <b>{E(store.EffectiveEffort ?? "по умолчанию")}</b>"
+            : "";
 
         var html = $"""
             ⚙️ <b>Настройки</b> — {E(agent.DisplayName)}
@@ -39,10 +43,10 @@ public sealed class RootScreen(SessionStore store, IAgentBackend agent, ChatWork
 
         var keyboard = new InlineKeyboardMarkup(
         [
-            [Button("📁 Репозиторий", "proj"), Button("🧠 Модель", "model")],
-            hasEffort ? [Button("🎚 Effort", "effort"), Button("🔐 Режим", "mode")] : [Button("🔐 Режим", "mode")],
-            [Button("🧵 Сессии", "sess"), Button("📊 Статистика", "usage")],
-            [Button("🧩 Скиллы", "skills"), Button("✖️ Закрыть", "close")],
+            [Button("📟 Статус", "status"), Button("🧵 Сессии", "sess")],
+            [Button("🤖 Агент: модель · effort · режим", "agent")],
+            [Button("🧩 Скиллы", "skills"), Button("📁 Репозиторий", "proj")],
+            [Button("📊 Статистика", "usage"), Button("✖️ Закрыть", "close")],
         ]);
 
         return (html, keyboard);

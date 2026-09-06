@@ -10,13 +10,12 @@ public sealed class SettingsModule : IFeatureModule
     public void AddServices(IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton<ISettingsScreen, RootScreen>();
-        services.AddSingleton<ISettingsScreen, ProjectScreen>();
-        services.AddSingleton<ISettingsScreen, ModelScreen>();
-        services.AddSingleton<ISettingsScreen, EffortScreen>();
-        services.AddSingleton<ISettingsScreen, ModeScreen>();
+        services.AddSingleton<ISettingsScreen, StatusScreen>();
         services.AddSingleton<ISettingsScreen, SessionsScreen>();
-        services.AddSingleton<ISettingsScreen, UsageScreen>();
+        services.AddSingleton<ISettingsScreen, AgentScreen>();
         services.AddSingleton<ISettingsScreen, SkillsScreen>();
+        services.AddSingleton<ISettingsScreen, ProjectScreen>();
+        services.AddSingleton<ISettingsScreen, UsageScreen>();
 
         services.AddSingleton<SettingsMenuCoordinator>();
         services.AddSingleton<SkillLauncher>();

@@ -4,25 +4,18 @@ using Telegram.Bot;
 
 namespace AgentsTracker.Gateway.Features.Chat;
 
-/// <summary>/new, /stop, /status — управление текущим запуском и сессией.</summary>
+/// <summary>/new, /stop — управление текущим запуском и сессией. /status живёт в меню: это экран.</summary>
 public sealed class ChatCommandHandler(
     ITelegramBotClient bot,
     ChatWorker worker,
     SessionStore store,
-    IAgentBackend agent,
-    IAgentLimits limits,
     IAuditLog audit) : ITelegramCommandHandler
 {
-    public IReadOnlyCollection<string> Commands { get; } = ["/new", "/stop", "/status"];
+    public IReadOnlyCollection<string> Commands { get; } = ["/new", "/stop"];
 
     public async Task HandleAsync(TelegramCommandContext context, CancellationToken ct)
     {
-        var reply = context.Command switch
-        {
-            "/new" => StartNew(context),
-            "/stop" => Stop(context),
-            _ => await BuildStatusAsync(ct),
-        };
+        var reply = context.Command == "/new" ? StartNew(context) : Stop(context);
 
         await bot.SendMessage(context.ChatId, reply, cancellationToken: ct);
     }
@@ -41,30 +34,5 @@ public sealed class ChatCommandHandler(
         audit.Write(AuditEvent.Now(AuditKinds.Gateway, "/stop", context.UserId, context.ChatId, store.ProjectPath, store.SessionId,
             stopped ? "stopped" : "idle"));
         return stopped ? "🛑 Остановлено." : "Сейчас ничего не выполняется.";
-    }
-
-    private async Task<string> BuildStatusAsync(CancellationToken ct)
-    {
-        var state = store.Snapshot();
-
-        // Остаток тарифа, а не потраченные доллары: подписку деньгами не мерить,
-        // а запуск упирается именно в окно лимита.
-        var plan = await limits.ShortSummaryAsync(store.EffectiveModel, ct);
-
-        // Строка effort только у агента, который его понимает, — как в меню.
-        var effort = agent.Capabilities.Effort is null
-            ? ""
-            : $"\n🎚 Effort: {store.EffectiveEffort ?? "по умолчанию"}{(state.Effort is null ? " (из конфига)" : "")}";
-
-        return $"""
-            📁 {store.ProjectPath}
-            🧠 {store.EffectiveModel ?? "модель по умолчанию"}{effort}
-            🔐 Режим: {store.EffectivePermissionMode}{(state.PermissionMode is null ? " (из конфига)" : "")}
-            🧵 Сессия: {store.SessionId ?? "новая (ещё не создана)"}
-            🚦 Осталось: {(plan.Length > 0 ? plan : "—")}
-            ⚙️ {(worker.IsBusy ? "выполняется" : "простаивает")}, в очереди: {worker.QueueLength}
-            🕔 Последняя активность: {state.LastActivityUtc?.ToLocalTime().ToString("g") ?? "—"}
-            ♾ Правил «всегда» в этом проекте: {store.AlwaysAllowRules().Count}
-            """;
     }
 }

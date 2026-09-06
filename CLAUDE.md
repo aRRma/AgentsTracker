@@ -92,13 +92,21 @@ git worktree add ..\AgentsTracker-<задача> -b <ветка>   # main ост
 Новая команда чата: класс с `ITelegramCommandHandler` в папке нужной фичи + строка
 `services.AddSingleton<ITelegramCommandHandler, …>()` в её `*Module` + запись в
 `BotCommandsCatalog` (кнопка «Меню») и в тексте `HelpCommandHandler`. Занятые команды:
-`/start /help` (Help), `/new /stop /status` (Chat), `/rules` (Approvals), `/audit` (Audit),
-`/menu /settings /model /effort /mode /project /sessions /skills /usage` (Settings).
+`/start /help` (Help), `/new /stop` (Chat), `/rules` (Approvals), `/audit` (Audit),
+`/menu /settings /status /sessions /model /effort /mode /skills /project /usage` (Settings).
+Порядок в `BotCommandsCatalog`, справке и клавиатуре `RootScreen` один и тот же — по частоте:
+статус и сессии, потом агент и скиллы, в конце репозиторий, статистика и журналы.
 Остальные слэш-команды уходят в CLI как есть.
 
 Новый экран настроек: класс с `ISettingsScreen` в `Features/Settings/Screens/`, регистрация
 в `SettingsModule`, кнопка на него — в `RootScreen`. `RenderAsync(userId, ct)` асинхронный ради
 лимитов; экрану без сети хватает `Task.FromResult(Render())` поверх приватного `Render()`.
+`RenderFramesAsync` — необязательные кадры: координатор показывает первый и правит сообщение
+на каждом следующем, паузу держит экран. Так `StatusScreen` «заполняет» шкалы лимитов
+(`LimitBars`, три кадра по 350 мс); чаще нельзя — Telegram отвечает 429 на частые правки,
+координатор один раз пережидает `RetryAfter`, чтобы шкала не застыла на промежуточном кадре.
+Модель, effort и режим — один экран `AgentScreen` с аргументами `model:…`, `effort:…`,
+`mode:…`; текстовые `/model x`, `/effort x`, `/mode x` идут через его же `Apply`.
 `Apply` получает и `chatId`: экран может ставить задачу в очередь `ChatWorker` (так делает
 `SkillsScreen`), и ответ агента должен уйти в чат нажавшего. Экран со списком держит позицию
 (группа, страница, карточка) в `ScreenNavigation` — на каждого пользователя, потому что экраны
@@ -169,8 +177,9 @@ src/AgentsTracker.Gateway/
     Approvals/          OperatorConsole (IOperatorConsole: карточки, правила «всегда», вопросы, аудит),
                         ApprovalBroker, ApprovalCardRenderer, /rules
     Chat/               ChatWorker (очередь, запуск через IAgentBackend, сессии), RunStatusMessage (живой статус),
-                        /new /stop /status, fallback-обработчик текста
-    Settings/           SettingsMenuCoordinator + Screens/*Screen (ISettingsScreen), /menu /model /effort /mode /skills …
+                        /new /stop, fallback-обработчик текста
+    Settings/           SettingsMenuCoordinator + Screens/*Screen (ISettingsScreen), LimitBars (шкалы остатка),
+                        /menu /status /sessions /model /effort /mode /skills /project /usage
     Help/               /start /help
     Audit/              /audit
     Monitor/            веб-монитор: MonitorModule (эндпоинты /, /api/*) + index.html (вшит в сборку)
@@ -432,8 +441,8 @@ Id новой сессии выдаёт **шлюз** (`AgentRunRequest.NewSessio
 3. `IAgentLimits` (`ClaudeLimits`) — тарифные окна (`five_hour`, `seven_day`, `seven_day_<модель>`).
 
 Суммы в чат не выводятся: на подписке они ничего не значат, а кредиты запрещены. Вместо них
-`IAgentLimits.ShortSummaryAsync` (сводка меню, `/status`) и `RemainingLinesAsync` (экран
-статистики) показывают остаток окон. Ради этого `ISettingsScreen.RenderAsync` асинхронный —
+`IAgentLimits.ShortSummaryAsync` (строка в сводке меню) и `ViewAsync` (окна с остатком 0..1 и
+подписью сброса — шкалы `LimitBars` на экранах `/status` и статистики) показывают остаток окон. Ради этого `ISettingsScreen.RenderAsync` асинхронный —
 отрисовка ходит в сеть, пусть и через кэш. Оценка стоимости продолжает копиться в `state.json`:
 на ней держится `DailyBudgetUsd`, единственное место, где суммы ещё видны.
 

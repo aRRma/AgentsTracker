@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Telegram.Bot.Types.ReplyMarkups;
 
 namespace AgentsTracker.Gateway.Features.Settings;
@@ -5,7 +6,7 @@ namespace AgentsTracker.Gateway.Features.Settings;
 /// <summary>Один экран меню настроек: что показать и что сделать по нажатию.</summary>
 public interface ISettingsScreen
 {
-    /// <summary>Ключ экрана в callback_data: «root», «proj», «model», «effort», «mode», «sess», «usage», «skills».</summary>
+    /// <summary>Ключ экрана в callback_data: «root», «status», «sess», «agent», «skills», «proj», «usage».</summary>
     string Key { get; }
 
     /// <summary>
@@ -14,6 +15,17 @@ public interface ISettingsScreen
     /// у каждого пользователя своя страница.
     /// </summary>
     Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(long userId, CancellationToken ct);
+
+    /// <summary>
+    /// Кадры отрисовки: координатор показывает первый и правит сообщение на каждом следующем.
+    /// Паузу между кадрами держит сам экран. По умолчанию кадр один — обычный экран;
+    /// «Статус» заполняет шкалы лимитов за несколько кадров.
+    /// </summary>
+    async IAsyncEnumerable<(string Html, InlineKeyboardMarkup Keyboard)> RenderFramesAsync(
+        long userId, [EnumeratorCancellation] CancellationToken ct)
+    {
+        yield return await RenderAsync(userId, ct);
+    }
 
     /// <summary>
     /// Применяет аргумент нажатия (или текстовой команды). Возвращает короткий текст для
