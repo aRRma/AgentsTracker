@@ -175,13 +175,29 @@ public sealed class ClaudeLimits(AgentHost host, ILogger<ClaudeLimits> logger) :
         _ => key,
     };
 
+    /// <summary>
+    /// «через 2 ч 10 мин», как в панели usage самого Claude Code: относительное время
+    /// отвечает на вопрос «сколько ждать», абсолютное заставляет считать в уме.
+    /// Точное время — в скобках, оно нужно, чтобы спланировать возвращение.
+    /// </summary>
     private static string Moment(DateTimeOffset moment)
     {
+        var left = moment - DateTimeOffset.UtcNow;
         var local = moment.ToLocalTime();
 
-        return local.Date == DateTimeOffset.Now.Date
-            ? local.ToString("в HH:mm", Russian)
-            : local.ToString("d MMMM в HH:mm", Russian);
+        var relative = left switch
+        {
+            { TotalMinutes: < 1 } => "меньше минуты",
+            { TotalHours: < 1 } => $"{(int)left.TotalMinutes} мин",
+            { TotalDays: < 1 } => $"{(int)left.TotalHours} ч {left.Minutes} мин",
+            _ => $"{(int)left.TotalDays} д {left.Hours} ч",
+        };
+
+        var absolute = local.Date == DateTimeOffset.Now.Date
+            ? local.ToString("HH:mm", Russian)
+            : local.ToString("d MMMM HH:mm", Russian);
+
+        return $"через {relative} ({absolute})";
     }
 
     private async Task<LimitsSnapshot> FetchAsync(CancellationToken ct)

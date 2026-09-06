@@ -439,6 +439,11 @@
   }
   $('run-project').onchange = renderRuns;
 
+  const fmtUntil = iso => {
+    const ms = new Date(iso) - Date.now(), m = Math.floor(ms / 60000), h = Math.floor(m / 60), d = Math.floor(h / 24);
+    const rel = m < 1 ? 'меньше минуты' : h < 1 ? `${m} мин` : d < 1 ? `${h} ч ${m % 60} мин` : `${d} д ${h % 24} ч`;
+    return `через ${rel} (${fmtWhen(iso)})`;
+  };
   const windowName = k => k === 'five_hour' ? '5 часов' : k === 'seven_day' ? 'неделя' : 'неделя, ' + k.replace(/^(seven_day|five_hour)_/, '').replace(/_/g, ' ');
   async function loadLimits() {
     const l = await get('/api/limits', null);
@@ -446,10 +451,11 @@
     $('limits-note').textContent = l.fetchedUtc ? 'на ' + fmtTime(l.fetchedUtc) : '';
     if (l.error) { $('limits-body').innerHTML = `<span class="muted">${esc(l.error)}</span>`; return; }
     const live = l.windows.filter(w => !w.resetsAt || new Date(w.resetsAt) > new Date());
+    // Остаток, а не расход, и те же пороги, что у лампочек в чате (LimitBars): 40% и 15%.
     $('limits-body').innerHTML = live.map(w => {
-      const used = Math.min(100, Math.round(w.used * 100));
-      return `<div class="gauge"><div class="cap"><span>${esc(windowName(w.key))}</span><i>${used}%${w.resetsAt ? `, сброс ${fmtWhen(w.resetsAt)}` : ''}</i></div>
-        <div class="meter"><i class="${used >= 100 ? 'bad' : used > 80 ? 'warn' : ''}" style="width:${used}%"></i></div></div>`;
+      const left = Math.max(0, Math.floor((1 - w.used) * 100));
+      return `<div class="gauge"><div class="cap"><span>${esc(windowName(w.key))}</span><i>${left}% осталось${w.resetsAt ? `, сброс ${fmtUntil(w.resetsAt)}` : ''}</i></div>
+        <div class="meter"><i class="${left < 15 ? 'bad' : left < 40 ? 'warn' : ''}" style="width:${left}%"></i></div></div>`;
     }).join('') || '<span class="empty">окон нет</span>';
     if (l.extraUsageEnabled) $('limits-body').innerHTML += '<div class="mark Warning">на аккаунте включены кредиты (extra usage)</div>';
   }

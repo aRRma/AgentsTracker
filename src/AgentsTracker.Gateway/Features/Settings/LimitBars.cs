@@ -48,7 +48,7 @@ internal static class LimitBars
         var percent = ((int)Math.Floor(shown * 100)).ToString(CultureInfo.InvariantCulture);
         var reset = gauge.ResetLabel is { } label ? $", сброс {E(label)}" : "";
 
-        return $"{Lamp(gauge.Remaining)} <code>{bar}</code> {percent}% · {E(gauge.Title)}{reset}";
+        return $"{Lamp(gauge.Remaining)} <code>{bar}</code> {percent}% осталось · {E(gauge.Title)}{reset}";
     }
 
     /// <summary>Цвет — по итоговому остатку, а не по кадру: лампочка не должна мигать во время заполнения.</summary>
