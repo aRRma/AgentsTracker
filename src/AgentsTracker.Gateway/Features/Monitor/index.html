@@ -5,185 +5,204 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AgentsTracker — монитор</title>
 <style>
-  /* Светлая тема — основная: на пульт смотрят днём, с соседнего экрана. */
+  /* Fluent 2 «Mica» + приёмы Grafana/Elastic: панели-карточки, stat-плитки со спарклайнами,
+     bar gauge для лимитов, лента шагов как поток логов, навигация по разделам в рейке. */
   :root {
-    color-scheme: light dark; /* иначе скроллбары и <select> в тёмной теме остаются светлыми */
-    --paper: #f2f3f0;      /* фон страницы: холодная приборная бумага */
-    --surface: #ffffff;    /* поле рейки и таблиц */
-    --ink: #1a1d1a;        /* основной текст */
-    --ink-soft: #676d66;   /* подписи */
-    --rule: #d8dad3;       /* волосяные линии */
-    --rule-soft: #e8e9e4;
-    --run: #0b6e5f;        /* сигнал «идёт работа» */
-    --wait: #b75c0c;       /* сигнал «ждёт человека» */
-    --fail: #a62121;       /* сигнал «сбой» */
-    --run-wash: rgba(11,110,95,.09);
-    --wait-wash: rgba(183,92,12,.10);
-    --fail-wash: rgba(166,33,33,.09);
-    --display: "Bahnschrift", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    color-scheme: light dark;
+    --canvas: #f0f2f5; --canvas-tint: rgba(15,108,189,.05);
+    --layer: #ffffff; --layer-alt: #f7f8fa; --layer-hover: #f0f1f3;
+    --stroke: #e3e5e8; --stroke-strong: #cfd2d6;
+    --ink: #242424; --ink-2: #424242; --ink-3: #616161; --ink-4: #8a8a8a;
+    --brand: #0f6cbd; --brand-hover: #115ea3; --brand-wash: #ebf3fc;
+    --run: #0e700e;  --run-wash: #e7f4e7;
+    --wait: #bc4b09; --wait-wash: #fff4e5;
+    --fail: #c50f1f; --fail-wash: #fdf3f4;
+    --shadow-2: 0 0 2px rgba(0,0,0,.10), 0 1px 2px rgba(0,0,0,.12);
+    --shadow-8: 0 0 2px rgba(0,0,0,.12), 0 4px 8px rgba(0,0,0,.14);
+    --r-m: 4px; --r-l: 8px;
+    --display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
     --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-    --mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
-    --rail: 300px;
+    --mono: "Cascadia Code", "Cascadia Mono", Consolas, ui-monospace, monospace;
+    --rail: 290px;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --paper: #14181a; --surface: #1b2124; --ink: #e4e7e3; --ink-soft: #949c96;
-      --rule: #2c3438; --rule-soft: #232a2d;
-      --run: #35b79e; --wait: #e39a3d; --fail: #e4635a;
-      --run-wash: rgba(53,183,158,.12); --wait-wash: rgba(227,154,61,.14); --fail-wash: rgba(228,99,90,.12);
+      --canvas: #1b1b1b; --canvas-tint: rgba(71,158,245,.07);
+      --layer: #262626; --layer-alt: #2c2c2c; --layer-hover: #343434;
+      --stroke: #3a3a3a; --stroke-strong: #525252;
+      --ink: #ffffff; --ink-2: #d6d6d6; --ink-3: #adadad; --ink-4: #8a8a8a;
+      --brand: #479ef5; --brand-hover: #62abf5; --brand-wash: rgba(71,158,245,.15);
+      --run: #54b054; --run-wash: rgba(84,176,84,.15);
+      --wait: #faa06b; --wait-wash: rgba(250,160,107,.15);
+      --fail: #e37d80; --fail-wash: rgba(227,125,128,.15);
+      --shadow-2: 0 0 2px rgba(0,0,0,.24), 0 1px 2px rgba(0,0,0,.28);
+      --shadow-8: 0 0 2px rgba(0,0,0,.24), 0 4px 8px rgba(0,0,0,.28);
     }
   }
 
   * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
-  /* Размеры в rem: настройка шрифта в браузере должна масштабировать пульт. */
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
   body {
-    margin: 0; background: var(--paper); color: var(--ink);
-    font: .875rem/1.5 var(--sans);
-    font-variant-numeric: tabular-nums;
+    margin: 0; color: var(--ink);
+    background: radial-gradient(120% 80% at 0% 0%, var(--canvas-tint), transparent 60%), var(--canvas);
+    font: .875rem/1.43 var(--sans); font-variant-numeric: tabular-nums;
   }
-  a { color: inherit; text-underline-offset: 3px; text-decoration-color: color-mix(in oklab, currentColor 55%, transparent); }
-  a:hover { text-decoration-color: currentColor; }
-  :focus-visible { outline: 2px solid var(--run); outline-offset: 2px; }
-  /* Текст только для скринридера: подписи селектов и таблиц, которые визуально читаются из заголовка раздела. */
+  a { color: var(--brand); text-decoration: none; }
+  a:hover { color: var(--brand-hover); text-decoration: underline; text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: var(--r-m); }
   .visually-hidden:where(:not(:focus-within, :active)) {
     position: absolute !important; clip-path: inset(50%) !important; overflow: hidden !important;
     width: 1px !important; height: 1px !important; margin: -1px !important; padding: 0 !important; border: 0 !important; white-space: nowrap !important;
   }
+  .card { background: var(--layer); border: 1px solid var(--stroke); border-radius: var(--r-l); box-shadow: var(--shadow-2); }
+  .eyebrow { font: 600 .6875rem/1 var(--display); text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); margin: 0 0 10px; }
 
-  /* ---------- приборная рейка ---------- */
-  .rail {
-    position: fixed; inset: 0 auto 0 0; width: var(--rail);
-    background: var(--surface); border-right: 1px solid var(--rule);
-    padding: 20px 22px 24px; overflow: auto;
-    display: flex; flex-direction: column; gap: 22px;
-  }
-  .brand { display: flex; align-items: baseline; gap: 10px; }
-  .brand h1 { font: 600 1.0625rem/1 var(--display); letter-spacing: .01em; margin: 0; }
-  .brand span { color: var(--ink-soft); font-size: .75rem; }
-  .link { margin-left: auto; font-size: .75rem; color: var(--ink-soft); }
+  /* ---------- рейка ---------- */
+  .rail { position: fixed; inset: 0 auto 0 0; width: var(--rail); padding: 20px 18px 20px 22px; overflow: auto; display: flex; flex-direction: column; gap: 14px; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 0 4px 4px; }
+  .brand h1 { font: 600 1.125rem/1.2 var(--display); margin: 0; letter-spacing: -.01em; }
+  .link { margin-left: auto; font-size: .75rem; color: var(--ink-3); display: inline-flex; align-items: center; gap: 6px; }
+  .link::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--run); }
   .link.down { color: var(--fail); }
+  .link.down::before { background: var(--fail); }
 
-  .readout { border-top: 1px solid var(--rule); padding-top: 16px; }
-  .lamp-row { display: flex; align-items: center; gap: 10px; }
-  .lamp { width: 11px; height: 11px; flex: none; background: var(--ink-soft); }
-  .lamp.run { background: var(--run); box-shadow: 0 0 0 4px var(--run-wash); animation: breathe 2.4s ease-in-out infinite; }
-  .lamp.wait { background: var(--wait); box-shadow: 0 0 0 4px var(--wait-wash); animation: blink 1s steps(2, end) infinite; }
+  .readout { padding: 14px 16px; }
+  .state { display: inline-flex; align-items: center; gap: 8px; font: 600 .875rem/1 var(--display); padding: 6px 12px 6px 8px; border-radius: 999px; background: var(--layer-alt); border: 1px solid var(--stroke); }
+  .state.run { color: var(--run); background: var(--run-wash); border-color: transparent; }
+  .state.wait { color: var(--wait); background: var(--wait-wash); border-color: transparent; }
+  .lamp { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--ink-4); }
+  .state.run .lamp { background: var(--run); animation: breathe 2.4s ease-in-out infinite; }
+  .state.wait .lamp { background: var(--wait); animation: blink 1s steps(2, end) infinite; }
   @keyframes breathe { 50% { opacity: .3; } }
   @keyframes blink { 50% { opacity: 0; } }
-  .lamp-row b { font: 500 .9375rem/1.2 var(--display); }
-  .clock { font: 300 2.5rem/1 var(--display); letter-spacing: -.01em; margin-top: 10px; }
-  .clock small { font-size: .8125rem; letter-spacing: 0; color: var(--ink-soft); margin-left: 6px; }
+  .clock { font: 300 2.375rem/1.1 var(--display); letter-spacing: -.02em; margin-top: 10px; }
+  .clock small { display: block; font-size: .75rem; letter-spacing: 0; color: var(--ink-3); margin-top: 2px; }
 
-  .facts { border-top: 1px solid var(--rule); padding-top: 14px; }
+  .nav { padding: 6px 8px; }
+  .nav a { display: block; padding: 6px 10px; border-radius: var(--r-m); color: var(--ink-2); font-size: .8125rem; }
+  .nav a:hover { background: var(--layer-hover); text-decoration: none; }
+  .nav a.current { background: var(--brand-wash); color: var(--brand); font-weight: 600; }
+
+  .facts, .gauges { padding: 14px 16px; }
   .facts dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; }
-  .facts dt { color: var(--ink-soft); font-size: .78rem; }
+  .facts dt { color: var(--ink-3); font-size: .75rem; }
   .facts dd { margin: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  .gauges { border-top: 1px solid var(--rule); padding-top: 14px; }
-  .gauges h2, .facts h2 { font: 500 .8125rem/1 var(--display); margin: 0 0 12px; }
-  .gauges h2 { display: flex; justify-content: space-between; align-items: baseline; }
-  .gauges h2 span { font: 400 .6875rem/1 var(--sans); color: var(--ink-soft); }
-  .gauge { margin-bottom: 12px; }
-  .gauge .cap { display: flex; justify-content: space-between; gap: 8px; font-size: .78rem; margin-bottom: 5px; }
-  .gauge .cap i { font-style: normal; color: var(--ink-soft); }
-  /* Сегментная шкала — как деления на приборе, а не сплошная полоса. */
-  .meter { height: 9px; background: repeating-linear-gradient(90deg, var(--rule) 0 5px, transparent 5px 8px); }
-  .meter i { display: block; height: 100%; background: repeating-linear-gradient(90deg, var(--run) 0 5px, transparent 5px 8px); }
-  .meter i.warn { background: repeating-linear-gradient(90deg, var(--wait) 0 5px, transparent 5px 8px); }
-  .meter i.bad { background: repeating-linear-gradient(90deg, var(--fail) 0 5px, transparent 5px 8px); }
+  .gauges .eyebrow { display: flex; justify-content: space-between; align-items: baseline; }
+  .gauges .eyebrow span { font: 400 .6875rem/1 var(--sans); color: var(--ink-4); text-transform: none; letter-spacing: 0; }
+  /* Bar gauge: имя — полоса — значение в одну строку, срок сброса строкой ниже. */
+  .gauge { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; margin-bottom: 10px; }
+  .gauge .name { font-size: .78rem; }
+  .gauge .val { font: 600 .875rem/1 var(--display); }
+  .gauge .val.warn { color: var(--wait); } .gauge .val.bad { color: var(--fail); }
+  .gauge .meter { grid-column: 1 / -1; }
+  .gauge .sub { grid-column: 1 / -1; font-size: .6875rem; color: var(--ink-4); }
+  .meter { height: 5px; border-radius: 3px; background: var(--stroke); overflow: hidden; }
+  .meter i { display: block; height: 100%; border-radius: 3px; background: var(--brand); }
+  .meter i.warn { background: var(--wait); }
+  .meter i.bad { background: var(--fail); }
 
-  /* ---------- лента и разделы ---------- */
-  main { margin-left: var(--rail); padding: 26px 30px 60px; max-width: 1500px; }
-  .band { border-top: 1px solid var(--rule); padding-top: 18px; margin-top: 30px; }
-  main > .band:first-child { border-top: 0; padding-top: 0; margin-top: 0; } /* только «Сейчас»: в .split первый раздел тоже first-child */
-  /* Селекты и ссылки живут рядом с заголовком, а не внутри него: иначе скринридер читал бы их как часть имени раздела. */
-  .band-head { display: flex; align-items: center; gap: 14px; margin: 0 0 14px; }
-  .band-head h2 { font: 500 .875rem/1 var(--display); margin: 0; }
-  .band-head .aside { margin-left: auto; font: 400 .75rem/1 var(--sans); color: var(--ink-soft); display: flex; gap: 12px; align-items: center; }
-  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; align-items: start; }
+  /* ---------- панели ---------- */
+  main { margin-left: var(--rail); padding: 20px 24px 60px; max-width: 1500px; display: flex; flex-direction: column; gap: 14px; }
+  .band { padding: 14px 18px 18px; scroll-margin-top: 14px; }
+  .band-head { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; }
+  .band-head h2 { font: 600 .9375rem/1.3 var(--display); margin: 0; }
+  .count { font: 600 .6875rem/1 var(--sans); color: var(--ink-3); background: var(--layer-alt); border: 1px solid var(--stroke); border-radius: 999px; padding: 3px 7px; }
+  .band-head .aside { margin-left: auto; font: 400 .75rem/1 var(--sans); color: var(--ink-3); display: flex; gap: 12px; align-items: center; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
 
-  .approval { border-left: 3px solid var(--wait); background: var(--wait-wash); padding: 9px 14px; margin-bottom: 10px; }
+  .approval { display: grid; grid-template-columns: auto 1fr auto; gap: 2px 10px; align-items: baseline; border: 1px solid color-mix(in srgb, var(--wait) 40%, var(--stroke)); border-left: 4px solid var(--wait); background: var(--wait-wash); border-radius: var(--r-m); padding: 10px 14px; margin-bottom: 12px; }
   .approval b { font-weight: 600; }
-  .approval div { color: var(--ink-soft); font-size: .78rem; margin-top: 2px; }
+  .approval .since { font-size: .75rem; color: var(--wait); font-weight: 600; white-space: nowrap; }
+  .approval div { grid-column: 1 / -1; color: var(--ink-3); font-size: .75rem; }
 
-  .prompt { font-size: 1rem; line-height: 1.45; max-width: 68ch; overflow-wrap: anywhere; margin-bottom: 10px; }
-  .prompt.idle { color: var(--ink-soft); }
-  .runmeta { display: flex; flex-wrap: wrap; gap: 4px 18px; color: var(--ink-soft); font-size: .78rem; margin-bottom: 14px; }
+  .prompt { font: 400 1.0625rem/1.4 var(--display); max-width: 72ch; overflow-wrap: anywhere; margin-bottom: 8px; }
+  .prompt.idle { color: var(--ink-3); font-size: .9375rem; }
+  .runmeta { display: flex; flex-wrap: wrap; gap: 6px 6px; color: var(--ink-3); font-size: .75rem; margin-bottom: 12px; }
+  .runmeta > span { background: var(--layer-alt); border: 1px solid var(--stroke); border-radius: 999px; padding: 2px 10px; }
   .runmeta b { color: var(--ink); font-weight: 600; }
 
-  /* Лента шагов: главный герой страницы — по ней видно, что процесс жив. */
-  .tape { font-family: var(--mono); font-size: .78rem; max-height: 340px; overflow: auto; background: var(--surface); border: 1px solid var(--rule); padding: 10px 14px; }
-  .tape p { margin: 0 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .tape p.nested { padding-left: 20px; color: var(--ink-soft); }
-  .tape .t { color: var(--ink-soft); margin-right: 10px; }
-  .tape .hint { color: var(--ink-soft); font-family: var(--sans); }
+  /* Лента шагов как поток логов: время — инструмент — аргумент. */
+  .tape { font-size: .78rem; max-height: 340px; overflow: auto; background: var(--layer-alt); border: 1px solid var(--stroke); border-radius: var(--r-m); padding: 6px 0; }
+  .tape p { display: grid; grid-template-columns: 5.5em auto 1fr; gap: 0 10px; align-items: baseline; margin: 0; padding: 3px 12px; white-space: nowrap; }
+  .tape p:hover { background: var(--layer-hover); }
+  .tape .t { font-family: var(--mono); color: var(--ink-4); }
+  .tape .tool { font: 600 .6875rem/1.5 var(--sans); color: var(--brand); background: var(--brand-wash); border-radius: var(--r-m); padding: 0 6px; }
+  .tape .arg { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; }
+  .tape p.nested .t { padding-left: 14px; }
+  .tape p.nested .tool { color: var(--ink-3); background: var(--layer-hover); }
+  .tape p.nested .arg { color: var(--ink-3); }
+  .tape p.last { background: var(--brand-wash); }
+  .tape .hint { display: block; color: var(--ink-3); }
 
-  .queue { margin-top: 14px; font-size: .8125rem; }
+  .queue { margin-top: 12px; font-size: .8125rem; }
   .queue b { font-weight: 600; }
-  .queue ol { margin: 6px 0 0; padding-left: 22px; color: var(--ink-soft); }
+  .queue ol { margin: 6px 0 0; padding-left: 22px; color: var(--ink-3); }
 
-  /* Итоги — строка показаний, разделённая линиями, без плиток и теней. */
-  .figures { display: flex; flex-wrap: wrap; gap: 0 0; margin-bottom: 20px; }
-  .figures div { padding: 0 22px; border-left: 1px solid var(--rule-soft); }
-  .figures div:first-child { padding-left: 0; border-left: 0; }
-  .figures b { display: block; font: 300 1.875rem/1.1 var(--display); }
-  .figures span { color: var(--ink-soft); font-size: .75rem; }
+  /* Stat-плитки: значение, подпись, спарклайн за две недели. */
+  .figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .figures div { display: flex; flex-direction: column; background: var(--layer-alt); border: 1px solid var(--stroke); border-radius: var(--r-m); padding: 10px 12px 0; min-height: 84px; overflow: hidden; }
+  .figures b { display: block; font: 600 1.5rem/1.2 var(--display); letter-spacing: -.01em; }
+  .figures span { color: var(--ink-3); font-size: .75rem; }
+  .figures svg { width: calc(100% + 24px); height: 26px; margin: auto -12px 0; display: block; }
+  .figures svg path.area { fill: var(--brand); opacity: .12; }
+  .figures svg path.line { fill: none; stroke: var(--brand); stroke-width: 1.5; }
 
-  #chart { width: 100%; height: 170px; display: block; }
-  #chart rect { fill: var(--run); }
-  #chart rect:hover { fill: var(--wait); }
-  #chart text { fill: var(--ink-soft); font: 10px var(--sans); }
-  #chart line { stroke: var(--rule); }
+  #chart { width: 100%; height: 180px; display: block; }
+  #chart rect { fill: var(--brand); rx: 3; }
+  #chart rect:hover { fill: var(--brand-hover); }
+  #chart rect.today { fill: var(--brand-hover); }
+  #chart text { fill: var(--ink-3); font: 10px var(--sans); }
+  #chart line { stroke: var(--stroke); }
+  #chart line.grid { stroke-dasharray: 3 3; }
   .chart-table { margin-top: 8px; }
   .chart-table table { width: auto; margin-top: 6px; }
 
-  table { width: 100%; border-collapse: collapse; font-size: .8125rem; }
-  th, td { text-align: left; padding: 6px 16px 6px 0; border-bottom: 1px solid var(--rule-soft); vertical-align: top; white-space: nowrap; }
-  th:last-child, td:last-child { padding-right: 0; }
-  th { color: var(--ink-soft); font-weight: 500; font-size: .75rem; border-bottom-color: var(--rule); }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: .8125rem; }
+  th, td { text-align: left; padding: 7px 12px; border-bottom: 1px solid var(--stroke); vertical-align: top; white-space: nowrap; }
+  th { position: sticky; top: 0; z-index: 1; background: var(--layer-alt); color: var(--ink-3); font-weight: 600; font-size: .6875rem; text-transform: uppercase; letter-spacing: .05em; }
+  tbody tr:hover td { background: var(--layer-hover); }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.when { color: var(--ink-3); font-family: var(--mono); font-size: .75rem; }
   td.wrap { white-space: normal; overflow-wrap: anywhere; min-width: 22ch; max-width: 78ch; }
+  td.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
   td.num, th.num { text-align: right; }
-  .scroll { overflow: auto; max-height: 430px; }
+  .scroll { overflow: auto; max-height: 430px; border: 1px solid var(--stroke); border-radius: var(--r-m); }
   .mono { font-family: var(--mono); font-size: .78rem; }
-  .muted { color: var(--ink-soft); }
-  .empty { color: var(--ink-soft); }
+  .muted { color: var(--ink-3); }
+  .empty { color: var(--ink-3); }
 
-  /* Метка исхода — цветом и весом, без пилюль и подложек. */
-  .mark { font-weight: 600; }
-  .mark.ok { color: var(--run); }
-  .mark.cancel, .mark.Warning { color: var(--wait); }
+  /* Метка исхода: точка + текст, как статусы в Elastic. */
+  .mark { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: .75rem; color: var(--ink-2); }
+  .mark::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ink-4); }
+  .mark.ok { color: var(--run); } .mark.ok::before { background: var(--run); }
+  .mark.cancel, .mark.Warning { color: var(--wait); } .mark.cancel::before, .mark.Warning::before { background: var(--wait); }
   .mark.error, .mark.rate-limit, .mark.interrupted, .mark.Error, .mark.Critical { color: var(--fail); }
-  .mark.Information { color: var(--ink-soft); font-weight: 400; }
+  .mark.error::before, .mark.rate-limit::before, .mark.interrupted::before, .mark.Error::before, .mark.Critical::before { background: var(--fail); }
+  .mark.Information { color: var(--ink-3); font-weight: 400; } .mark.Information::before { background: var(--brand); }
 
-  select { font: inherit; font-size: .78rem; color: var(--ink); background: transparent; border: 0; border-bottom: 1px solid var(--rule); padding: 2px 2px 3px; min-block-size: 24px; }
-  details summary { cursor: pointer; color: var(--ink-soft); font-size: .75rem; }
+  select { font: inherit; font-size: .8125rem; color: var(--ink); background: var(--layer); border: 1px solid var(--stroke-strong); border-bottom-color: var(--ink-4); border-radius: var(--r-m); padding: 4px 8px; min-block-size: 30px; }
+  select:hover { background: var(--layer-hover); }
+  details summary { cursor: pointer; color: var(--brand); font-size: .75rem; }
   details pre { white-space: pre-wrap; margin: 4px 0 0; }
 
-  @media (pointer: coarse) {
-    select { min-block-size: 32px; }
-  }
+  @media (pointer: coarse) { select { min-block-size: 36px; } }
   @media (max-width: 1000px) {
-    /* На телефоне рейка становится шапкой: чем она короче, тем ближе к экрану лента запуска. */
-    .rail { position: static; width: auto; border-right: 0; border-bottom: 1px solid var(--rule); padding: 16px 18px; gap: 16px; }
-    main { margin-left: 0; padding: 22px 18px 50px; }
+    .rail { position: static; width: auto; padding: 14px; gap: 10px; }
+    .nav { display: none; }
+    main { margin-left: 0; padding: 0 14px 50px; }
     .split { grid-template-columns: 1fr; }
-    .clock { font-size: 2.125rem; }
-    .figures div { padding: 0 16px; }
+    .clock { font-size: 2rem; }
   }
   @media (max-width: 1000px) and (min-width: 560px) {
     .rail { display: grid; grid-template-columns: 1fr 1fr; align-items: start; }
     .brand, .readout { grid-column: 1 / -1; }
   }
-  @media (prefers-reduced-motion: reduce) {
-    .lamp.run, .lamp.wait { animation: none; }
-  }
-  /* Высокая контрастность Windows стирает фоны и тени: шкалы и лампа иначе пропали бы вместе с показанием. */
+  @media (prefers-reduced-motion: reduce) { .lamp { animation: none !important; } html { scroll-behavior: auto; } }
   @media (forced-colors: active) {
     .meter { border: 1px solid CanvasText; }
     .meter i { background: Highlight; forced-color-adjust: none; }
-    .lamp { border: 1px solid CanvasText; }
-    .approval { border: 1px solid CanvasText; }
+    .lamp, .approval, .card, .state, .mark::before { border: 1px solid CanvasText; }
   }
 </style>
 </head>
@@ -192,13 +211,22 @@
 <aside class="rail">
   <div class="brand"><h1>AgentsTracker</h1><span id="conn" class="link" role="status">подключение…</span></div>
 
-  <div class="readout">
-    <div class="lamp-row"><span class="lamp" id="lamp"></span><b id="state-text" role="status">—</b></div>
+  <div class="readout card">
+    <span class="state" id="state"><span class="lamp" id="lamp"></span><span id="state-text" role="status">—</span></span>
     <div class="clock" id="clock" hidden><span id="clock-val"></span><small id="clock-note"></small></div>
   </div>
 
-  <div class="facts">
-    <h2>Шлюз</h2>
+  <nav class="nav card" aria-label="Разделы">
+    <a href="#now">Сейчас</a><a href="#stats">Работа по дням</a><a href="#runs-band">Запуски</a><a href="#sessions-band">Сессии</a><a href="#audit-band">Аудит</a><a href="#log-band">Лог</a>
+  </nav>
+
+  <div class="gauges card">
+    <h2 class="eyebrow">Лимиты тарифа <span id="limits-note"></span></h2>
+    <div id="limits-body" class="empty">загрузка…</div>
+  </div>
+
+  <div class="facts card">
+    <h2 class="eyebrow">Шлюз</h2>
     <dl>
       <dt id="agent">Агент</dt><dd id="cli">—</dd>
       <dt>Проект</dt><dd id="project" class="mono">—</dd>
@@ -208,22 +236,17 @@
       <dt>В работе</dt><dd id="uptime">—</dd>
     </dl>
   </div>
-
-  <div class="gauges">
-    <h2>Лимиты тарифа <span id="limits-note"></span></h2>
-    <div id="limits-body" class="empty">загрузка…</div>
-  </div>
 </aside>
 
 <main>
-  <section class="band">
-    <div class="band-head"><h2>Сейчас</h2><span class="aside" id="now-time"></span></div>
+  <section class="band card" id="now">
+    <div class="band-head"><h2>Сейчас</h2><span class="count" id="queue-count" hidden></span><span class="aside" id="now-time"></span></div>
     <div id="approval"></div>
     <div id="run"></div>
     <div class="queue" id="queue"></div>
   </section>
 
-  <section class="band">
+  <section class="band card" id="stats">
     <div class="band-head"><h2>Работа по дням</h2>
       <span class="aside">
         <label class="visually-hidden" for="metric">Показатель</label>
@@ -242,8 +265,8 @@
     </details>
   </section>
 
-  <section class="band">
-    <div class="band-head"><h2>Запуски</h2>
+  <section class="band card" id="runs-band">
+    <div class="band-head"><h2>Запуски</h2><span class="count" id="runs-count"></span>
       <span class="aside">
         <label class="visually-hidden" for="run-project">Проект</label>
         <select id="run-project"><option value="">все проекты</option></select>
@@ -256,28 +279,28 @@
   </section>
 
   <div class="split">
-    <section class="band">
+    <section class="band card">
       <div class="band-head"><h2>Модели</h2></div>
       <div class="scroll" tabindex="0"><table id="models"><caption class="visually-hidden">Модели</caption><thead><tr><th scope="col">Модель</th><th scope="col" class="num">Запусков</th><th scope="col" class="num">Вход</th><th scope="col" class="num">Выход</th><th scope="col" class="num">Кэш</th></tr></thead><tbody></tbody></table></div>
     </section>
 
-    <section class="band">
+    <section class="band card">
       <div class="band-head"><h2>Скиллы</h2></div>
       <div class="scroll" tabindex="0"><table id="skills"><caption class="visually-hidden">Скиллы</caption><thead><tr><th scope="col">Команда</th><th scope="col" class="num">Запусков</th></tr></thead><tbody></tbody></table></div>
     </section>
   </div>
 
-  <section class="band">
-    <div class="band-head"><h2>Сессии</h2></div>
+  <section class="band card" id="sessions-band">
+    <div class="band-head"><h2>Сессии</h2><span class="count" id="sessions-count"></span></div>
     <div class="scroll" tabindex="0"><table id="sessions"><caption class="visually-hidden">Сессии</caption><thead><tr><th scope="col">Проект</th><th scope="col">Сессия</th><th scope="col">Название</th><th scope="col">Активность</th><th scope="col" class="num">Ходов</th></tr></thead><tbody></tbody></table></div>
   </section>
 
-  <section class="band">
+  <section class="band card" id="audit-band">
     <div class="band-head"><h2>Аудит</h2><span class="aside"><a href="/api/audit?count=1000">JSON аудита</a></span></div>
     <div class="scroll" tabindex="0"><table id="audit"><caption class="visually-hidden">Аудит</caption><thead><tr><th scope="col">Когда</th><th scope="col">Вид</th><th scope="col">Что</th><th scope="col">Исход</th><th scope="col">Кто</th><th scope="col">Проект</th></tr></thead><tbody></tbody></table></div>
   </section>
 
-  <section class="band">
+  <section class="band card" id="log-band">
     <div class="band-head"><h2>Лог</h2>
       <span class="aside">
         <label class="visually-hidden" for="log-level">Уровень</label>
@@ -305,7 +328,6 @@
     if (s >= 60) return `${Math.floor(s/60)} мин ${s%60} с`;
     return `${s} с`;
   };
-  // Крупное показание на рейке — секундомер запуска, читаемый с соседнего экрана.
   const fmtClock = ms => {
     const s = Math.max(0, Math.floor(ms / 1000)), p = n => String(n).padStart(2, '0');
     return `${p(Math.floor(s/3600))}:${p(Math.floor(s%3600/60))}:${p(s%60)}`;
@@ -313,17 +335,15 @@
   const fmtTokens = n => n < 1000 ? String(n) : n < 1e6 ? (n/1000).toFixed(1).replace(/\.0$/,'') + 'k' : (n/1e6).toFixed(2) + 'M';
   const shortPath = p => (p || '').split(/[\\/]/).filter(Boolean).slice(-2).join('/');
   const shortId = id => id ? id.slice(0, 8) : '';
-  // Полное имя категории занимает пол-таблицы; двух последних частей хватает, чтобы узнать место.
   const shortCategory = c => (c || '').split('.').slice(-2).join('.');
+  // Шаг ленты «Read путь строка 40» → инструмент отдельной меткой, аргумент моноширинным.
+  const splitStep = d => { const m = /^(\S+)\s*(.*)$/.exec(d || ''); return m ? [m[1], m[2]] : [d, '']; };
 
   // ---- живое состояние ----
-  // renderLive перестраивает DOM только по кадру сервера; тикающие показания правит tick() через textContent —
-  // перерисовка innerHTML раз в секунду сбрасывала бы выделение текста в ленте и прыгала скроллом.
   let last = null, tapeKey = null;
   function renderLive(s) {
     last = s;
     $('agent').textContent = s.agent || 'Агент';
-    // CLI повторяет своё имя в строке версии («2.1.261 (Claude Code)») — рядом с подписью это дубль.
     const version = (s.cliVersion || '?').replace(` (${s.agent})`, '');
     $('cli').textContent = version; $('cli').title = s.cliVersion || '';
     $('project').textContent = shortPath(s.project); $('project').title = s.project || '';
@@ -332,40 +352,40 @@
     $('effort').textContent = s.effort || '—';
     $('now-time').textContent = 'обновлено ' + fmtTime(s.at);
 
-    const lamp = $('lamp');
-    lamp.className = 'lamp';
+    const state = $('state');
+    state.className = 'state';
     let text = 'Свободен';
     const approvals = s.approvals || [];
     if (approvals.length) {
-      lamp.classList.add('wait');
+      state.classList.add('wait');
       text = approvals.length > 1 ? `Ждёт подтверждений: ${approvals.length}` : 'Ждёт подтверждения';
     } else if (s.run) {
-      lamp.classList.add('run');
+      state.classList.add('run');
       text = 'Работает';
     }
     $('state-text').textContent = text;
-    // В простое секундомер убирается совсем: пустой прочерк на его месте читался бы как сбой.
     $('clock').hidden = !(approvals.length || s.run);
     $('clock-note').textContent = approvals.length ? 'ждёт ответа' : 'идёт запуск';
 
     $('approval').innerHTML = approvals.map(a =>
-      `<div class="approval"><b>${esc(a.tool)}</b> <span class="mono">${esc(a.brief)}</span><div>ждёт <span data-since="${esc(a.sinceUtc)}"></span> — ответьте кнопками в Telegram</div></div>`).join('');
+      `<div class="approval"><b>${esc(a.tool)}</b> <span class="mono">${esc(a.brief)}</span><span class="since">ждёт <span data-since="${esc(a.sinceUtc)}"></span></span><div>ответьте кнопками в Telegram</div></div>`).join('');
 
     if (s.run) {
-      const r = s.run, st = r.start;
-      const steps = r.steps.map(x => `<p class="${x.nested ? 'nested' : ''}"><span class="t">${fmtTime(x.at)}</span>${x.nested ? '↳ ' : ''}${esc(x.description)}</p>`).join('');
+      const r = s.run, st = r.start, n = r.steps.length;
+      const steps = r.steps.map((x, i) => {
+        const [tool, arg] = splitStep(x.description);
+        return `<p class="${x.nested ? 'nested' : ''}${i === n - 1 ? ' last' : ''}"><span class="t">${fmtTime(x.at)}</span><span class="tool">${x.nested ? '↳ ' : ''}${esc(tool)}</span><span class="arg" title="${esc(arg)}">${esc(arg)}</span></p>`;
+      }).join('');
       $('run').innerHTML = `
         <div class="prompt">${esc(st.promptPreview)}</div>
         <div class="runmeta"><span>сессия <b class="mono">${esc(st.sessionId ? shortId(st.sessionId) : 'новая')}</b></span>
           <span>${esc(st.model || 'модель по умолчанию')}</span><span>${esc(st.permissionMode)}</span>${st.effort ? `<span>${esc(st.effort)}</span>` : ''}
           <span>вызовов инструментов <b>${r.toolCalls}</b></span></div>
-        <div class="tape" tabindex="0">${r.droppedSteps ? `<p class="hint">… ещё ${r.droppedSteps} ранних шагов</p>` : ''}${steps || '<p class="hint">ждём первый шаг…</p>'}</div>`;
-      // Прокрутка к концу — только когда появились новые шаги, иначе читать старые шаги во время запуска нельзя.
+        <div class="tape" tabindex="0">${r.droppedSteps ? `<p><span class="hint">… ещё ${r.droppedSteps} ранних шагов</span></p>` : ''}${steps || '<p><span class="hint">ждём первый шаг…</span></p>'}</div>`;
       const key = `${r.startedUtc}:${r.toolCalls}:${r.steps.length}`;
       if (key !== tapeKey) { const box = $('run').querySelector('.tape'); box.scrollTop = box.scrollHeight; tapeKey = key; }
     } else {
       tapeKey = null;
-      // Пустой экран без единой цифры выглядит как поломка, поэтому в простое показываем последний запуск.
       const prev = runs[0];
       $('run').innerHTML = `<div class="prompt idle">Запусков нет. Напишите боту в Telegram — работа появится здесь.</div>
         <div class="runmeta"><span>сессия проекта <b class="mono">${esc(s.session ? shortId(s.session) : 'новая')}</b></span>
@@ -373,13 +393,13 @@
             <span class="mark ${esc(prev.outcome)}">${esc(prev.outcome)}</span><span>${esc(prev.prompt)}</span>` : ''}</div>`;
     }
 
+    $('queue-count').hidden = !s.queue.length;
+    $('queue-count').textContent = s.queue.length ? `в очереди ${s.queue.length}` : '';
     $('queue').innerHTML = s.queue.length
       ? `<b>В очереди: ${s.queue.length}</b><ol>${s.queue.map(q => `<li>${esc(q)}</li>`).join('')}</ol>`
       : '';
-
     tick();
   }
-  // Часы и «прошло времени» тикают между кадрами сервера; в скрытой вкладке — незачем.
   function tick() {
     if (!last || document.hidden) return;
     const now = Date.now();
@@ -406,7 +426,6 @@
 
   // ---- статистика ----
   const get = (url, fallback, init) => fetch(url, init).then(r => r.ok ? r.json() : fallback).catch(() => fallback);
-  // Журналы и лимиты — фон: не должны соперничать за сеть с обновлением состояния.
   const background = { priority: 'low' };
   let stats = null, runs = [];
 
@@ -414,17 +433,28 @@
     [stats, runs] = await Promise.all([get('/api/stats', null), get('/api/runs', [])]);
     if (stats) { renderStats(); }
     renderRuns();
-    if (last) renderLive(last);   // в простое блок «Сейчас» показывает последний запуск из этого списка
+    if (last) renderLive(last);
     loadLimits(); loadAudit(); loadLog();
   }
 
+  // Спарклайн на плитке: последние 14 дней, без осей — тренд, а не число.
+  const spark = values => {
+    if (values.length < 2) return '';
+    const W = 100, H = 32, max = Math.max(...values, 0.0001);
+    const pts = values.map((v, i) => [i * W / (values.length - 1), H - 2 - (H - 6) * v / max]);
+    const line = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
+    return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><path class="area" d="${line} L${W} ${H} L0 ${H} Z"/><path class="line" d="${line}"/></svg>`;
+  };
+
   function renderStats() {
-    const t = stats.total;
+    const t = stats.total, days = stats.byDay.slice(-14);
     $('figures').innerHTML = [
-      [t.runs, stats.sinceUtc ? 'запусков с ' + new Date(stats.sinceUtc).toLocaleDateString('ru-RU') : 'запусков'],
-      [t.turns, 'ходов'],
-      [fmtTokens(t.inputTokens + t.outputTokens), 'токенов'], [fmtTokens(t.cacheReadTokens), 'из кэша'], [fmtDur(t.durationMs), 'в работе'],
-    ].map(([v, l]) => `<div><b>${v}</b><span>${l}</span></div>`).join('');
+      [t.runs, stats.sinceUtc ? 'запусков с ' + new Date(stats.sinceUtc).toLocaleDateString('ru-RU') : 'запусков', days.map(d => d.runs)],
+      [t.turns, 'ходов', null],
+      [fmtTokens(t.inputTokens + t.outputTokens), 'токенов', days.map(d => d.inputTokens + d.outputTokens)],
+      [fmtTokens(t.cacheReadTokens), 'из кэша', null],
+      [fmtDur(t.durationMs), 'в работе', days.map(d => d.durationMs)],
+    ].map(([v, l, s]) => `<div><b>${v}</b><span>${l}</span>${s ? spark(s) : ''}</div>`).join('');
     renderChart();
 
     $('models').querySelector('tbody').innerHTML = stats.byModel.map(m =>
@@ -433,8 +463,9 @@
     $('skills').querySelector('tbody').innerHTML = stats.skills.map(s =>
       `<tr><td class="mono">${esc(s.command)}</td><td class="num">${s.count}</td></tr>`).join('') || '<tr><td colspan="2" class="empty">пока пусто</td></tr>';
 
+    $('sessions-count').textContent = stats.sessions.length;
     $('sessions').querySelector('tbody').innerHTML = stats.sessions.map(s =>
-      `<tr><td title="${esc(s.projectPath)}">${esc(shortPath(s.projectPath))}</td><td class="mono" title="${esc(s.id)}">${s.active ? '▶ ' : ''}${shortId(s.id)}</td><td class="wrap">${esc(s.title)}</td><td>${fmtWhen(s.lastActivityUtc)}</td><td class="num">${s.turns}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">пока пусто</td></tr>';
+      `<tr><td title="${esc(s.projectPath)}">${esc(shortPath(s.projectPath))}</td><td class="mono" title="${esc(s.id)}">${s.active ? '▶ ' : ''}${shortId(s.id)}</td><td class="wrap">${esc(s.title)}</td><td class="when">${fmtWhen(s.lastActivityUtc)}</td><td class="num">${s.turns}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">пока пусто</td></tr>';
   }
 
   function renderChart() {
@@ -442,18 +473,20 @@
     const days = stats.byDay.slice(-30);
     const value = d => metric === 'tokens' ? d.inputTokens + d.outputTokens : metric === 'minutes' ? d.durationMs / 60000 : d[metric];
     const label = v => metric === 'minutes' ? v.toFixed(1) + ' мин' : metric === 'tokens' ? fmtTokens(v) : v;
-    const W = 1000, H = 170, pad = 20;
-    // Шаг ограничен сверху: за первые дни работы шлюза два столбца растянулись бы во всю ширину.
-    const bw = Math.min(W / Math.max(days.length, 1), 46);
+    const W = 1000, H = 180, pad = 20, left = 40;
+    const bw = Math.min((W - left) / Math.max(days.length, 1), 46);
     const max = Math.max(...days.map(value), 0.0001);
+    const today = new Date().toISOString().slice(0, 10);
     const svg = $('chart'); svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-    svg.innerHTML = `<title id="chart-title">Работа по дням: ${esc(metricName)}</title>` + (days.map((d, i) => {
-      const v = value(d), h = (H - pad - 4) * v / max;
-      return `<rect x="${i * bw + 2}" y="${H - pad - h}" width="${Math.max(bw - 5, 1)}" height="${h}"><title>${esc(d.day)}: ${label(v)}</title></rect>
-        ${(days.length <= 15 || i % Math.ceil(days.length / 15) === 0) ? `<text x="${i * bw + bw / 2}" y="${H - 5}" text-anchor="middle">${esc(d.day.slice(5))}</text>` : ''}`;
+    // Сетка из трёх линий с подписями слева — по ней столбцы читаются без наведения.
+    const gridLabel = v => metric === 'runs' ? Math.round(v) : label(v);
+    const grid = [0.5, 1].map(f => { const y = H - pad - (H - pad - 6) * f; return `<line class="grid" x1="${left}" y1="${y}" x2="${W}" y2="${y}"/><text x="${left - 6}" y="${y + 3}" text-anchor="end">${gridLabel(max * f)}</text>`; }).join('');
+    svg.innerHTML = `<title id="chart-title">Работа по дням: ${esc(metricName)}</title>` + grid + (days.map((d, i) => {
+      const v = value(d), h = (H - pad - 6) * v / max, x = left + i * bw;
+      return `<rect class="${d.day === today ? 'today' : ''}" x="${x + 2}" y="${H - pad - h}" width="${Math.max(bw - 5, 1)}" height="${h}"><title>${esc(d.day)}: ${label(v)}</title></rect>
+        ${(days.length <= 15 || i % Math.ceil(days.length / 15) === 0) ? `<text x="${x + bw / 2}" y="${H - 5}" text-anchor="middle">${esc(d.day.slice(5))}</text>` : ''}`;
     }).join('') || '<text x="0" y="80">пока пусто</text>')
-      + `<line x1="0" y1="${H - pad}" x2="${W}" y2="${H - pad}"/>`;
-    // Те же числа таблицей — альтернатива графику для скринридера и для точного чтения.
+      + `<line x1="${left}" y1="${H - pad}" x2="${W}" y2="${H - pad}"/>`;
     $('chart-data-metric').textContent = metricName;
     $('chart-data').querySelector('tbody').innerHTML = days.map(d => `<tr><td>${esc(d.day)}</td><td class="num">${label(value(d))}</td></tr>`).join('')
       || '<tr><td colspan="2" class="empty">пока пусто</td></tr>';
@@ -466,8 +499,9 @@
     const current = sel.value;
     sel.innerHTML = '<option value="">все проекты</option>' + projects.map(p => `<option value="${esc(p)}" ${p === current ? 'selected' : ''}>${esc(shortPath(p))}</option>`).join('');
     const list = runs.filter(r => !sel.value || r.projectPath === sel.value);
+    $('runs-count').textContent = list.length;
     $('runs').querySelector('tbody').innerHTML = list.map(r =>
-      `<tr><td>${fmtWhen(r.startedUtc)}</td><td title="${esc(r.projectPath)}">${esc(shortPath(r.projectPath))}</td><td class="wrap">${esc(r.prompt)}</td>
+      `<tr><td class="when">${fmtWhen(r.startedUtc)}</td><td title="${esc(r.projectPath)}">${esc(shortPath(r.projectPath))}</td><td class="wrap clamp" title="${esc(r.prompt)}">${esc(r.prompt)}</td>
        <td><span class="mark ${esc(r.outcome)}">${esc(r.outcome)}</span></td><td class="num">${fmtDur(r.durationMs)}</td><td class="num">${r.turns}</td><td class="num">${r.toolCalls}</td>
        <td class="num" title="вход ${r.inputTokens} / выход ${r.outputTokens}">${fmtTokens(r.inputTokens + r.outputTokens)}</td><td class="mono" title="${esc(r.sessionId)}">${shortId(r.sessionId)}</td></tr>`).join('')
       || '<tr><td colspan="9" class="empty">запусков ещё не было</td></tr>';
@@ -477,7 +511,7 @@
   const fmtUntil = iso => {
     const ms = new Date(iso) - Date.now(), m = Math.floor(ms / 60000), h = Math.floor(m / 60), d = Math.floor(h / 24);
     const rel = m < 1 ? 'меньше минуты' : h < 1 ? `${m} мин` : d < 1 ? `${h} ч ${m % 60} мин` : `${d} д ${h % 24} ч`;
-    return `через ${rel} (${fmtWhen(iso)})`;
+    return `через ${rel}`;
   };
   const windowName = k => k === 'five_hour' ? '5 часов' : k === 'seven_day' ? 'неделя' : 'неделя, ' + k.replace(/^(seven_day|five_hour)_/, '').replace(/_/g, ' ');
   async function loadLimits() {
@@ -486,11 +520,11 @@
     $('limits-note').textContent = l.fetchedUtc ? 'на ' + fmtTime(l.fetchedUtc) : '';
     if (l.error) { $('limits-body').innerHTML = `<span class="muted">${esc(l.error)}</span>`; return; }
     const live = l.windows.filter(w => !w.resetsAt || new Date(w.resetsAt) > new Date());
-    // Остаток, а не расход, и те же пороги, что у лампочек в чате (LimitBars): 40% и 15%.
     $('limits-body').innerHTML = live.map(w => {
-      const left = Math.max(0, Math.floor((1 - w.used) * 100));
-      return `<div class="gauge"><div class="cap"><span>${esc(windowName(w.key))}</span><i>${left}% осталось${w.resetsAt ? `, сброс ${fmtUntil(w.resetsAt)}` : ''}</i></div>
-        <div class="meter"><i class="${left < 15 ? 'bad' : left < 40 ? 'warn' : ''}" style="width:${left}%"></i></div></div>`;
+      const left = Math.max(0, Math.floor((1 - w.used) * 100)), cls = left < 15 ? 'bad' : left < 40 ? 'warn' : '';
+      return `<div class="gauge"><span class="name">${esc(windowName(w.key))}</span><span class="val ${cls}">${left}%</span>
+        <div class="meter"><i class="${cls}" style="width:${left}%"></i></div>
+        <span class="sub" title="${w.resetsAt ? 'сброс ' + esc(fmtWhen(w.resetsAt)) : ''}">осталось${w.resetsAt ? `, сброс ${fmtUntil(w.resetsAt)}` : ''}</span></div>`;
     }).join('') || '<span class="empty">окон нет</span>';
     if (l.extraUsageEnabled) $('limits-body').innerHTML += '<div class="mark Warning">на аккаунте включены кредиты (extra usage)</div>';
   }
@@ -498,19 +532,29 @@
   async function loadAudit() {
     const list = await get('/api/audit?count=100', [], background);
     $('audit').querySelector('tbody').innerHTML = list.slice().reverse().map(a =>
-      `<tr><td>${fmtWhen(a.at)}</td><td class="mono">${esc(a.kind)}</td><td class="wrap">${esc(a.summary)}</td><td>${esc(a.outcome || '')}</td><td>${esc(a.userId || '')}</td><td title="${esc(a.project || '')}">${esc(shortPath(a.project))}</td></tr>`).join('')
+      `<tr><td class="when">${fmtWhen(a.at)}</td><td class="mono">${esc(a.kind)}</td><td class="wrap">${esc(a.summary)}</td><td>${esc(a.outcome || '')}</td><td>${esc(a.userId || '')}</td><td title="${esc(a.project || '')}">${esc(shortPath(a.project))}</td></tr>`).join('')
       || '<tr><td colspan="6" class="empty">пусто</td></tr>';
   }
 
   async function loadLog() {
     const list = await get('/api/log?count=200&level=' + $('log-level').value, [], background);
     $('log').querySelector('tbody').innerHTML = list.slice().reverse().map(e =>
-      `<tr><td>${fmtWhen(e.at)}</td><td><span class="mark ${esc(e.level)}">${esc(e.level)}</span></td><td class="mono" title="${esc(e.category)}">${esc(shortCategory(e.category))}</td><td class="wrap">${esc(e.message)}${e.exception ? `<details><summary>исключение</summary><pre class="mono">${esc(e.exception)}</pre></details>` : ''}</td></tr>`).join('')
+      `<tr><td class="when">${fmtWhen(e.at)}</td><td><span class="mark ${esc(e.level)}">${esc(e.level)}</span></td><td class="mono" title="${esc(e.category)}">${esc(shortCategory(e.category))}</td><td class="wrap">${esc(e.message)}${e.exception ? `<details><summary>исключение</summary><pre class="mono">${esc(e.exception)}</pre></details>` : ''}</td></tr>`).join('')
       || '<tr><td colspan="4" class="empty">пусто</td></tr>';
   }
   $('log-level').onchange = loadLog;
 
-  // Скрытая вкладка не опрашивает журналы и лимиты; при возврате — догоняет сразу, а не ждёт следующего тика.
+  // Подсветка текущего раздела в навигации рейки: из разделов, задевающих верхнюю полосу окна, текущий —
+  // самый верхний. Иначе короткий «Сейчас» в простое проигрывал бы следующему за ним разделу.
+  const navLinks = [...document.querySelectorAll('.nav a')];
+  const visible = new Map();
+  const io = new IntersectionObserver(entries => {
+    for (const e of entries) e.isIntersecting ? visible.set(e.target.id, e.boundingClientRect.top) : visible.delete(e.target.id);
+    const top = [...visible.entries()].sort((a, b) => a[1] - b[1])[0]?.[0];
+    if (top) navLinks.forEach(a => a.classList.toggle('current', a.getAttribute('href') === '#' + top));
+  }, { rootMargin: '-10% 0px -75% 0px' });
+  navLinks.forEach(a => { const t = document.querySelector(a.getAttribute('href')); if (t) io.observe(t); });
+
   const periodic = fn => () => { if (!document.hidden) fn(); };
   setInterval(periodic(loadLimits), 60000);
   setInterval(periodic(() => { loadAudit(); loadLog(); }), 30000);
