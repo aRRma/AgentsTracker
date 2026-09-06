@@ -113,21 +113,22 @@ public sealed class ClaudeLimits(AgentHost host, ILogger<ClaudeLimits> logger) :
     }
 
     /// <summary>
-    /// Остаток окон построчно, со временем сброса — для экрана статистики. Пустой список
-    /// значит, что окон нет; причина неудачного опроса приходит одной строкой.
+    /// Окна для шкал: остаток и подпись сброса. Подпись собирается здесь, а не в хосте:
+    /// формат времени сброса — часть представления агента, как и названия окон.
     /// </summary>
-    public async Task<IReadOnlyList<string>> RemainingLinesAsync(string? model, CancellationToken ct)
+    public async Task<LimitsView> ViewAsync(string? model, CancellationToken ct)
     {
         var snapshot = await GetAsync(ct);
-        if (snapshot.Error is { } error) return [error];
+        if (snapshot.Error is { } error) return new LimitsView([], error);
 
-        return
+        return new LimitsView(
         [
-            .. Live(snapshot, model).Select(w =>
-                w.ResetsAt is { } at
-                    ? $"· {Describe(w.Key)} — осталось {Left(w.Used)}, сброс {Moment(at)}"
-                    : $"· {Describe(w.Key)} — осталось {Left(w.Used)}")
-        ];
+            .. Live(snapshot, model).Select(w => new LimitGauge(
+                Describe(w.Key),
+                Math.Clamp(1.0 - w.Used, 0.0, 1.0),
+                w.ResetsAt,
+                w.ResetsAt is { } at ? Moment(at) : null))
+        ], null);
     }
 
     /// <summary>

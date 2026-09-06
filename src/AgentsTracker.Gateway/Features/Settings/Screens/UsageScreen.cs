@@ -30,7 +30,7 @@ public sealed class UsageScreen(SessionStore store, IAgentLimits limits, IAuditL
         var usage = store.Snapshot().Usage;
         var total = usage.Total;
 
-        var plan = await limits.RemainingLinesAsync(store.EffectiveModel, ct);
+        var plan = await limits.ViewAsync(store.EffectiveModel, ct);
 
         var days = usage.ByDay
             .OrderByDescending(pair => pair.Key, StringComparer.Ordinal)
@@ -48,7 +48,7 @@ public sealed class UsageScreen(SessionStore store, IAgentLimits limits, IAuditL
             📊 <b>Использование</b>
 
             <b>Остаток тарифа</b>
-            {(plan.Count > 0 ? E(string.Join(Environment.NewLine, plan)) : "<i>окон нет</i>")}
+            {LimitBars.Render(plan, 1.0)}
 
             <i>Расход шлюза с {E(since)}</i>
             Запусков: <b>{total.Runs}</b> · ходов: <b>{total.Turns}</b>
