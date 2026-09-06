@@ -16,7 +16,7 @@ public sealed class BotCommandsCatalog(ITelegramBotClient bot, ILogger<BotComman
     [
         new() { Command = "menu", Description = "меню" },
         new() { Command = "status", Description = "статус" },
-        new() { Command = "sessions", Description = "сессии: выбрать, новая, стоп" },
+        new() { Command = "sessions", Description = "сессия" },
         new() { Command = "agent", Description = "настройки агента" },
         new() { Command = "skills", Description = "скиллы" },
         new() { Command = "project", Description = "репозиторий" },
