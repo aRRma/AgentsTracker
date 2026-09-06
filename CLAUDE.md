@@ -296,11 +296,13 @@ BOM и десятичная запятая: иначе Excel на русской
 `RingBufferLog` (500 записей, Information+, зарегистрирован как `ILoggerProvider`).
 
 `index.html` — один файл без сборки и CDN, `EmbeddedResource`; данные `/api/*` в camelCase,
-кириллица без `\u`. Смотреть вёрстку без шлюза: копия в scratchpad с `<script src="mock.js">`
-перед основным скриптом (мок подменяет `fetch` и `EventSource`, `?state=run|wait|idle`),
-`python -m http.server <порт> --bind 127.0.0.1` из scratchpad (Playwright не открывает
-`file://`), тёмная тема — `page.emulateMedia({colorScheme:'dark'})`; скриншоты падают в корень
-репозитория, они в `.gitignore`. Строй страницы — рейка слева (состояние, лимиты) и лента
+кириллица без `\u`. Смотреть вёрстку без шлюза: копия страницы и `scripts\monitor-mock.js` в
+scratchpad, `<script src="monitor-mock.js">` перед основным скриптом (мок подменяет `fetch`
+данными `/api/*` и `EventSource` снимком, `?state=run|wait|idle`; новый эндпоинт — добавить в
+`routes`), `python -m http.server <порт> --bind 127.0.0.1` из scratchpad (Playwright не
+открывает `file://`). Доступность — `browser_snapshot` Playwright MCP (дерево ролей и имён);
+тёмная тема только скриптом Playwright через `page.emulateMedia({colorScheme:'dark'})`;
+скриншоты падают в корень репозитория, они в `.gitignore`. Строй страницы — рейка слева (состояние, лимиты) и лента
 шагов справа; цвет только как сигнал (`--run`/`--wait`/`--fail`), шрифты системные Windows.
 
 Скрипт: `renderLive` перестраивает DOM только по кадру SSE, а секундомер, аптайм и «ждёт N с»
@@ -435,7 +437,9 @@ Id новой сессии выдаёт **шлюз** (`NewSessionId` → `--sess
 - Русские тексты и windows-пути правьте Edit/Write, не heredoc и не строками python из Bash:
   `\a`, `\n`, `\r` в путях съедаются молча и неотличимы от опечатки. Скрипт — в scratchpad через
   Write, запуск файлом, результат проверять `grep … | cat -v` и сборкой. Исходники — UTF-8
-  **без BOM** (`utf-8-sig` добавит его молча).
+  **без BOM** (`utf-8-sig` добавит его молча). Сообщение коммита из нескольких абзацев — файлом
+  в scratchpad через Write и `git commit -F <файл>`: `-F -` с here-string из инструмента
+  PowerShell stdin не получает, и текст уходит как pathspec.
 - Ревьюеру-сабагенту без Bash `git show`/`git diff` недоступны: давайте пути к старым версиям
   файлов, выгруженным в scratchpad (`git show <коммит>:<путь> > …`).
 - Комментарии объясняют не что делает код, а какой отказ предотвращает; пересказ строки лишний.
