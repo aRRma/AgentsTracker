@@ -210,7 +210,7 @@ public sealed class OperatorConsole(
         // Ключевого поля нет (WebSearch с query, MCP-инструменты) — берём весь вход целиком.
         // Голое имя инструмента открыло бы «Всегда» для любых его аргументов.
         var raw = input is { ValueKind: not JsonValueKind.Undefined and not JsonValueKind.Null } element
-            ? JsonSerializer.Serialize(element)
+            ? JsonSerializer.Serialize(element, SignatureJson)
             : "";
 
         // Скобки обязательны даже при пустом входе: по ним отличаются сигнатуры этого формата
@@ -218,6 +218,15 @@ public sealed class OperatorConsole(
         // аргументы и вычищается при загрузке state.json).
         return raw is { Length: > 0 } && raw != "{}" ? $"{toolName}{raw}" : $"{toolName}()";
     }
+
+    /// <summary>
+    /// Сигнатура показывается в карточке и в /rules: с экранированием по умолчанию кириллица
+    /// (план ExitPlanMode, query WebSearch) превращалась в «Пл…».
+    /// </summary>
+    private static readonly JsonSerializerOptions SignatureJson = new()
+    {
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
 
     private void Audit(string kind, string summary, string outcome, long? userId = null) =>
         audit.Write(AuditEvent.Now(kind, summary, userId, broker.ActiveChatId, store.ProjectPath, store.SessionId, outcome));
