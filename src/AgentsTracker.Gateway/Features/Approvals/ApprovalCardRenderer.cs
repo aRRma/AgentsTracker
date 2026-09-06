@@ -97,7 +97,7 @@ public static class ApprovalCardRenderer
         else
         {
             card.Append("\n<i>Кнопка «Всегда» больше не спросит про: ")
-                .Append(E(Shorten(signature, projectPath), SignatureBudget))
+                .Append(E(Unescape(Shorten(signature, projectPath)), SignatureBudget))
                 .Append("</i>");
         }
 
@@ -326,6 +326,13 @@ public static class ApprovalCardRenderer
 
         return text[..index] + text[after..];
     }
+
+    /// <summary>
+    /// Сигнатура без ключевого поля — это JSON входа, и многострочный текст (план ExitPlanMode)
+    /// приходил в карточку с буквальными «\n». Ключ в state.json не трогаем — только показ.
+    /// </summary>
+    private static string Unescape(string signature) =>
+        signature.Replace("\\r\\n", "\n").Replace("\\n", "\n").Replace("\\t", "\t");
 
     private static string? Str(JsonElement obj, string name) =>
         obj.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
