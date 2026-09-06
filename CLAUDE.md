@@ -115,6 +115,11 @@ git worktree add ..\AgentsTracker-<задача> -b <ветка>   # main ост
 Новый эндпоинт монитора: `api.MapGet` в `MonitorModule.MapEndpoints` (группа уже фильтрует
 порт), данные — только чтение, `Results.Json(..., Json)`; новая секция — в `index.html`.
 
+Новый ключ конфига: свойство в `GatewayOptions` (+ проверка в `Validate`), значение по
+умолчанию в `appsettings.json`, пример с комментарием `"//Ключ": "…"` в
+`appsettings.Local.example.json` и строка в README «Основные настройки». Ключ конкретного
+агента — в `ClaudeOptions` и подсекции `Gateway:Claude`, хост его не читает.
+
 ## Архитектура
 
 ### Слои и слайсы
@@ -187,7 +192,7 @@ Telegram и `GatewayOptions` (ему даётся `AgentHost`); `Infrastructure`
    Неизвестные слэш-команды сюда и попадают — это команды самого Claude Code (`/review` и прочие).
 
 Callback-и делят один поток: `ITelegramCallbackHandler.CanHandle` — префикс `cfg:` у меню,
-всё остальное (hex-id запроса) у `ApprovalBroker`.
+всё остальное (hex-id запроса) у `ApprovalCallbackHandler`, который отдаёт нажатие `ApprovalBroker`.
 
 `ActiveChatId` брокера выставляет `ChatWorker` перед самым запуском, а не обработчик сообщения:
 иначе карточки уже идущего запуска ушли бы в чат другого пользователя.
@@ -289,7 +294,9 @@ CLI запускается с `--output-format stream-json --verbose` (без `-
 `Connection.LocalPort` — иначе страница открылась бы и на порту MCP (проверка: `/` на порту
 MCP отдаёт 404). Авторизации нет намеренно, только loopback: поэтому эндпоинты **только
 читают** — `/stop`, смена проекта и прочие действия остаются в Telegram, где есть
-`AllowedUserIds` и аудит «кто нажал».
+`AllowedUserIds` и аудит «кто нажал». Эндпоинты: `/` (страница), `/api/snapshot`,
+`/api/events` (SSE), `/api/limits`, `/api/runs?project=&limit=`, `/api/stats`,
+`/api/stats.csv`, `/api/audit?count=`, `/api/log?count=&level=`.
 
 Источник «что сейчас» — `RunMonitor` (`Infrastructure/Monitoring`): `ChatWorker` сообщает
 очередь (`Enqueued`/`Dequeued`/`QueueCleared`), старт (`RunStarted`), каждый шаг (тот же
@@ -314,11 +321,8 @@ callback, что у `RunStatusMessage`) и финиш; `OperatorConsole` — о�
 
 `index.html` — один файл без сборки и CDN, `EmbeddedResource` в csproj: publish не зависит
 от папки рядом с exe. Все данные из `/api/*` в camelCase (`JsonSerializerDefaults.Web`),
-кириллица без `\u`-экранирования.
-
-Проверка без остановки рабочего шлюза невозможна изолированно: пробный экземпляр
-перезаписывает его `mcp-gateway.json` (`%LOCALAPPDATA%` берётся через
-`Environment.GetFolderPath`, переменная окружения не перекрывает) — см. «Команды».
+кириллица без `\u`-экранирования. Проверять пробным экземпляром без остановки рабочего
+шлюза нельзя — см. «Команды».
 
 ### `--permission-mode` передаётся всегда
 
@@ -388,7 +392,9 @@ SKILL.md регуляркой (формальной схемы аргумент�
 `--resume` работает только в той папке, где сессия создана. Переключение репозитория из меню меняет
 и активную сессию. `ChatWorker` фиксирует сессию и `ProjectPath` в `AgentRunRequest` до запуска —
 иначе переключение посреди работы развело бы рабочий каталог процесса и проект, которому
-пишется сессия.
+пишется сессия. Экран `/sessions` показывает до 8 последних сессий проекта; кнопка несёт
+первые 8 символов id (`ShortId`), а не номер в списке: завершившийся между отрисовкой и
+нажатием запуск сдвинул бы номера на соседнюю сессию.
 
 Id новой сессии выдаёт **шлюз** (`AgentRunRequest.NewSessionId` → `--session-id <uuid>`) и
 регистрирует её, как только бэкенд сообщит `IAgentRunObserver.SessionStarted` — сразу после
