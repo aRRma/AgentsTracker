@@ -5,142 +5,257 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AgentsTracker — монитор</title>
 <style>
+  /* Светлая тема — основная: на пульт смотрят днём, с соседнего экрана. */
   :root {
-    --bg: #f5f6f8; --card: #fff; --text: #1f2328; --muted: #6b7280; --line: #e5e7eb;
-    --ok: #16a34a; --warn: #d97706; --bad: #dc2626; --accent: #2563eb; --accent-soft: #dbeafe;
-    --mono: ui-monospace, Consolas, "Cascadia Mono", monospace;
+    --paper: #f2f3f0;      /* фон страницы: холодная приборная бумага */
+    --surface: #ffffff;    /* поле рейки и таблиц */
+    --ink: #1a1d1a;        /* основной текст */
+    --ink-soft: #676d66;   /* подписи */
+    --rule: #d8dad3;       /* волосяные линии */
+    --rule-soft: #e8e9e4;
+    --run: #0b6e5f;        /* сигнал «идёт работа» */
+    --wait: #b75c0c;       /* сигнал «ждёт человека» */
+    --fail: #a62121;       /* сигнал «сбой» */
+    --run-wash: rgba(11,110,95,.09);
+    --wait-wash: rgba(183,92,12,.10);
+    --fail-wash: rgba(166,33,33,.09);
+    --display: "Bahnschrift", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+    --rail: 300px;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #0f1115; --card: #171a21; --text: #e6e8eb; --muted: #9aa3b2; --line: #2a2f3a; --accent-soft: #1e2a44; }
+    :root {
+      --paper: #14181a; --surface: #1b2124; --ink: #e4e7e3; --ink-soft: #949c96;
+      --rule: #2c3438; --rule-soft: #232a2d;
+      --run: #35b79e; --wait: #e39a3d; --fail: #e4635a;
+      --run-wash: rgba(53,183,158,.12); --wait-wash: rgba(227,154,61,.14); --fail-wash: rgba(228,99,90,.12);
+    }
   }
+
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, "Segoe UI", sans-serif; }
-  header { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; padding: 12px 20px; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
-  header h1 { font-size: 16px; margin: 0 12px 0 0; }
-  header .kv { color: var(--muted); }
-  header .kv b { color: var(--text); font-weight: 600; }
-  #conn { margin-left: auto; padding: 3px 10px; border-radius: 999px; font-size: 12px; background: var(--accent-soft); color: var(--accent); }
-  #conn.down { background: #fee2e2; color: var(--bad); }
-  main { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; padding: 16px 20px; max-width: 1600px; margin: 0 auto; }
-  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
-  section.wide { grid-column: 1 / -1; }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 10px; display: flex; align-items: center; gap: 10px; }
-  h2 .right { margin-left: auto; font-weight: normal; text-transform: none; letter-spacing: 0; }
-  .state { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 600; margin-bottom: 8px; }
-  .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); flex: none; }
-  .dot.busy { background: var(--accent); animation: pulse 1.2s infinite; }
-  .dot.wait { background: var(--warn); animation: pulse 1.2s infinite; }
-  @keyframes pulse { 50% { opacity: .35; } }
-  .meta { color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 16px; margin-bottom: 8px; }
-  .prompt { font-style: italic; margin: 6px 0 10px; word-break: break-word; }
-  .steps { font-family: var(--mono); font-size: 12px; max-height: 320px; overflow: auto; border-top: 1px solid var(--line); padding-top: 6px; }
-  .steps div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .steps .t { color: var(--muted); margin-right: 8px; }
-  .steps .n { padding-left: 18px; }
-  .approval { border: 1px solid var(--warn); border-radius: 8px; padding: 8px 12px; margin: 8px 0; background: rgba(217,119,6,.08); }
-  .queue { margin-top: 8px; }
-  .queue li { color: var(--muted); }
-  .bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin: 4px 0 8px; }
-  .bar i { display: block; height: 100%; background: var(--ok); }
-  .bar i.warn { background: var(--warn); } .bar i.bad { background: var(--bad); }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font: 14px/1.5 var(--sans);
+    font-variant-numeric: tabular-nums;
+  }
+  a { color: inherit; text-underline-offset: 3px; text-decoration-color: var(--rule); }
+  a:hover { text-decoration-color: currentColor; }
+  :focus-visible { outline: 2px solid var(--run); outline-offset: 2px; }
+
+  /* ---------- приборная рейка ---------- */
+  .rail {
+    position: fixed; inset: 0 auto 0 0; width: var(--rail);
+    background: var(--surface); border-right: 1px solid var(--rule);
+    padding: 20px 22px 24px; overflow: auto;
+    display: flex; flex-direction: column; gap: 22px;
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand b { font: 600 17px/1 var(--display); letter-spacing: .01em; }
+  .brand span { color: var(--ink-soft); font-size: 12px; }
+  .link { margin-left: auto; font-size: 12px; color: var(--ink-soft); }
+  .link.down { color: var(--fail); }
+
+  .readout { border-top: 1px solid var(--rule); padding-top: 16px; }
+  .lamp-row { display: flex; align-items: center; gap: 10px; }
+  .lamp { width: 11px; height: 11px; flex: none; background: var(--ink-soft); }
+  .lamp.run { background: var(--run); box-shadow: 0 0 0 4px var(--run-wash); animation: breathe 2.4s ease-in-out infinite; }
+  .lamp.wait { background: var(--wait); box-shadow: 0 0 0 4px var(--wait-wash); animation: blink 1s steps(2, end) infinite; }
+  @keyframes breathe { 50% { opacity: .3; } }
+  @keyframes blink { 50% { opacity: 0; } }
+  .lamp-row b { font: 500 15px/1.2 var(--display); }
+  .clock { font: 300 40px/1 var(--display); letter-spacing: -.01em; margin-top: 10px; }
+  .clock.idle { color: var(--ink-soft); }
+  .clock small { font-size: 13px; letter-spacing: 0; color: var(--ink-soft); margin-left: 6px; }
+
+  .facts { border-top: 1px solid var(--rule); padding-top: 14px; }
+  .facts dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; }
+  .facts dt { color: var(--ink-soft); font-size: 12.5px; }
+  .facts dd { margin: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .gauges { border-top: 1px solid var(--rule); padding-top: 14px; }
+  .gauges h2, .facts h2 { font: 500 13px/1 var(--display); margin: 0 0 12px; }
+  .gauges h2 span { float: right; font: 400 11px/1 var(--sans); color: var(--ink-soft); }
+  .gauge { margin-bottom: 12px; }
+  .gauge .cap { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; margin-bottom: 5px; }
+  .gauge .cap i { font-style: normal; color: var(--ink-soft); }
+  /* Сегментная шкала — как деления на приборе, а не сплошная полоса. */
+  .meter { height: 9px; background: repeating-linear-gradient(90deg, var(--rule) 0 5px, transparent 5px 8px); }
+  .meter i { display: block; height: 100%; background: repeating-linear-gradient(90deg, var(--run) 0 5px, transparent 5px 8px); }
+  .meter i.warn { background: repeating-linear-gradient(90deg, var(--wait) 0 5px, transparent 5px 8px); }
+  .meter i.bad { background: repeating-linear-gradient(90deg, var(--fail) 0 5px, transparent 5px 8px); }
+
+  /* ---------- лента и разделы ---------- */
+  main { margin-left: var(--rail); padding: 26px 30px 60px; max-width: 1500px; }
+  .band { border-top: 1px solid var(--rule); padding-top: 18px; margin-top: 30px; }
+  .band:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+  .band > h2 { font: 500 14px/1 var(--display); margin: 0 0 14px; display: flex; align-items: center; gap: 14px; }
+  .band > h2 .aside { margin-left: auto; font: 400 12px/1 var(--sans); color: var(--ink-soft); display: flex; gap: 12px; align-items: center; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; align-items: start; }
+
+  .approval { border-left: 3px solid var(--wait); background: var(--wait-wash); padding: 9px 14px; margin-bottom: 10px; }
+  .approval b { font-weight: 600; }
+  .approval div { color: var(--ink-soft); font-size: 12.5px; margin-top: 2px; }
+
+  .prompt { font-size: 16px; line-height: 1.45; max-width: 68ch; word-break: break-word; margin-bottom: 10px; }
+  .prompt.idle { color: var(--ink-soft); }
+  .runmeta { display: flex; flex-wrap: wrap; gap: 4px 18px; color: var(--ink-soft); font-size: 12.5px; margin-bottom: 14px; }
+  .runmeta b { color: var(--ink); font-weight: 600; }
+
+  /* Лента шагов: главный герой страницы — по ней видно, что процесс жив. */
+  .tape { font-family: var(--mono); font-size: 12.5px; max-height: 340px; overflow: auto; background: var(--surface); border: 1px solid var(--rule); padding: 10px 14px; }
+  .tape p { margin: 0 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tape p.nested { padding-left: 20px; color: var(--ink-soft); }
+  .tape .t { color: var(--ink-soft); margin-right: 10px; }
+  .tape .hint { color: var(--ink-soft); font-family: var(--sans); }
+
+  .queue { margin-top: 14px; font-size: 13px; }
+  .queue b { font-weight: 600; }
+  .queue ol { margin: 6px 0 0; padding-left: 22px; color: var(--ink-soft); }
+
+  /* Итоги — строка показаний, разделённая линиями, без плиток и теней. */
+  .figures { display: flex; flex-wrap: wrap; gap: 0 0; margin-bottom: 20px; }
+  .figures div { padding: 0 22px; border-left: 1px solid var(--rule-soft); }
+  .figures div:first-child { padding-left: 0; border-left: 0; }
+  .figures b { display: block; font: 300 30px/1.1 var(--display); }
+  .figures span { color: var(--ink-soft); font-size: 12px; }
+
+  #chart { width: 100%; height: 170px; display: block; }
+  #chart rect { fill: var(--run); }
+  #chart rect:hover { fill: var(--wait); }
+  #chart text { fill: var(--ink-soft); font: 10px var(--sans); }
+  #chart line { stroke: var(--rule); }
+
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; white-space: nowrap; }
-  td.wrap { white-space: normal; word-break: break-word; }
-  th { color: var(--muted); font-weight: 600; font-size: 12px; }
-  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .scroll { overflow: auto; max-height: 420px; }
-  .tag { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; }
-  .tag.ok { background: #dcfce7; color: #166534; } .tag.cancel { background: #fef3c7; color: #92400e; }
-  .tag.error, .tag.rate-limit { background: #fee2e2; color: #991b1b; }
-  .tag.Warning { background: #fef3c7; color: #92400e; } .tag.Error, .tag.Critical { background: #fee2e2; color: #991b1b; }
-  .tag.Information { background: var(--accent-soft); color: var(--accent); }
-  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
-  .tile { background: var(--bg); border-radius: 8px; padding: 8px 12px; }
-  .tile b { display: block; font-size: 20px; font-weight: 600; }
-  .tile span { color: var(--muted); font-size: 12px; }
-  svg { width: 100%; height: 160px; display: block; }
-  svg rect { fill: var(--accent); }
-  svg rect:hover { fill: var(--warn); }
-  svg text { fill: var(--muted); font-size: 10px; }
-  select, input, a.btn { font: inherit; background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; text-decoration: none; }
-  .mono { font-family: var(--mono); font-size: 12px; }
-  .muted { color: var(--muted); }
-  .empty { color: var(--muted); font-style: italic; }
+  th, td { text-align: left; padding: 6px 16px 6px 0; border-bottom: 1px solid var(--rule-soft); vertical-align: top; white-space: nowrap; }
+  th:last-child, td:last-child { padding-right: 0; }
+  th { color: var(--ink-soft); font-weight: 500; font-size: 12px; border-bottom-color: var(--rule); }
+  td.wrap { white-space: normal; word-break: break-word; min-width: 22ch; }
+  td.num, th.num { text-align: right; }
+  .scroll { overflow: auto; max-height: 430px; }
+  .mono { font-family: var(--mono); font-size: 12.5px; }
+  .muted { color: var(--ink-soft); }
+  .empty { color: var(--ink-soft); }
+
+  /* Метка исхода — цветом и весом, без пилюль и подложек. */
+  .mark { font-weight: 600; }
+  .mark.ok { color: var(--run); }
+  .mark.cancel, .mark.Warning { color: var(--wait); }
+  .mark.error, .mark.rate-limit, .mark.Error, .mark.Critical { color: var(--fail); }
+  .mark.Information { color: var(--ink-soft); font-weight: 400; }
+
+  select { font: inherit; font-size: 12.5px; color: var(--ink); background: transparent; border: 0; border-bottom: 1px solid var(--rule); padding: 2px 2px 3px; }
+  details summary { cursor: pointer; color: var(--ink-soft); font-size: 12px; }
+  details pre { white-space: pre-wrap; margin: 4px 0 0; }
+
+  @media (max-width: 1000px) {
+    /* На телефоне рейка становится шапкой: чем она короче, тем ближе к экрану лента запуска. */
+    .rail { position: static; width: auto; border-right: 0; border-bottom: 1px solid var(--rule); padding: 16px 18px; gap: 16px; }
+    main { margin-left: 0; padding: 22px 18px 50px; }
+    .split { grid-template-columns: 1fr; }
+    .clock { font-size: 34px; }
+    .figures div { padding: 0 16px; }
+  }
+  @media (max-width: 1000px) and (min-width: 560px) {
+    .rail { display: grid; grid-template-columns: 1fr 1fr; align-items: start; }
+    .brand, .readout { grid-column: 1 / -1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lamp.run, .lamp.wait { animation: none; }
+  }
 </style>
 </head>
 <body>
-<header>
-  <h1>AgentsTracker</h1>
-  <span class="kv">работает <b id="uptime">—</b></span>
-  <span class="kv"><span id="agent">Агент</span> <b id="cli">—</b></span>
-  <span class="kv">проект <b id="project" class="mono">—</b></span>
-  <span class="kv">модель <b id="model">—</b></span>
-  <span class="kv">режим <b id="mode">—</b></span>
-  <span class="kv">effort <b id="effort">—</b></span>
-  <span id="conn">подключение…</span>
-</header>
+
+<aside class="rail">
+  <div class="brand"><b>AgentsTracker</b><span id="conn" class="link">подключение…</span></div>
+
+  <div class="readout">
+    <div class="lamp-row"><span class="lamp" id="lamp"></span><b id="state-text">—</b></div>
+    <div class="clock idle" id="clock">—</div>
+  </div>
+
+  <div class="facts">
+    <h2>Шлюз</h2>
+    <dl>
+      <dt id="agent">Агент</dt><dd id="cli">—</dd>
+      <dt>Проект</dt><dd id="project" class="mono">—</dd>
+      <dt>Модель</dt><dd id="model">—</dd>
+      <dt>Режим</dt><dd id="mode">—</dd>
+      <dt>Effort</dt><dd id="effort">—</dd>
+      <dt>В работе</dt><dd id="uptime">—</dd>
+    </dl>
+  </div>
+
+  <div class="gauges">
+    <h2>Лимиты тарифа <span id="limits-note"></span></h2>
+    <div id="limits-body" class="empty">загрузка…</div>
+    <div id="budget"></div>
+  </div>
+</aside>
+
 <main>
-  <section id="now">
-    <h2>Сейчас <span class="right muted" id="now-time"></span></h2>
-    <div class="state"><span class="dot" id="dot"></span><span id="state-text">—</span></div>
+  <section class="band">
+    <h2>Сейчас <span class="aside" id="now-time"></span></h2>
     <div id="approval"></div>
     <div id="run"></div>
     <div class="queue" id="queue"></div>
   </section>
 
-  <section id="limits">
-    <h2>Лимиты тарифа <span class="right muted" id="limits-note"></span></h2>
-    <div id="limits-body" class="empty">загрузка…</div>
-    <div id="budget" class="muted"></div>
-  </section>
-
-  <section class="wide">
-    <h2>По дням
-      <select id="metric">
-        <option value="runs">запуски</option>
-        <option value="costUsd">стоимость, $</option>
-        <option value="tokens">токены (вход+выход)</option>
-        <option value="minutes">минуты</option>
-      </select>
-      <span class="right"><a class="btn" href="/api/stats.csv">CSV</a> <a class="btn" href="/api/stats">JSON</a></span>
+  <section class="band">
+    <h2>Работа по дням
+      <span class="aside">
+        <select id="metric">
+          <option value="runs">запуски</option>
+          <option value="costUsd">стоимость, $</option>
+          <option value="tokens">токены (вход+выход)</option>
+          <option value="minutes">минуты</option>
+        </select>
+        <a href="/api/stats.csv">Скачать CSV</a>
+      </span>
     </h2>
-    <div class="tiles" id="tiles"></div>
+    <div class="figures" id="figures"></div>
     <svg id="chart"></svg>
   </section>
 
-  <section class="wide">
+  <section class="band">
     <h2>Запуски
-      <select id="run-project"><option value="">все проекты</option></select>
-      <span class="right"><a class="btn" href="/api/runs">JSON</a></span>
+      <span class="aside">
+        <select id="run-project"><option value="">все проекты</option></select>
+        <a href="/api/runs">JSON</a>
+      </span>
     </h2>
     <div class="scroll"><table id="runs"><thead><tr>
       <th>Когда</th><th>Проект</th><th>Промпт</th><th>Исход</th><th class="num">Время</th><th class="num">Ходов</th><th class="num">Вызовов</th><th class="num">Токены</th><th class="num">$</th><th>Сессия</th>
     </tr></thead><tbody></tbody></table></div>
   </section>
 
-  <section>
-    <h2>По моделям</h2>
-    <div class="scroll"><table id="models"><thead><tr><th>Модель</th><th class="num">Запусков</th><th class="num">Вход</th><th class="num">Выход</th><th class="num">Кэш</th><th class="num">$</th></tr></thead><tbody></tbody></table></div>
-  </section>
+  <div class="split">
+    <section class="band">
+      <h2>Модели</h2>
+      <div class="scroll"><table id="models"><thead><tr><th>Модель</th><th class="num">Запусков</th><th class="num">Вход</th><th class="num">Выход</th><th class="num">Кэш</th><th class="num">$</th></tr></thead><tbody></tbody></table></div>
+    </section>
 
-  <section>
-    <h2>Скиллы</h2>
-    <div class="scroll"><table id="skills"><thead><tr><th>Команда</th><th class="num">Запусков</th></tr></thead><tbody></tbody></table></div>
-  </section>
+    <section class="band">
+      <h2>Скиллы</h2>
+      <div class="scroll"><table id="skills"><thead><tr><th>Команда</th><th class="num">Запусков</th></tr></thead><tbody></tbody></table></div>
+    </section>
+  </div>
 
-  <section class="wide">
+  <section class="band">
     <h2>Сессии</h2>
     <div class="scroll"><table id="sessions"><thead><tr><th>Проект</th><th>Сессия</th><th>Название</th><th>Активность</th><th class="num">Ходов</th><th class="num">$</th></tr></thead><tbody></tbody></table></div>
   </section>
 
-  <section class="wide">
-    <h2>Аудит <span class="right"><a class="btn" href="/api/audit?count=1000">JSON</a></span></h2>
+  <section class="band">
+    <h2>Аудит <span class="aside"><a href="/api/audit?count=1000">JSON</a></span></h2>
     <div class="scroll"><table id="audit"><thead><tr><th>Когда</th><th>Вид</th><th>Что</th><th>Исход</th><th>Кто</th><th>Проект</th></tr></thead><tbody></tbody></table></div>
   </section>
 
-  <section class="wide">
+  <section class="band">
     <h2>Лог
-      <select id="log-level"><option>Information</option><option>Warning</option><option>Error</option></select>
+      <span class="aside"><select id="log-level"><option>Information</option><option>Warning</option><option>Error</option></select></span>
     </h2>
     <div class="scroll"><table id="log"><thead><tr><th>Когда</th><th>Уровень</th><th>Кто</th><th>Сообщение</th></tr></thead><tbody></tbody></table></div>
   </section>
@@ -163,6 +278,11 @@
     if (s >= 60) return `${Math.floor(s/60)} мин ${s%60} с`;
     return `${s} с`;
   };
+  // Крупное показание на рейке — секундомер запуска, читаемый с соседнего экрана.
+  const fmtClock = ms => {
+    const s = Math.max(0, Math.floor(ms / 1000)), p = n => String(n).padStart(2, '0');
+    return `${p(Math.floor(s/3600))}:${p(Math.floor(s%3600/60))}:${p(s%60)}`;
+  };
   const fmtTokens = n => n < 1000 ? String(n) : n < 1e6 ? (n/1000).toFixed(1).replace(/\.0$/,'') + 'k' : (n/1e6).toFixed(2) + 'M';
   const fmtMoney = v => v ? (v < 0.01 ? '<$0.01' : '$' + v.toFixed(2)) : '$0';
   const shortPath = p => (p || '').split(/[\\/]/).filter(Boolean).slice(-2).join('/');
@@ -181,28 +301,43 @@
     $('effort').textContent = s.effort || '—';
     $('now-time').textContent = 'обновлено ' + fmtTime(s.at);
 
-    const dot = $('dot'); dot.className = 'dot';
-    let text = 'Свободен';
+    const lamp = $('lamp'), clock = $('clock');
+    lamp.className = 'lamp';
+    clock.className = 'clock idle';
+    let text = 'Свободен', readout = '—';
     const approvals = s.approvals || [];
-    if (approvals.length) { dot.classList.add('wait'); text = approvals.length > 1 ? `Ждёт подтверждений: ${approvals.length}` : 'Ждёт подтверждения'; }
-    else if (s.run) { dot.classList.add('busy'); text = 'Работает · ' + fmtDur(Date.now() - new Date(s.run.startedUtc)); }
+    if (approvals.length) {
+      lamp.classList.add('wait');
+      text = approvals.length > 1 ? `Ждёт подтверждений: ${approvals.length}` : 'Ждёт подтверждения';
+      readout = fmtClock(Date.now() - new Date(approvals[0].sinceUtc));
+      clock.className = 'clock';
+    } else if (s.run) {
+      lamp.classList.add('run');
+      text = 'Работает';
+      readout = fmtClock(Date.now() - new Date(s.run.startedUtc));
+      clock.className = 'clock';
+    }
     $('state-text').textContent = text;
+    // В простое секундомер убирается совсем: пустой прочерк на его месте читался бы как сбой.
+    clock.hidden = readout === '—';
+    clock.innerHTML = clock.hidden ? '' : `${readout}<small>${approvals.length ? 'ждёт ответа' : 'идёт запуск'}</small>`;
 
     $('approval').innerHTML = approvals.map(a =>
-      `<div class="approval">⏳ <b>${esc(a.tool)}</b> <span class="mono">${esc(a.brief)}</span><div class="muted">ждёт ${fmtDur(Date.now() - new Date(a.sinceUtc))} — кнопки в Telegram</div></div>`).join('');
+      `<div class="approval"><b>${esc(a.tool)}</b> <span class="mono">${esc(a.brief)}</span><div>ждёт ${fmtDur(Date.now() - new Date(a.sinceUtc))} — ответьте кнопками в Telegram</div></div>`).join('');
 
     if (s.run) {
       const r = s.run, st = r.start;
-      const steps = r.steps.map(x => `<div class="${x.nested ? 'n' : ''}"><span class="t">${fmtTime(x.at)}</span>${x.nested ? '↳ ' : ''}${esc(x.description)}</div>`).join('');
+      const steps = r.steps.map(x => `<p class="${x.nested ? 'nested' : ''}"><span class="t">${fmtTime(x.at)}</span>${x.nested ? '↳ ' : ''}${esc(x.description)}</p>`).join('');
       $('run').innerHTML = `
-        <div class="meta"><span>сессия <span class="mono">${esc(st.sessionId ? shortId(st.sessionId) : 'новая')}</span></span>
-          <span>${esc(st.model || 'модель по умолчанию')} · ${esc(st.permissionMode)}${st.effort ? ' · ' + esc(st.effort) : ''}</span>
-          <span>вызовов инструментов: <b>${r.toolCalls}</b></span></div>
         <div class="prompt">${esc(st.promptPreview)}</div>
-        <div class="steps">${r.droppedSteps ? `<div class="muted">… ещё ${r.droppedSteps} ранних шагов</div>` : ''}${steps || '<div class="muted">ждём первый шаг…</div>'}</div>`;
-      const box = $('run').querySelector('.steps'); box.scrollTop = box.scrollHeight;
+        <div class="runmeta"><span>сессия <b class="mono">${esc(st.sessionId ? shortId(st.sessionId) : 'новая')}</b></span>
+          <span>${esc(st.model || 'модель по умолчанию')}</span><span>${esc(st.permissionMode)}</span>${st.effort ? `<span>${esc(st.effort)}</span>` : ''}
+          <span>вызовов инструментов <b>${r.toolCalls}</b></span></div>
+        <div class="tape">${r.droppedSteps ? `<p class="hint">… ещё ${r.droppedSteps} ранних шагов</p>` : ''}${steps || '<p class="hint">ждём первый шаг…</p>'}</div>`;
+      const box = $('run').querySelector('.tape'); box.scrollTop = box.scrollHeight;
     } else {
-      $('run').innerHTML = `<div class="muted">сессия проекта: <span class="mono">${esc(s.session ? shortId(s.session) : 'новая')}</span></div>`;
+      $('run').innerHTML = `<div class="prompt idle">Запусков нет. Напишите боту в Telegram — работа появится здесь.</div>
+        <div class="runmeta"><span>сессия проекта <b class="mono">${esc(s.session ? shortId(s.session) : 'новая')}</b></span></div>`;
     }
 
     $('queue').innerHTML = s.queue.length
@@ -211,7 +346,8 @@
 
     if (s.budget && s.budget.daily) {
       const pct = Math.min(100, s.budget.spentToday / s.budget.daily * 100);
-      $('budget').innerHTML = `Дневной бюджет: ${fmtMoney(s.budget.spentToday)} из ${fmtMoney(s.budget.daily)}<div class="bar"><i class="${pct > 90 ? 'bad' : pct > 70 ? 'warn' : ''}" style="width:${pct}%"></i></div>`;
+      $('budget').innerHTML = `<div class="gauge"><div class="cap"><span>Бюджет на день</span><i>${fmtMoney(s.budget.spentToday)} из ${fmtMoney(s.budget.daily)}</i></div>
+        <div class="meter"><i class="${pct > 90 ? 'bad' : pct > 70 ? 'warn' : ''}" style="width:${pct}%"></i></div></div>`;
     }
   }
   // Часы и «прошло времени» тикают между кадрами сервера.
@@ -227,8 +363,8 @@
       // Запуск закончился — история и статистика изменились.
       if (wasRunning && !isRunning) { clearTimeout(refreshTimer); refreshTimer = setTimeout(loadAll, 800); }
     });
-    es.onopen = () => { $('conn').textContent = 'онлайн'; $('conn').className = ''; loadAll(); };
-    es.onerror = () => { $('conn').textContent = 'шлюз недоступен'; $('conn').className = 'down'; };
+    es.onopen = () => { $('conn').textContent = 'онлайн'; $('conn').className = 'link'; loadAll(); };
+    es.onerror = () => { $('conn').textContent = 'шлюз недоступен'; $('conn').className = 'link down'; };
   }
 
   // ---- статистика ----
@@ -244,10 +380,11 @@
 
   function renderStats() {
     const t = stats.total;
-    $('tiles').innerHTML = [
-      [t.runs, 'запусков'], [t.turns, 'ходов'], [fmtMoney(t.costUsd), 'оценка стоимости'],
+    $('figures').innerHTML = [
+      [t.runs, stats.sinceUtc ? 'запусков с ' + new Date(stats.sinceUtc).toLocaleDateString('ru-RU') : 'запусков'],
+      [t.turns, 'ходов'], [fmtMoney(t.costUsd), 'оценка стоимости'],
       [fmtTokens(t.inputTokens + t.outputTokens), 'токенов'], [fmtTokens(t.cacheReadTokens), 'из кэша'], [fmtDur(t.durationMs), 'в работе'],
-    ].map(([v, l]) => `<div class="tile"><b>${v}</b><span>${l}${l === 'запусков' && stats.sinceUtc ? ' с ' + new Date(stats.sinceUtc).toLocaleDateString('ru-RU') : ''}</span></div>`).join('');
+    ].map(([v, l]) => `<div><b>${v}</b><span>${l}</span></div>`).join('');
     renderChart();
 
     $('models').querySelector('tbody').innerHTML = stats.byModel.map(m =>
@@ -264,15 +401,16 @@
     const metric = $('metric').value;
     const days = stats.byDay.slice(-30);
     const value = d => metric === 'tokens' ? d.inputTokens + d.outputTokens : metric === 'minutes' ? d.durationMs / 60000 : d[metric];
-    const W = 1000, H = 160, pad = 18, bw = W / Math.max(days.length, 1);
+    const W = 1000, H = 170, pad = 20, bw = W / Math.max(days.length, 1);
     const max = Math.max(...days.map(value), 0.0001);
     const svg = $('chart'); svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-    svg.innerHTML = days.map((d, i) => {
+    svg.innerHTML = (days.map((d, i) => {
       const v = value(d), h = (H - pad - 4) * v / max;
       const label = metric === 'costUsd' ? fmtMoney(v) : metric === 'minutes' ? v.toFixed(1) + ' мин' : metric === 'tokens' ? fmtTokens(v) : v;
-      return `<rect x="${i * bw + 2}" y="${H - pad - h}" width="${Math.max(bw - 4, 1)}" height="${h}" rx="2"><title>${d.day}: ${label}</title></rect>
-        ${(days.length <= 15 || i % Math.ceil(days.length / 15) === 0) ? `<text x="${i * bw + bw / 2}" y="${H - 4}" text-anchor="middle">${d.day.slice(5)}</text>` : ''}`;
-    }).join('') || '<text x="10" y="80">пока пусто</text>';
+      return `<rect x="${i * bw + 2}" y="${H - pad - h}" width="${Math.max(bw - 5, 1)}" height="${h}"><title>${d.day}: ${label}</title></rect>
+        ${(days.length <= 15 || i % Math.ceil(days.length / 15) === 0) ? `<text x="${i * bw + bw / 2}" y="${H - 5}" text-anchor="middle">${d.day.slice(5)}</text>` : ''}`;
+    }).join('') || '<text x="0" y="80">пока пусто</text>')
+      + `<line x1="0" y1="${H - pad}" x2="${W}" y2="${H - pad}"/>`;
   }
   $('metric').onchange = renderChart;
 
@@ -284,7 +422,7 @@
     const list = runs.filter(r => !sel.value || r.projectPath === sel.value);
     $('runs').querySelector('tbody').innerHTML = list.map(r =>
       `<tr><td>${fmtWhen(r.startedUtc)}</td><td title="${esc(r.projectPath)}">${esc(shortPath(r.projectPath))}</td><td class="wrap">${esc(r.prompt)}</td>
-       <td><span class="tag ${esc(r.outcome)}">${esc(r.outcome)}</span></td><td class="num">${fmtDur(r.durationMs)}</td><td class="num">${r.turns}</td><td class="num">${r.toolCalls}</td>
+       <td><span class="mark ${esc(r.outcome)}">${esc(r.outcome)}</span></td><td class="num">${fmtDur(r.durationMs)}</td><td class="num">${r.turns}</td><td class="num">${r.toolCalls}</td>
        <td class="num" title="вход ${r.inputTokens} / выход ${r.outputTokens}">${fmtTokens(r.inputTokens + r.outputTokens)}</td><td class="num">${fmtMoney(r.costUsd)}</td><td class="mono" title="${esc(r.sessionId)}">${shortId(r.sessionId)}</td></tr>`).join('')
       || '<tr><td colspan="10" class="empty">запусков ещё не было</td></tr>';
   }
@@ -299,9 +437,10 @@
     const live = l.windows.filter(w => !w.resetsAt || new Date(w.resetsAt) > new Date());
     $('limits-body').innerHTML = live.map(w => {
       const used = Math.min(100, Math.round(w.used * 100));
-      return `<div><b>${esc(windowName(w.key))}</b> — использовано ${used}%${w.resetsAt ? `, сброс ${fmtWhen(w.resetsAt)}` : ''}</div><div class="bar"><i class="${used >= 100 ? 'bad' : used > 80 ? 'warn' : ''}" style="width:${used}%"></i></div>`;
+      return `<div class="gauge"><div class="cap"><span>${esc(windowName(w.key))}</span><i>${used}%${w.resetsAt ? `, сброс ${fmtWhen(w.resetsAt)}` : ''}</i></div>
+        <div class="meter"><i class="${used >= 100 ? 'bad' : used > 80 ? 'warn' : ''}" style="width:${used}%"></i></div></div>`;
     }).join('') || '<span class="empty">окон нет</span>';
-    if (l.extraUsageEnabled) $('limits-body').innerHTML += '<div class="tag Warning">на аккаунте включены кредиты (extra usage)</div>';
+    if (l.extraUsageEnabled) $('limits-body').innerHTML += '<div class="mark Warning">на аккаунте включены кредиты (extra usage)</div>';
   }
   setInterval(loadLimits, 60000);
 
@@ -315,7 +454,7 @@
   async function loadLog() {
     const list = await get('/api/log?count=200&level=' + $('log-level').value, []);
     $('log').querySelector('tbody').innerHTML = list.slice().reverse().map(e =>
-      `<tr><td>${fmtWhen(e.at)}</td><td><span class="tag ${esc(e.level)}">${esc(e.level)}</span></td><td class="mono">${esc(e.category)}</td><td class="wrap">${esc(e.message)}${e.exception ? `<details><summary class="muted">исключение</summary><pre class="mono">${esc(e.exception)}</pre></details>` : ''}</td></tr>`).join('')
+      `<tr><td>${fmtWhen(e.at)}</td><td><span class="mark ${esc(e.level)}">${esc(e.level)}</span></td><td class="mono">${esc(e.category)}</td><td class="wrap">${esc(e.message)}${e.exception ? `<details><summary>исключение</summary><pre class="mono">${esc(e.exception)}</pre></details>` : ''}</td></tr>`).join('')
       || '<tr><td colspan="4" class="empty">пусто</td></tr>';
   }
   $('log-level').onchange = loadLog;
