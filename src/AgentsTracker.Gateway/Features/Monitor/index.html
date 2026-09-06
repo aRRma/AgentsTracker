@@ -89,7 +89,7 @@
   /* ---------- лента и разделы ---------- */
   main { margin-left: var(--rail); padding: 26px 30px 60px; max-width: 1500px; }
   .band { border-top: 1px solid var(--rule); padding-top: 18px; margin-top: 30px; }
-  .band:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+  main > .band:first-child { border-top: 0; padding-top: 0; margin-top: 0; } /* только «Сейчас»: в .split первый раздел тоже first-child */
   .band > h2 { font: 500 14px/1 var(--display); margin: 0 0 14px; display: flex; align-items: center; gap: 14px; }
   .band > h2 .aside { margin-left: auto; font: 400 12px/1 var(--sans); color: var(--ink-soft); display: flex; gap: 12px; align-items: center; }
   .split { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; align-items: start; }
@@ -131,7 +131,7 @@
   th, td { text-align: left; padding: 6px 16px 6px 0; border-bottom: 1px solid var(--rule-soft); vertical-align: top; white-space: nowrap; }
   th:last-child, td:last-child { padding-right: 0; }
   th { color: var(--ink-soft); font-weight: 500; font-size: 12px; border-bottom-color: var(--rule); }
-  td.wrap { white-space: normal; word-break: break-word; min-width: 22ch; }
+  td.wrap { white-space: normal; word-break: break-word; min-width: 22ch; max-width: 78ch; }
   td.num, th.num { text-align: right; }
   .scroll { overflow: auto; max-height: 430px; }
   .mono { font-family: var(--mono); font-size: 12.5px; }
@@ -287,6 +287,8 @@
   const fmtMoney = v => v ? (v < 0.01 ? '<$0.01' : '$' + v.toFixed(2)) : '$0';
   const shortPath = p => (p || '').split(/[\\/]/).filter(Boolean).slice(-2).join('/');
   const shortId = id => id ? id.slice(0, 8) : '';
+  // Полное имя категории занимает пол-таблицы; двух последних частей хватает, чтобы узнать место.
+  const shortCategory = c => (c || '').split('.').slice(-2).join('.');
 
   // ---- живое состояние ----
   let last = null;
@@ -294,7 +296,9 @@
     last = s;
     $('uptime').textContent = fmtDur(Date.now() - new Date(s.gatewayStartedUtc));
     $('agent').textContent = s.agent || 'Агент';
-    $('cli').textContent = s.cliVersion || '?';
+    // CLI повторяет своё имя в строке версии («2.1.261 (Claude Code)») — рядом с подписью это дубль.
+    const version = (s.cliVersion || '?').replace(` (${s.agent})`, '');
+    $('cli').textContent = version; $('cli').title = s.cliVersion || '';
     $('project').textContent = shortPath(s.project); $('project').title = s.project || '';
     $('model').textContent = s.model || 'по умолчанию';
     $('mode').textContent = s.permissionMode || '—';
@@ -336,8 +340,12 @@
         <div class="tape">${r.droppedSteps ? `<p class="hint">… ещё ${r.droppedSteps} ранних шагов</p>` : ''}${steps || '<p class="hint">ждём первый шаг…</p>'}</div>`;
       const box = $('run').querySelector('.tape'); box.scrollTop = box.scrollHeight;
     } else {
+      // Пустой экран без единой цифры выглядит как поломка, поэтому в простое показываем последний запуск.
+      const prev = runs[0];
       $('run').innerHTML = `<div class="prompt idle">Запусков нет. Напишите боту в Telegram — работа появится здесь.</div>
-        <div class="runmeta"><span>сессия проекта <b class="mono">${esc(s.session ? shortId(s.session) : 'новая')}</b></span></div>`;
+        <div class="runmeta"><span>сессия проекта <b class="mono">${esc(s.session ? shortId(s.session) : 'новая')}</b></span>
+          ${prev ? `<span>последний запуск ${fmtWhen(prev.startedUtc)}</span><span>${fmtDur(prev.durationMs)}</span>
+            <span class="mark ${esc(prev.outcome)}">${esc(prev.outcome)}</span><span>${esc(prev.prompt)}</span>` : ''}</div>`;
     }
 
     $('queue').innerHTML = s.queue.length
@@ -375,6 +383,7 @@
     [stats, runs] = await Promise.all([get('/api/stats', null), get('/api/runs', [])]);
     if (stats) { renderStats(); }
     renderRuns();
+    if (last) renderLive(last);   // в простое блок «Сейчас» показывает последний запуск из этого списка
     loadLimits(); loadAudit(); loadLog();
   }
 
@@ -456,7 +465,7 @@
   async function loadLog() {
     const list = await get('/api/log?count=200&level=' + $('log-level').value, []);
     $('log').querySelector('tbody').innerHTML = list.slice().reverse().map(e =>
-      `<tr><td>${fmtWhen(e.at)}</td><td><span class="mark ${esc(e.level)}">${esc(e.level)}</span></td><td class="mono">${esc(e.category)}</td><td class="wrap">${esc(e.message)}${e.exception ? `<details><summary>исключение</summary><pre class="mono">${esc(e.exception)}</pre></details>` : ''}</td></tr>`).join('')
+      `<tr><td>${fmtWhen(e.at)}</td><td><span class="mark ${esc(e.level)}">${esc(e.level)}</span></td><td class="mono" title="${esc(e.category)}">${esc(shortCategory(e.category))}</td><td class="wrap">${esc(e.message)}${e.exception ? `<details><summary>исключение</summary><pre class="mono">${esc(e.exception)}</pre></details>` : ''}</td></tr>`).join('')
       || '<tr><td colspan="4" class="empty">пусто</td></tr>';
   }
   $('log-level').onchange = loadLog;
