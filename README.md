@@ -130,7 +130,6 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 | `Claude:BuiltInSkills` | встроенные скиллы для `/skills`, строки `"/команда \| описание \| подсказка аргументов"` |
 | `Model`, `Effort` | модель и глубина размышлений по умолчанию |
 | `PermissionMode` | что можно без спроса: `default`, `acceptEdits`, `auto`, `plan` |
-| `DailyBudgetUsd`, `RunBudgetUsd` | денежные предохранители, по умолчанию выключены |
 | `Proxy` | прокси, если Telegram недоступен напрямую |
 | `MonitorPort` | порт веб-монитора (5100), `0` — выключить |
 

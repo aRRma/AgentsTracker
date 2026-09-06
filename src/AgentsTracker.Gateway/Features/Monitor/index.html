@@ -212,7 +212,6 @@
   <div class="gauges">
     <h2>Лимиты тарифа <span id="limits-note"></span></h2>
     <div id="limits-body" class="empty">загрузка…</div>
-    <div id="budget"></div>
   </div>
 </aside>
 
@@ -230,7 +229,6 @@
         <label class="visually-hidden" for="metric">Показатель</label>
         <select id="metric">
           <option value="runs">запуски</option>
-          <option value="costUsd">стоимость, $</option>
           <option value="tokens">токены (вход+выход)</option>
           <option value="minutes">минуты</option>
         </select>
@@ -253,14 +251,14 @@
       </span>
     </div>
     <div class="scroll" tabindex="0"><table id="runs"><caption class="visually-hidden">Запуски</caption><thead><tr>
-      <th scope="col">Когда</th><th scope="col">Проект</th><th scope="col">Промпт</th><th scope="col">Исход</th><th scope="col" class="num">Время</th><th scope="col" class="num">Ходов</th><th scope="col" class="num">Вызовов</th><th scope="col" class="num">Токены</th><th scope="col" class="num">$</th><th scope="col">Сессия</th>
+      <th scope="col">Когда</th><th scope="col">Проект</th><th scope="col">Промпт</th><th scope="col">Исход</th><th scope="col" class="num">Время</th><th scope="col" class="num">Ходов</th><th scope="col" class="num">Вызовов</th><th scope="col" class="num">Токены</th><th scope="col">Сессия</th>
     </tr></thead><tbody></tbody></table></div>
   </section>
 
   <div class="split">
     <section class="band">
       <div class="band-head"><h2>Модели</h2></div>
-      <div class="scroll" tabindex="0"><table id="models"><caption class="visually-hidden">Модели</caption><thead><tr><th scope="col">Модель</th><th scope="col" class="num">Запусков</th><th scope="col" class="num">Вход</th><th scope="col" class="num">Выход</th><th scope="col" class="num">Кэш</th><th scope="col" class="num">$</th></tr></thead><tbody></tbody></table></div>
+      <div class="scroll" tabindex="0"><table id="models"><caption class="visually-hidden">Модели</caption><thead><tr><th scope="col">Модель</th><th scope="col" class="num">Запусков</th><th scope="col" class="num">Вход</th><th scope="col" class="num">Выход</th><th scope="col" class="num">Кэш</th></tr></thead><tbody></tbody></table></div>
     </section>
 
     <section class="band">
@@ -271,7 +269,7 @@
 
   <section class="band">
     <div class="band-head"><h2>Сессии</h2></div>
-    <div class="scroll" tabindex="0"><table id="sessions"><caption class="visually-hidden">Сессии</caption><thead><tr><th scope="col">Проект</th><th scope="col">Сессия</th><th scope="col">Название</th><th scope="col">Активность</th><th scope="col" class="num">Ходов</th><th scope="col" class="num">$</th></tr></thead><tbody></tbody></table></div>
+    <div class="scroll" tabindex="0"><table id="sessions"><caption class="visually-hidden">Сессии</caption><thead><tr><th scope="col">Проект</th><th scope="col">Сессия</th><th scope="col">Название</th><th scope="col">Активность</th><th scope="col" class="num">Ходов</th></tr></thead><tbody></tbody></table></div>
   </section>
 
   <section class="band">
@@ -313,7 +311,6 @@
     return `${p(Math.floor(s/3600))}:${p(Math.floor(s%3600/60))}:${p(s%60)}`;
   };
   const fmtTokens = n => n < 1000 ? String(n) : n < 1e6 ? (n/1000).toFixed(1).replace(/\.0$/,'') + 'k' : (n/1e6).toFixed(2) + 'M';
-  const fmtMoney = v => v ? (v < 0.01 ? '<$0.01' : '$' + v.toFixed(2)) : '$0';
   const shortPath = p => (p || '').split(/[\\/]/).filter(Boolean).slice(-2).join('/');
   const shortId = id => id ? id.slice(0, 8) : '';
   // Полное имя категории занимает пол-таблицы; двух последних частей хватает, чтобы узнать место.
@@ -380,11 +377,6 @@
       ? `<b>В очереди: ${s.queue.length}</b><ol>${s.queue.map(q => `<li>${esc(q)}</li>`).join('')}</ol>`
       : '';
 
-    if (s.budget && s.budget.daily) {
-      const pct = Math.min(100, s.budget.spentToday / s.budget.daily * 100);
-      $('budget').innerHTML = `<div class="gauge"><div class="cap"><span>Бюджет на день</span><i>${fmtMoney(s.budget.spentToday)} из ${fmtMoney(s.budget.daily)}</i></div>
-        <div class="meter"><i class="${pct > 90 ? 'bad' : pct > 70 ? 'warn' : ''}" style="width:${pct}%"></i></div></div>`;
-    }
     tick();
   }
   // Часы и «прошло времени» тикают между кадрами сервера; в скрытой вкладке — незачем.
@@ -430,26 +422,26 @@
     const t = stats.total;
     $('figures').innerHTML = [
       [t.runs, stats.sinceUtc ? 'запусков с ' + new Date(stats.sinceUtc).toLocaleDateString('ru-RU') : 'запусков'],
-      [t.turns, 'ходов'], [fmtMoney(t.costUsd), 'оценка стоимости'],
+      [t.turns, 'ходов'],
       [fmtTokens(t.inputTokens + t.outputTokens), 'токенов'], [fmtTokens(t.cacheReadTokens), 'из кэша'], [fmtDur(t.durationMs), 'в работе'],
     ].map(([v, l]) => `<div><b>${v}</b><span>${l}</span></div>`).join('');
     renderChart();
 
     $('models').querySelector('tbody').innerHTML = stats.byModel.map(m =>
-      `<tr><td class="mono">${esc(m.model)}</td><td class="num">${m.runs}</td><td class="num">${fmtTokens(m.inputTokens)}</td><td class="num">${fmtTokens(m.outputTokens)}</td><td class="num">${fmtTokens(m.cacheReadTokens)}</td><td class="num">${fmtMoney(m.costUsd)}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">пока пусто</td></tr>';
+      `<tr><td class="mono">${esc(m.model)}</td><td class="num">${m.runs}</td><td class="num">${fmtTokens(m.inputTokens)}</td><td class="num">${fmtTokens(m.outputTokens)}</td><td class="num">${fmtTokens(m.cacheReadTokens)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">пока пусто</td></tr>';
 
     $('skills').querySelector('tbody').innerHTML = stats.skills.map(s =>
       `<tr><td class="mono">${esc(s.command)}</td><td class="num">${s.count}</td></tr>`).join('') || '<tr><td colspan="2" class="empty">пока пусто</td></tr>';
 
     $('sessions').querySelector('tbody').innerHTML = stats.sessions.map(s =>
-      `<tr><td title="${esc(s.projectPath)}">${esc(shortPath(s.projectPath))}</td><td class="mono" title="${esc(s.id)}">${s.active ? '▶ ' : ''}${shortId(s.id)}</td><td class="wrap">${esc(s.title)}</td><td>${fmtWhen(s.lastActivityUtc)}</td><td class="num">${s.turns}</td><td class="num">${fmtMoney(s.costUsd)}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">пока пусто</td></tr>';
+      `<tr><td title="${esc(s.projectPath)}">${esc(shortPath(s.projectPath))}</td><td class="mono" title="${esc(s.id)}">${s.active ? '▶ ' : ''}${shortId(s.id)}</td><td class="wrap">${esc(s.title)}</td><td>${fmtWhen(s.lastActivityUtc)}</td><td class="num">${s.turns}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">пока пусто</td></tr>';
   }
 
   function renderChart() {
     const metricSel = $('metric'), metric = metricSel.value, metricName = metricSel.selectedOptions[0].textContent;
     const days = stats.byDay.slice(-30);
     const value = d => metric === 'tokens' ? d.inputTokens + d.outputTokens : metric === 'minutes' ? d.durationMs / 60000 : d[metric];
-    const label = v => metric === 'costUsd' ? fmtMoney(v) : metric === 'minutes' ? v.toFixed(1) + ' мин' : metric === 'tokens' ? fmtTokens(v) : v;
+    const label = v => metric === 'minutes' ? v.toFixed(1) + ' мин' : metric === 'tokens' ? fmtTokens(v) : v;
     const W = 1000, H = 170, pad = 20;
     // Шаг ограничен сверху: за первые дни работы шлюза два столбца растянулись бы во всю ширину.
     const bw = Math.min(W / Math.max(days.length, 1), 46);
@@ -477,8 +469,8 @@
     $('runs').querySelector('tbody').innerHTML = list.map(r =>
       `<tr><td>${fmtWhen(r.startedUtc)}</td><td title="${esc(r.projectPath)}">${esc(shortPath(r.projectPath))}</td><td class="wrap">${esc(r.prompt)}</td>
        <td><span class="mark ${esc(r.outcome)}">${esc(r.outcome)}</span></td><td class="num">${fmtDur(r.durationMs)}</td><td class="num">${r.turns}</td><td class="num">${r.toolCalls}</td>
-       <td class="num" title="вход ${r.inputTokens} / выход ${r.outputTokens}">${fmtTokens(r.inputTokens + r.outputTokens)}</td><td class="num">${fmtMoney(r.costUsd)}</td><td class="mono" title="${esc(r.sessionId)}">${shortId(r.sessionId)}</td></tr>`).join('')
-      || '<tr><td colspan="10" class="empty">запусков ещё не было</td></tr>';
+       <td class="num" title="вход ${r.inputTokens} / выход ${r.outputTokens}">${fmtTokens(r.inputTokens + r.outputTokens)}</td><td class="mono" title="${esc(r.sessionId)}">${shortId(r.sessionId)}</td></tr>`).join('')
+      || '<tr><td colspan="9" class="empty">запусков ещё не было</td></tr>';
   }
   $('run-project').onchange = renderRuns;
 

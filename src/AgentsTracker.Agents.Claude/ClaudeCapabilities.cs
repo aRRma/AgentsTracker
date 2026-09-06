@@ -10,8 +10,7 @@ public static class ClaudeCapabilities
         Model: new AgentSetting(ModelAliases, ModelAliases, ResolveModel, model => model),
         Effort: new AgentSetting(EffortLevels.All, EffortLevels.All, EffortLevels.Resolve, EffortLevels.Describe),
         PermissionMode: new AgentSetting(
-            PermissionModes.All, PermissionModes.Selectable, PermissionModes.Resolve, PermissionModes.Describe),
-        SupportsRunBudget: true);
+            PermissionModes.All, PermissionModes.Selectable, PermissionModes.Resolve, PermissionModes.Describe));
 
     /// <summary>Модель — любая непустая строка: CLI сам скажет, если такой нет.</summary>
     private static string? ResolveModel(string value) =>
@@ -86,7 +85,7 @@ internal static class EffortLevels
         "medium" => "medium — баланс скорости и качества",
         "high" => "high — думает дольше, лучше на сложных задачах",
         "xhigh" => "xhigh — думает очень долго",
-        "max" => "max — максимум рассуждений и стоимости",
+        "max" => "max — максимум рассуждений, самый долгий",
         _ => level,
     };
 }

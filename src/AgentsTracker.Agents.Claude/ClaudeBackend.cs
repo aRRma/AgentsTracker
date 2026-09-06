@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using AgentsTracker.Agents.Claude.Mcp;
@@ -226,12 +225,6 @@ public sealed class ClaudeBackend(
             yield return "--effort";
             yield return level;
         }
-
-        if (request.MaxBudgetUsd is { } budget)
-        {
-            yield return "--max-budget-usd";
-            yield return budget.ToString("0.####", CultureInfo.InvariantCulture);
-        }
     }
 
     private AgentRunResult Parse(
@@ -301,7 +294,6 @@ public sealed class ClaudeBackend(
                 Text = text + suffix,
                 SessionId = lost ? null : payload.SessionId,
                 SessionLost = lost,
-                CostUsd = payload.TotalCostUsd,
                 Duration = duration,
                 Usage = payload.ToRunUsage(),
                 RateLimited = HitPlanLimit(text) || HitPlanLimit(stderr) || HitPlanLimit(payload.Subtype),
@@ -313,7 +305,6 @@ public sealed class ClaudeBackend(
             Ok = true,
             Text = text,
             SessionId = payload.SessionId,
-            CostUsd = payload.TotalCostUsd,
             Duration = duration,
             Usage = payload.ToRunUsage(),
         };

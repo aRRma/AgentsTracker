@@ -11,7 +11,6 @@ public sealed class ClaudeCliJson
     [JsonPropertyName("result")] public string? Result { get; set; }
     [JsonPropertyName("session_id")] public string? SessionId { get; set; }
     [JsonPropertyName("is_error")] public bool IsError { get; set; }
-    [JsonPropertyName("total_cost_usd")] public decimal? TotalCostUsd { get; set; }
     [JsonPropertyName("num_turns")] public int? NumTurns { get; set; }
     [JsonPropertyName("duration_ms")] public long? DurationMs { get; set; }
     [JsonPropertyName("permission_denials")] public JsonElement? PermissionDenials { get; set; }
@@ -24,7 +23,6 @@ public sealed class ClaudeCliJson
     public RunUsage ToRunUsage() => new()
     {
         Turns = NumTurns ?? 0,
-        CostUsd = TotalCostUsd ?? 0m,
         DurationMs = DurationMs ?? 0,
         InputTokens = Usage?.InputTokens ?? 0,
         OutputTokens = Usage?.OutputTokens ?? 0,
@@ -34,7 +32,6 @@ public sealed class ClaudeCliJson
             ? []
             : [.. ModelUsage.Select(pair => new ModelRunUsage(
                 pair.Key,
-                pair.Value.CostUsd,
                 pair.Value.InputTokens,
                 pair.Value.OutputTokens,
                 pair.Value.CacheReadInputTokens,
@@ -58,5 +55,4 @@ public sealed class CliModelUsage
     [JsonPropertyName("outputTokens")] public long OutputTokens { get; set; }
     [JsonPropertyName("cacheReadInputTokens")] public long CacheReadInputTokens { get; set; }
     [JsonPropertyName("cacheCreationInputTokens")] public long CacheCreationInputTokens { get; set; }
-    [JsonPropertyName("costUSD")] public decimal CostUsd { get; set; }
 }

@@ -30,9 +30,7 @@ public sealed record AgentSetting(
 /// </param>
 /// <param name="Effort">Уровень усилий; null — агент такого не умеет, экран и команда скрыты.</param>
 /// <param name="PermissionMode">Режим разрешений — обязателен: без него хост не знает, что писать в конфиг по умолчанию.</param>
-/// <param name="SupportsRunBudget">Понимает ли агент предел стоимости запуска; иначе <see cref="AgentRunRequest.MaxBudgetUsd"/> игнорируется.</param>
 public sealed record AgentCapabilities(
     AgentSetting Model,
     AgentSetting? Effort,
-    AgentSetting PermissionMode,
-    bool SupportsRunBudget);
+    AgentSetting PermissionMode);

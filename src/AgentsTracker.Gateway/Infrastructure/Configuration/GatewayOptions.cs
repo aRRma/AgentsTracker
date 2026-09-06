@@ -44,16 +44,6 @@ public sealed class GatewayOptions
     public string? Effort { get; set; }
 
     /// <summary>
-    /// Дневной бюджет шлюза в долларах: когда стоимость запусков за сутки его превысит,
-    /// новые задачи отклоняются. null — без ограничения. Из чата не меняется: деньгами
-    /// шлюз не распоряжается.
-    /// </summary>
-    public decimal? DailyBudgetUsd { get; set; }
-
-    /// <summary>Предел стоимости одного запуска (уходит в --max-budget-usd). null — без предела.</summary>
-    public decimal? RunBudgetUsd { get; set; }
-
-    /// <summary>
     /// Режим разрешений по умолчанию, с которым запускается агент; из чата его меняет /mode.
     /// Допустимые значения объявляет бэкенд (<see cref="AgentCapabilities.PermissionMode"/>),
     /// проверка — при старте, когда бэкенд уже выбран. Задаётся явно: у Claude Code без флага
@@ -114,12 +104,6 @@ public sealed class GatewayOptions
 
         if (string.IsNullOrWhiteSpace(Agent))
             errors.Add($"{SectionName}:Agent не задан.");
-
-        if (DailyBudgetUsd is <= 0)
-            errors.Add($"{SectionName}:DailyBudgetUsd = {DailyBudgetUsd}. Нужна положительная сумма или null.");
-
-        if (RunBudgetUsd is <= 0)
-            errors.Add($"{SectionName}:RunBudgetUsd = {RunBudgetUsd}. Нужна положительная сумма или null.");
 
         foreach (var project in Projects.Where(p => !Directory.Exists(p)))
             errors.Add($"{SectionName}:Projects — папки не существует: {project}");

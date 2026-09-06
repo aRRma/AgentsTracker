@@ -97,7 +97,6 @@ public sealed class RunRecord
     public long DurationMs { get; set; }
     public int Turns { get; set; }
     public int ToolCalls { get; set; }
-    public decimal CostUsd { get; set; }
     public long InputTokens { get; set; }
     public long OutputTokens { get; set; }
 }
@@ -116,7 +115,6 @@ public sealed class SessionRecord
     public DateTimeOffset CreatedUtc { get; set; }
     public DateTimeOffset LastActivityUtc { get; set; }
     public int Turns { get; set; }
-    public decimal CostUsd { get; set; }
 }
 
 /// <summary>Накопленная статистика запусков: всего, по дням и по моделям.</summary>
@@ -137,7 +135,6 @@ public sealed class UsageTotals
 {
     public int Runs { get; set; }
     public int Turns { get; set; }
-    public decimal CostUsd { get; set; }
     public long InputTokens { get; set; }
     public long OutputTokens { get; set; }
     public long CacheReadTokens { get; set; }
@@ -148,7 +145,6 @@ public sealed class UsageTotals
     {
         Runs++;
         Turns += usage.Turns;
-        CostUsd += usage.CostUsd;
         InputTokens += usage.InputTokens;
         OutputTokens += usage.OutputTokens;
         CacheReadTokens += usage.CacheReadTokens;
@@ -159,7 +155,6 @@ public sealed class UsageTotals
     public void Add(ModelRunUsage usage)
     {
         Runs++;
-        CostUsd += usage.CostUsd;
         InputTokens += usage.InputTokens;
         OutputTokens += usage.OutputTokens;
         CacheReadTokens += usage.CacheReadTokens;

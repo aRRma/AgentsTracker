@@ -128,7 +128,7 @@ hex-символами, иначе спутаются с ключом.
 ```
 src/AgentsTracker.Agents.Abstractions/   контракты агента, без Telegram и без конкретного CLI:
   IAgentBackend         Id, DisplayName, Capabilities, Probe() (бинарник и версия), RunAsync(AgentRunRequest, IAgentRunObserver)
-  AgentRun.cs           AgentRunRequest (промпт, папка, сессия, модель, effort, режим, бюджет, таймаут),
+  AgentRun.cs           AgentRunRequest (промпт, папка, сессия, модель, effort, режим, таймаут),
                         IAgentRunObserver (SessionStarted, Activity), AgentRunResult (+SessionLost, RateLimited)
   AgentCapabilities     AgentSetting для модели, effort (null — не умеет), режима разрешений; SupportsRunBudget
   IOperatorConsole      что агент просит у человека: ApproveAsync → ApprovalDecision, AskAsync → QuestionResult;
@@ -379,21 +379,20 @@ Id новой сессии выдаёт **шлюз** (`NewSessionId` → `--sess
 «кто, куда, что», без секретов и полных текстов (≤200 символов). Текст пользователя (промпт,
 аргументы, свободный ответ агенту) — только превью `Text.Preview` (80 символов): туда могли
 вставить токен. Виды — `AuditKinds`: `access.rejected`, `message`, `run.start`/`run.end`,
-`approval`, `question`, `settings`, `rules`, `session.reset`, `budget.refused`, `gateway`.
+`approval`, `question`, `settings`, `rules`, `session.reset`, `limit.refused`, `gateway`.
 Экраны меню пишут через `SettingsAudit.Changed`. Смотреть — `/audit [n]`. Это не замена
 `ILogger`: в аудит идёт то, за что отвечает человек, в лог — то, что нужно для отладки.
 
-### Деньги и лимиты тарифа
+### Лимиты тарифа
 
-Три ограничителя, все проверяются в `ChatWorker.ProcessAsync` перед запуском:
-`DailyBudgetUsd` (сумма из `state.json` за календарный день), `RunBudgetUsd` →
-`--max-budget-usd` (не больше остатка дневного), `IAgentLimits` — тарифные окна (`five_hour`,
-`seven_day`, `seven_day_<модель>`).
+Единственный ограничитель — `IAgentLimits`, тарифные окна (`five_hour`, `seven_day`,
+`seven_day_<модель>`); проверяется в `ChatWorker.ProcessAsync` перед запуском.
 
-Суммы в чат не выводятся: на подписке они ничего не значат, а кредиты запрещены. Вместо них
+Денег в шлюзе нет вовсе: работа идёт по подписке в пределах лимита, поэтому `total_cost_usd`
+из ответа CLI не читается, `--max-budget-usd` не передаётся, в статистике и мониторе — только
+ходы, токены и время. Не возвращайте долларовые оценки «для справки». Остаток лимита —
 `IAgentLimits.ShortSummaryAsync` (сводка меню) и `ViewAsync` (окна с остатком 0..1 — шкалы
-`LimitBars` на `/status` и статистике). Оценка стоимости копится в `state.json` только ради
-`DailyBudgetUsd`.
+`LimitBars` на `/status` и статистике).
 
 `ClaudeLimits` ходит в **недокументированный** `api.anthropic.com/api/oauth/usage` с токеном из
 `~/.claude/.credentials.json`: требует правдоподобный User-Agent, отвечает 429 на частый опрос

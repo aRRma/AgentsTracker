@@ -2,20 +2,9 @@ using System.Globalization;
 
 namespace AgentsTracker.Gateway.Infrastructure.Telegram;
 
-/// <summary>Единое представление сумм, токенов и времени во всех сообщениях чата.</summary>
+/// <summary>Единое представление токенов и времени во всех сообщениях чата.</summary>
 public static class DisplayFormat
 {
-    extension(decimal value)
-    {
-        /// <summary>Суммы всегда в инвариантной культуре: иначе на русской локали получается «$0,08».</summary>
-        public string Money => value switch
-        {
-            0m => "$0",
-            > 0m and < 0.01m => "<$0.01",
-            _ => "$" + value.ToString("0.00", CultureInfo.InvariantCulture),
-        };
-    }
-
     extension(int count)
     {
         /// <summary>«1 вызов», «2 вызова», «5 вызовов» — формы для 1, 2–4 и остальных.</summary>

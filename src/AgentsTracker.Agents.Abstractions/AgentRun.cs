@@ -14,7 +14,6 @@ namespace AgentsTracker.Agents;
 /// <param name="Model">Модель или её алиас; null — как решит агент.</param>
 /// <param name="Effort">Уровень усилий; null — как решит агент. У агента без этой настройки игнорируется.</param>
 /// <param name="PermissionMode">Режим разрешений — одно из значений <see cref="AgentCapabilities.PermissionMode"/>.</param>
-/// <param name="MaxBudgetUsd">Предел стоимости запуска; null — без предела.</param>
 /// <param name="Timeout">Предельная длительность: по истечении процесс убивается.</param>
 public sealed record AgentRunRequest(
     string Prompt,
@@ -24,7 +23,6 @@ public sealed record AgentRunRequest(
     string? Model,
     string? Effort,
     string PermissionMode,
-    decimal? MaxBudgetUsd,
     TimeSpan Timeout);
 
 /// <summary>
@@ -51,7 +49,6 @@ public sealed record AgentRunResult
     /// <summary>Сессия, в которой шёл запуск, по версии агента. null — сессии нет или она потеряна.</summary>
     public string? SessionId { get; init; }
 
-    public decimal? CostUsd { get; init; }
     public TimeSpan Duration { get; init; }
     public bool Cancelled { get; init; }
 

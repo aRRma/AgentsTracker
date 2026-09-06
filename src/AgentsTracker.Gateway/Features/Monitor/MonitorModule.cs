@@ -97,7 +97,6 @@ public sealed class MonitorModule : IFeatureModule
         live.Run,
         live.Approvals,
         live.Queue,
-        Budget = new { Daily = store.DailyBudgetUsd, SpentToday = store.SpentToday() },
     };
 
     /// <summary>Снимок при подключении, затем по каждому изменению; между ними — пустой кадр раз в 5 с.</summary>
@@ -133,12 +132,12 @@ public sealed class MonitorModule : IFeatureModule
         {
             state.Usage.SinceUtc,
             state.Usage.Total,
-            ByDay = state.Usage.ByDay.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => new { Day = p.Key, p.Value.Runs, p.Value.Turns, p.Value.CostUsd, p.Value.InputTokens, p.Value.OutputTokens, p.Value.CacheReadTokens, p.Value.CacheWriteTokens, p.Value.DurationMs }),
-            ByModel = state.Usage.ByModel.OrderByDescending(p => p.Value.Runs).Select(p => new { Model = p.Key, p.Value.Runs, p.Value.CostUsd, p.Value.InputTokens, p.Value.OutputTokens, p.Value.CacheReadTokens, p.Value.CacheWriteTokens }),
+            ByDay = state.Usage.ByDay.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => new { Day = p.Key, p.Value.Runs, p.Value.Turns, p.Value.InputTokens, p.Value.OutputTokens, p.Value.CacheReadTokens, p.Value.CacheWriteTokens, p.Value.DurationMs }),
+            ByModel = state.Usage.ByModel.OrderByDescending(p => p.Value.Runs).Select(p => new { Model = p.Key, p.Value.Runs, p.Value.InputTokens, p.Value.OutputTokens, p.Value.CacheReadTokens, p.Value.CacheWriteTokens }),
             Skills = state.SkillUsage.OrderByDescending(p => p.Value).Select(p => new { Command = p.Key, Count = p.Value }),
             Sessions = state.Sessions.OrderByDescending(s => s.LastActivityUtc).Select(s => new
             {
-                s.Id, s.ProjectPath, s.Title, s.CreatedUtc, s.LastActivityUtc, s.Turns, s.CostUsd,
+                s.Id, s.ProjectPath, s.Title, s.CreatedUtc, s.LastActivityUtc, s.Turns,
                 Active = string.Equals(state.ActiveSessions.GetValueOrDefault(s.ProjectPath), s.Id, StringComparison.Ordinal),
             }),
             Rules = state.AlwaysAllowByProject.Select(p => new { Project = p.Key, Rules = p.Value }),
@@ -153,14 +152,13 @@ public sealed class MonitorModule : IFeatureModule
     {
         var ru = CultureInfo.GetCultureInfo("ru-RU");
         var sb = new StringBuilder();
-        sb.AppendLine("Дата;Запусков;Ходов;Стоимость USD;Входные токены;Выходные токены;Кэш чтение;Кэш запись;Минут");
+        sb.AppendLine("Дата;Запусков;Ходов;Входные токены;Выходные токены;Кэш чтение;Кэш запись;Минут");
 
         foreach (var (day, t) in usage.ByDay.OrderBy(p => p.Key, StringComparer.Ordinal))
         {
             sb.Append(day).Append(';')
               .Append(t.Runs).Append(';')
               .Append(t.Turns).Append(';')
-              .Append(t.CostUsd.ToString("0.####", ru)).Append(';')
               .Append(t.InputTokens).Append(';')
               .Append(t.OutputTokens).Append(';')
               .Append(t.CacheReadTokens).Append(';')

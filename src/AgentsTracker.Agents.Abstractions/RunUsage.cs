@@ -4,7 +4,6 @@ namespace AgentsTracker.Agents;
 public sealed record RunUsage
 {
     public int Turns { get; init; }
-    public decimal CostUsd { get; init; }
     public long DurationMs { get; init; }
     public long InputTokens { get; init; }
     public long OutputTokens { get; init; }
@@ -17,7 +16,6 @@ public sealed record RunUsage
 
 public sealed record ModelRunUsage(
     string Model,
-    decimal CostUsd,
     long InputTokens,
     long OutputTokens,
     long CacheReadTokens,

@@ -85,19 +85,12 @@ public sealed partial class ChatWorker(
     {
         monitor.Dequeued();
 
-        // Лимиты проверяем здесь, а не при постановке в очередь: пока сообщение ждало,
-        // предыдущие запуски могли выбрать и бюджет, и тарифное окно.
-        if (OverBudget() is { } refusal)
-        {
-            Audit(prompt, AuditKinds.BudgetRefused, "дневной бюджет");
-            await SendPlainAsync(prompt.ChatId, refusal, stoppingToken);
-            return;
-        }
-
+        // Лимит проверяем здесь, а не при постановке в очередь: пока сообщение ждало,
+        // предыдущие запуски могли выбрать тарифное окно.
         // Тариф кончился — запускать нечего: CLI продолжил бы за кредиты, а это запрещено.
         if (await limits.RefusalAsync(store.EffectiveModel, stoppingToken) is { } exhausted)
         {
-            Audit(prompt, AuditKinds.BudgetRefused, "лимит тарифа");
+            Audit(prompt, AuditKinds.LimitRefused, "лимит тарифа");
             await SendPlainAsync(prompt.ChatId, exhausted, stoppingToken);
             await DropQueueAsync(prompt.ChatId, stoppingToken);
             return;
@@ -149,7 +142,6 @@ public sealed partial class ChatWorker(
             Model: model,
             Effort: store.EffectiveEffort,
             PermissionMode: PermissionMode(),
-            MaxBudgetUsd: store.RunBudgetUsd,
             Timeout: TimeSpan.FromMinutes(options.Value.RunTimeoutMinutes));
 
         // Тот же id нужен после запуска: активной становится только сессия, с которой
@@ -201,7 +193,6 @@ public sealed partial class ChatWorker(
             DurationMs = (long)result.Duration.TotalMilliseconds,
             Turns = result.Usage?.Turns ?? 0,
             ToolCalls = finished?.ToolCalls ?? 0,
-            CostUsd = result.Usage?.CostUsd ?? result.CostUsd ?? 0m,
             InputTokens = result.Usage?.InputTokens ?? 0,
             OutputTokens = result.Usage?.OutputTokens ?? 0,
         });
@@ -306,20 +297,6 @@ public sealed partial class ChatWorker(
             chatId,
             $"Очередь снята: {dropped} задач(и) не запущены — пришлите их снова после сброса лимита.",
             ct);
-    }
-
-    /// <summary>Текст отказа, если дневной бюджет из конфига исчерпан, иначе null.</summary>
-    private string? OverBudget()
-    {
-        if (store.DailyBudgetUsd is not { } budget) return null;
-
-        var spent = store.SpentToday();
-        if (spent < budget) return null;
-
-        // Единственное место, где суммы ещё уместны: этот предохранитель включают вручную,
-        // и без цифр непонятно, во что упёрлись.
-        return $"💳 Дневной бюджет исчерпан: потрачено {spent.Money} из {budget.Money}. " +
-               "Изменить — ключ Gateway:DailyBudgetUsd в appsettings.Local.json.";
     }
 
     private async Task SendRenderedAsync(long chatId, string markdown, CancellationToken ct)

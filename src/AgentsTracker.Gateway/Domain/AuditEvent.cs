@@ -12,7 +12,7 @@ public static class AuditKinds
     public const string Settings = "settings";
     public const string Rules = "rules";
     public const string SessionReset = "session.reset";
-    public const string BudgetRefused = "budget.refused";
+    public const string LimitRefused = "limit.refused";
     public const string Gateway = "gateway";
 }
 

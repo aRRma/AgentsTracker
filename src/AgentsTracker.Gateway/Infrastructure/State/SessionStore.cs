@@ -80,22 +80,6 @@ public sealed class SessionStore
         get { lock (_gate) return _state.ActiveSessions.GetValueOrDefault(ProjectPathLocked()); }
     }
 
-    /// <summary>
-    /// Дневной бюджет в долларах — только из конфига: из чата он не меняется, потому что
-    /// деньгами шлюз не распоряжается вовсе. null — ограничения нет.
-    /// </summary>
-    public decimal? DailyBudgetUsd => _options.DailyBudgetUsd;
-
-    /// <summary>Предел стоимости одного запуска: из конфига, но не больше остатка дневного бюджета.</summary>
-    public decimal? RunBudgetUsd
-    {
-        get
-        {
-            var caps = new[] { _options.RunBudgetUsd, RemainingToday() }.Where(v => v is > 0).ToArray();
-            return caps.Length == 0 ? null : caps.Min();
-        }
-    }
-
     public void SetProjectPath(string? path)
     {
         // Совпадение с конфигом храним как null: тогда правка ProjectPath в конфиге
@@ -210,7 +194,6 @@ public sealed class SessionStore
             // /new или смену сессии, сделанные во время запуска.
             var record = Touch(s, project, prompt, sessionId, now, activate: false);
             record.Turns += usage.Turns;
-            record.CostUsd += usage.CostUsd;
         });
     }
 
@@ -298,20 +281,6 @@ public sealed class SessionStore
         TrimSessions(state, project);
 
         return record;
-    }
-
-    /// <summary>Потрачено за сегодня по календарю пользователя — с этим сравнивается дневной бюджет.</summary>
-    public decimal SpentToday()
-    {
-        lock (_gate)
-            return _state.Usage.ByDay.GetValueOrDefault(DayKey(DateTimeOffset.Now))?.CostUsd ?? 0m;
-    }
-
-    /// <summary>Сколько ещё можно потратить сегодня. null — бюджета нет.</summary>
-    public decimal? RemainingToday()
-    {
-        if (DailyBudgetUsd is not { } budget) return null;
-        return Math.Max(0m, budget - SpentToday());
     }
 
     public void ResetUsage() => Mutate(s => s.Usage = new UsageStats { SinceUtc = DateTimeOffset.Now });
@@ -515,7 +484,6 @@ public sealed class SessionStore
         CreatedUtc = record.CreatedUtc,
         LastActivityUtc = record.LastActivityUtc,
         Turns = record.Turns,
-        CostUsd = record.CostUsd,
     };
 
     private static RunRecord Clone(RunRecord record) => new()
@@ -529,7 +497,6 @@ public sealed class SessionStore
         DurationMs = record.DurationMs,
         Turns = record.Turns,
         ToolCalls = record.ToolCalls,
-        CostUsd = record.CostUsd,
         InputTokens = record.InputTokens,
         OutputTokens = record.OutputTokens,
     };
