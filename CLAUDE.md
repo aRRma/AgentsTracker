@@ -296,13 +296,19 @@ BOM и десятичная запятая: иначе Excel на русской
 `RingBufferLog` (500 записей, Information+, зарегистрирован как `ILoggerProvider`).
 
 `index.html` — один файл без сборки и CDN, `EmbeddedResource`; данные `/api/*` в camelCase,
-кириллица без `\u`. Смотреть вёрстку без шлюза: копия страницы и `scripts\monitor-mock.js` в
+кириллица без `\u`; правка страницы требует `dotnet build` и перезапуска шлюза. Смотреть
+вёрстку без шлюза: копия страницы и `scripts\monitor-mock.js` в
 scratchpad, `<script src="monitor-mock.js">` перед основным скриптом (мок подменяет `fetch`
 данными `/api/*` и `EventSource` снимком, `?state=run|wait|idle`; новый эндпоинт — добавить в
 `routes`), `python -m http.server <порт> --bind 127.0.0.1` из scratchpad (Playwright не
 открывает `file://`). Доступность — `browser_snapshot` Playwright MCP (дерево ролей и имён);
 тёмная тема только скриптом Playwright через `page.emulateMedia({colorScheme:'dark'})`;
-скриншоты падают в корень репозитория, они в `.gitignore`.
+скриншоты падают в корень репозитория, они в `.gitignore`. Варианты дизайна для сравнения —
+скрипт в scratchpad, который подменяет в копии страницы только блок `<style>` (разметка и скрипт
+общие, сравнение честное) и вставляет мок; проверка состояний, тёмной темы (`page.emulateMedia`),
+узкого окна и вычисленных стилей — одним вызовом `browser_run_code_unsafe`, он же проверяет живой
+`http://127.0.0.1:5100/` (`curl`/`Invoke-WebRequest` в разрешениях нет). Синие цифры в скриншоте
+таблицы — субпиксельный артефакт, сверяйте `getComputedStyle(td).color`.
 
 Стиль — Fluent 2 «Mica» с приёмами Grafana/Elastic: подложка `--canvas`, всё содержимое в
 карточках `.card` (`--layer`/`--stroke`, тень `--shadow-2`), акцент `--brand` только на
@@ -462,5 +468,7 @@ Id новой сессии выдаёт **шлюз** (`NewSessionId` → `--sess
 - Из сессии через Telegram `AskUserQuestion` и `ExitPlanMode` ждут ≤5 минут (idle-таймаут MCP):
   без ответа берите рекомендуемый вариант. Длинный однострочник PowerShell на подтверждении легко
   отклонить не глядя — многошаговую проверку кладите в скрипт и запускайте `pwsh -File`.
+- `modern-web-guidance` (`npx.cmd -y modern-web-guidance@latest search "…"`) запускайте из
+  инструмента PowerShell: из Git Bash `npx.cmd` молча отдаёт пустой вывод.
 - `install-autostart.ps1` ставит задачу Планировщика от текущего пользователя, а не службу:
   OAuth-логин лежит в `%USERPROFILE%\.claude`, под SYSTEM он не найдётся. `-Uninstall` снимает.
