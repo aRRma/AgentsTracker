@@ -1,4 +1,3 @@
-using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace AgentsTracker.Agents.Claude;
@@ -36,6 +35,8 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
 
     private readonly Lock _gate = new();
 
+    private readonly ClaudePluginRegistry _plugins = new(logger);
+
     private (string Project, DateTimeOffset At, IReadOnlyList<SkillGroup> Groups)? _cache;
 
     /// <summary>Группы в порядке показа: встроенные, проект, личные, потом плагины по алфавиту.</summary>
@@ -59,6 +60,48 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
         + "ни включённых плагинов в <code>~/.claude/plugins</code>, ни строк "
         + "в <code>Gateway:Claude:BuiltInSkills</code>.";
 
+    public void Refresh()
+    {
+        lock (_gate) _cache = null;
+    }
+
+    /// <summary>
+    /// Все установленные плагины, не только включённые. Не кэшируется: список нужен только
+    /// экрану управления плагинами, а после переключения он обязан быть свежим.
+    /// </summary>
+    public IReadOnlyList<PluginInfo> Plugins(string projectPath)
+    {
+        var settings = _plugins.Settings(projectPath);
+
+        return _plugins.List()
+            .Select(p =>
+            {
+                var setting = settings.GetValueOrDefault(p.Key);
+                var locked = setting is not null && !ClaudePluginRegistry.IsUserLayer(setting) ? setting.Layer : null;
+                return new PluginInfo(p.Key, p.Name, setting?.Enabled ?? true, locked);
+            })
+            .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Запись в личные настройки бессмысленна, если слой проекта её перекрывает: кнопка
+    /// показала бы «включено», а CLI продолжил бы считать плагин выключенным.
+    /// </summary>
+    public string? SetPluginEnabled(string key, bool enabled, string projectPath)
+    {
+        if (_plugins.List().All(p => !string.Equals(p.Key, key, StringComparison.OrdinalIgnoreCase)))
+            return "Плагин уже не установлен";
+
+        if (_plugins.Settings(projectPath).GetValueOrDefault(key) is { } setting
+            && !ClaudePluginRegistry.IsUserLayer(setting))
+            return $"Задано в {setting.Layer} — там и меняйте";
+
+        var error = _plugins.SetEnabled(key, enabled);
+        if (error is null) Refresh();
+        return error;
+    }
+
     /// <summary>Тот же проект с точностью до регистра и хвостового слэша: ключ кэша — путь, как его прислал хост.</summary>
     private static bool SamePath(string left, string right) =>
         string.Equals(
@@ -74,8 +117,13 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
         Add(groups, "Проект", ScanFolder(Path.Combine(projectPath, ".claude"), prefix: null, "Проект"));
         Add(groups, "Личные", ScanFolder(ClaudeHome, prefix: null, "Личные"));
 
-        foreach (var (plugin, path) in EnabledPlugins(projectPath).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
-            Add(groups, plugin, ScanFolder(path, prefix: plugin, plugin));
+        // Плагин без записи в enabledPlugins считается включённым — так ведёт себя и сам CLI.
+        var settings = _plugins.Settings(projectPath);
+        foreach (var plugin in _plugins.List().OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            if (settings.GetValueOrDefault(plugin.Key) is { Enabled: false }) continue;
+            Add(groups, plugin.Name, ScanFolder(plugin.Path, prefix: plugin.Name, plugin.Name));
+        }
 
         return groups;
     }
@@ -270,89 +318,5 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
         var stop = text.IndexOf(". ", StringComparison.Ordinal);
         if (stop > 0) text = text[..(stop + 1)];
         return Text.Clip(text, DescriptionLimit);
-    }
-
-    /// <summary>
-    /// Плагины из <c>installed_plugins.json</c>, у которых нет <c>false</c> в
-    /// <c>enabledPlugins</c>. Настройки наслаиваются как у CLI: личные → проекта → локальные проекта.
-    /// Установленный плагин без записи считается включённым — так ведёт себя и сам CLI.
-    /// </summary>
-    private IEnumerable<(string Name, string Path)> EnabledPlugins(string projectPath)
-    {
-        var enabled = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-        foreach (var settings in new[]
-                 {
-                     Path.Combine(ClaudeHome, "settings.json"),
-                     Path.Combine(projectPath, ".claude", "settings.json"),
-                     Path.Combine(projectPath, ".claude", "settings.local.json"),
-                 })
-        {
-            ReadEnabled(settings, enabled);
-        }
-
-        var installed = Path.Combine(ClaudeHome, "plugins", "installed_plugins.json");
-        if (!File.Exists(installed)) yield break;
-
-        JsonDocument document;
-        try
-        {
-            document = JsonDocument.Parse(File.ReadAllText(installed));
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
-        {
-            logger.LogDebug(ex, "Не удалось прочитать {File}", installed);
-            yield break;
-        }
-
-        using (document)
-        {
-            if (!document.RootElement.TryGetProperty("plugins", out var plugins)
-                || plugins.ValueKind != JsonValueKind.Object)
-                yield break;
-
-            foreach (var plugin in plugins.EnumerateObject())
-            {
-                // Ключ — «имя@маркетплейс»; в команде используется только имя.
-                var key = plugin.Name;
-                if (enabled.GetValueOrDefault(key, true) is false) continue;
-
-                var at = key.IndexOf('@');
-                var name = at < 0 ? key : key[..at];
-
-                var entry = plugin.Value.ValueKind == JsonValueKind.Array
-                    ? plugin.Value.EnumerateArray().FirstOrDefault()
-                    : plugin.Value;
-
-                if (entry.ValueKind == JsonValueKind.Object
-                    && entry.TryGetProperty("installPath", out var pathElement)
-                    && pathElement.ValueKind == JsonValueKind.String
-                    && pathElement.GetString() is { Length: > 0 } path
-                    && Directory.Exists(path))
-                    yield return (name, path);
-            }
-        }
-    }
-
-    private void ReadEnabled(string file, Dictionary<string, bool> into)
-    {
-        if (!File.Exists(file)) return;
-
-        try
-        {
-            using var document = JsonDocument.Parse(File.ReadAllText(file));
-            if (!document.RootElement.TryGetProperty("enabledPlugins", out var section)
-                || section.ValueKind != JsonValueKind.Object)
-                return;
-
-            foreach (var item in section.EnumerateObject())
-            {
-                if (item.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                    into[item.Name] = item.Value.GetBoolean();
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
-        {
-            logger.LogDebug(ex, "Не удалось прочитать {File}", file);
-        }
     }
 }

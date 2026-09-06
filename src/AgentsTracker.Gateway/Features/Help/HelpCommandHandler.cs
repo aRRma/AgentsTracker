@@ -25,7 +25,7 @@ public sealed class HelpCommandHandler(ITelegramBotClient bot, IAgentBackend age
             /status — что происходит, остаток тарифа
             /sessions — сессия
             /agent — модель, effort, режим
-            /skills — скиллы кнопкой
+            /skills — скиллы кнопкой, включение плагинов
             /project — сменить репозиторий
             /usage — лимиты и расход
             /rules — правила «всегда»; /rules del <n>, /rules clear

@@ -1,3 +1,4 @@
+using AgentsTracker.Gateway.Infrastructure.Audit;
 using Telegram.Bot.Types.ReplyMarkups;
 using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 
@@ -7,8 +8,11 @@ namespace AgentsTracker.Gateway.Features.Settings.Screens;
 /// Скиллы агента кнопками: источник (встроенные, проект, личные, плагин) → скилл →
 /// карточка с описанием, подсказкой по аргументам и флагами. Из карточки скилл запускается
 /// сразу или после ввода аргументов следующим сообщением (<see cref="SkillLauncher"/>).
+/// Отдельный экран «Плагины» включает и выключает плагины агента: список скиллов
+/// меняется сразу, сам агент подхватывает настройку со следующего запуска.
 /// </summary>
-public sealed class SkillsScreen(SessionStore store, IAgentSkillCatalog catalog, SkillLauncher launcher) : ISettingsScreen
+public sealed class SkillsScreen(
+    SessionStore store, IAgentSkillCatalog catalog, SkillLauncher launcher, IAuditLog audit) : ISettingsScreen
 {
     /// <summary>Префиксы callback-ов: не hex, чтобы не спутать с 12-значным ключом.</summary>
     private const string PagePrefix = "p";
@@ -21,9 +25,17 @@ public sealed class SkillsScreen(SessionStore store, IAgentSkillCatalog catalog,
 
     private const string AskPrefix = "w";
 
+    private const string TogglePrefix = "t";
+
     private const string UpArgument = "up";
 
     private const string ListArgument = "list";
+
+    /// <summary>Сброс кэша каталога: плагин выключили в IDE, а шлюз ещё показывает его скиллы.</summary>
+    private const string ReloadArgument = "reload";
+
+    /// <summary>Открыть список плагинов. Хранится как «группа» позиции: не hex, с ключами групп не спутать.</summary>
+    private const string PluginsArgument = "plugins";
 
     /// <summary>Сколько частых скиллов выносить в отдельную группу наверх.</summary>
     private const int TopCount = 5;
@@ -52,7 +64,18 @@ public sealed class SkillsScreen(SessionStore store, IAgentSkillCatalog catalog,
                 _nav.Update(userId, p => p with { Card = null });
                 launcher.Cancel(userId);
                 return null;
+
+            case ReloadArgument:
+                catalog.Refresh();
+                return "Список перечитан с диска";
+
+            case PluginsArgument:
+                _nav.Set(userId, new ScreenPosition(Group: PluginsArgument));
+                return null;
         }
+
+        if (argument.StartsWith(TogglePrefix, StringComparison.Ordinal))
+            return Toggle(argument[TogglePrefix.Length..], userId);
 
         if (argument.StartsWith(GroupPrefix, StringComparison.Ordinal))
         {
@@ -101,10 +124,34 @@ public sealed class SkillsScreen(SessionStore store, IAgentSkillCatalog catalog,
     private SkillInfo? Find(string key) =>
         catalog.Grouped(store.ProjectPath).SelectMany(g => g.Skills).FirstOrDefault(s => Key12(s.Command) == key);
 
+    /// <summary>
+    /// Переворачивает состояние плагина. Кнопка несёт только ключ, а не желаемое состояние:
+    /// если плагин тем временем переключили в IDE, нажатие по устаревшей кнопке всё равно
+    /// приведёт к состоянию, противоположному действующему, — и экран сразу покажет его.
+    /// </summary>
+    private string? Toggle(string key, long userId)
+    {
+        var project = store.ProjectPath;
+        var plugin = catalog.Plugins(project).FirstOrDefault(p => Key12(p.Key) == key);
+        if (plugin is null) return "Плагина уже нет в списке";
+        if (plugin.LockedBy is not null) return $"Задано в {plugin.LockedBy} — там и меняйте";
+
+        var enabled = !plugin.Enabled;
+        if (catalog.SetPluginEnabled(plugin.Key, enabled, project) is { } error) return error;
+
+        audit.Changed(store, userId, $"plugin {plugin.Name}", State(plugin.Enabled), State(enabled));
+        return $"{plugin.Name}: {State(enabled)} — со следующего запуска агента";
+    }
+
+    private static string State(bool enabled) => enabled ? "включён" : "выключен";
+
     private (string Html, InlineKeyboardMarkup Keyboard) Render(long userId)
     {
         var position = _nav.Of(userId);
         var usage = store.SkillUsage();
+
+        // Плагины раньше проверки на пустоту: когда выключены все, включить их можно только отсюда.
+        if (position.Group == PluginsArgument) return RenderPlugins(userId, position.Page);
 
         // Каталог кэширует обход диска на несколько секунд: сюда попадают и Apply, и Render одного нажатия.
         var sources = catalog.Grouped(store.ProjectPath);
@@ -119,7 +166,7 @@ public sealed class SkillsScreen(SessionStore store, IAgentSkillCatalog catalog,
 
                 <i>Неизвестные шлюзу слэш-команды и так уходят агенту как есть.</i>
                 """;
-            return (empty, new InlineKeyboardMarkup([[BackButton]]));
+            return (empty, new InlineKeyboardMarkup([ToolsRow(), [BackButton]]));
         }
 
         if (position.Card is not null)
@@ -188,10 +235,63 @@ public sealed class SkillsScreen(SessionStore store, IAgentSkillCatalog catalog,
             .ToList();
 
         if (pageRow is not null) buttons.Add(pageRow);
+        buttons.Add(ToolsRow());
         buttons.Add([BackButton]);
 
         return (html, new InlineKeyboardMarkup(buttons));
     }
+
+    /// <summary>
+    /// Ряд служебных кнопок верхнего уровня. «Обновить» — сброс кэша: скилл добавили или плагин
+    /// выключили в IDE, а шлюз ещё показывает старое. «Плагины» — только если они у агента есть.
+    /// </summary>
+    private InlineKeyboardButton[] ToolsRow()
+    {
+        var plugins = catalog.Plugins(store.ProjectPath);
+        var reload = Button("🔄 Обновить", $"{Key}:{ReloadArgument}");
+        return plugins.Count == 0
+            ? [reload]
+            : [reload, Button($"🔌 Плагины ({plugins.Count(p => p.Enabled)}/{plugins.Count})", $"{Key}:{PluginsArgument}")];
+    }
+
+    /// <summary>
+    /// Плагины с переключателями. В кнопке — текущее состояние, нажатие переворачивает его.
+    /// Плагин, заданный в настройках проекта, помечен замком: из чата шлюз правит только
+    /// личные настройки, а слой проекта их перекрыл бы.
+    /// </summary>
+    private (string Html, InlineKeyboardMarkup Keyboard) RenderPlugins(long userId, int pageIndex)
+    {
+        var plugins = catalog.Plugins(store.ProjectPath);
+        var (page, clamped, counter, pageRow) = Page(plugins, pageIndex, Key, PagePrefix, "плагинов");
+        _nav.Update(userId, p => p with { Page = clamped });
+
+        var lines = page.Select(plugin =>
+            $"{Icon(plugin)} <b>{E(plugin.Name)}</b>"
+            + (plugin.LockedBy is null ? "" : $" — <i>{State(plugin.Enabled)}, задано в {E(plugin.LockedBy)}</i>"));
+
+        var html = $"""
+            🔌 <b>Плагины</b>
+
+            {(lines.Any() ? string.Join("\n", lines) : "<i>Установленных плагинов нет.</i>")}
+
+            <i>Нажатие включает или выключает плагин в личных настройках агента —
+            как его собственная команда /plugin. Список скиллов обновится сразу,
+            агент подхватит настройку со следующего запуска.</i>{counter}
+            """;
+
+        var buttons = page
+            .Select(plugin => Button($"{Icon(plugin)} {plugin.Name}", $"{Key}:{TogglePrefix}{Key12(plugin.Key)}"))
+            .Chunk(2)
+            .ToList();
+
+        if (pageRow is not null) buttons.Add(pageRow);
+        buttons.Add([Button("🧩 К скиллам", $"{Key}:{UpArgument}"), BackButton]);
+
+        return (html, new InlineKeyboardMarkup(buttons));
+    }
+
+    private static string Icon(PluginInfo plugin) =>
+        plugin.LockedBy is not null ? "🔒" : plugin.Enabled ? "✅" : "⛔";
 
     private (string Html, InlineKeyboardMarkup Keyboard) RenderSkills(
         long userId, SkillGroup group, bool single, int pageIndex, IReadOnlyDictionary<string, int> usage)
@@ -221,6 +321,7 @@ public sealed class SkillsScreen(SessionStore store, IAgentSkillCatalog catalog,
             .ToList();
 
         if (pageRow is not null) buttons.Add(pageRow);
+        if (single) buttons.Add(ToolsRow());
         buttons.Add(single ? [BackButton] : [Button("📦 К источникам", $"{Key}:{UpArgument}"), BackButton]);
 
         return (html, new InlineKeyboardMarkup(buttons));

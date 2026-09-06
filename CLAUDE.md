@@ -140,7 +140,8 @@ src/AgentsTracker.Agents.Claude/         Claude Code за этими контр�
   ClaudeAgentModule     регистрация, MapMcp(/mcp) с фильтром токена, Dispose McpConfigFile
   ClaudeBackend         процесс claude -p: аргументы, stream-json, «сессия не найдена», лимит тарифа
   ClaudeCapabilities, ClaudeOptions (Gateway:Claude — Executable, BuiltInSkills),
-  ClaudeCliLocator, ClaudeCliJson, ClaudeStreamEvent, ClaudeLimits, ClaudeSkillCatalog
+  ClaudeCliLocator, ClaudeCliJson, ClaudeStreamEvent, ClaudeLimits, ClaudeSkillCatalog,
+  ClaudePluginRegistry (installed_plugins.json + enabledPlugins, запись в ~/.claude/settings.json)
   Mcp/                  McpConfigFile — mcp-gateway.json с токеном; ClaudePermissionTool — payload CLI → IOperatorConsole → JSON
 src/AgentsTracker.Gateway/
   Program.cs            список IAgentBackendModule (выбор по Gateway:Agent) и IFeatureModule
@@ -375,7 +376,16 @@ Variable и Cascadia. Рейка слева: статус-pill `.state` с ла�
 `skills/*/SKILL.md` и `commands/**/*.md` из `.claude` проекта и `~/.claude`, плюс включённые
 плагины (`~/.claude/plugins/installed_plugins.json`; `enabledPlugins` наслаиваются профиль →
 `.claude/settings.json` → `settings.local.json`, без записи — включён). `user-invocable: false`
-в списке нет. Обход кэшируется на 5 с: нажатие в меню — это `Apply` и `Render` подряд.
+в списке нет. Обход кэшируется на 5 с: нажатие в меню — это `Apply` и `Render` подряд;
+кнопка «🔄 Обновить» — `Refresh()`, сброс кэша. Плагины читает и пишет `ClaudePluginRegistry`:
+экран «🔌 Плагины» (`IAgentSkillCatalog.Plugins`/`SetPluginEnabled`) переключает
+`enabledPlugins[имя@маркетплейс]` только в личном `~/.claude/settings.json` — туда же пишет
+`/plugin` самого CLI; файл переписывается целиком через `JsonNode` (LF, без `\u`, через
+временный файл — соседняя сессия CLI может читать его в этот момент), комментарии в нём не
+переживут. Значение, заданное слоем проекта, помечено 🔒 и из чата не меняется
+(`PluginInfo.LockedBy`): запись в личный слой ничего бы не изменила. Кнопка несёт ключ
+плагина, а не желаемое состояние — переворачивается действующее. Действует со следующего
+`claude -p`; сессия в VS Code и так читает настройки при своём старте.
 Встроенные скиллы CLI перечислить нельзя — группа «Встроенные» из `Gateway:Claude:BuiltInSkills`
 (дефолт в `ClaudeOptions` под CLI 2.1.x, после обновления CLI — конфигом без пересборки).
 «С аргументами» — `SkillLauncher.Expect` запоминает команду за пользователем, следующий текст
