@@ -7,6 +7,7 @@
 <style>
   /* Светлая тема — основная: на пульт смотрят днём, с соседнего экрана. */
   :root {
+    color-scheme: light dark; /* иначе скроллбары и <select> в тёмной теме остаются светлыми */
     --paper: #f2f3f0;      /* фон страницы: холодная приборная бумага */
     --surface: #ffffff;    /* поле рейки и таблиц */
     --ink: #1a1d1a;        /* основной текст */
@@ -35,14 +36,20 @@
 
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
+  /* Размеры в rem: настройка шрифта в браузере должна масштабировать пульт. */
   body {
     margin: 0; background: var(--paper); color: var(--ink);
-    font: 14px/1.5 var(--sans);
+    font: .875rem/1.5 var(--sans);
     font-variant-numeric: tabular-nums;
   }
-  a { color: inherit; text-underline-offset: 3px; text-decoration-color: var(--rule); }
+  a { color: inherit; text-underline-offset: 3px; text-decoration-color: color-mix(in oklab, currentColor 55%, transparent); }
   a:hover { text-decoration-color: currentColor; }
   :focus-visible { outline: 2px solid var(--run); outline-offset: 2px; }
+  /* Текст только для скринридера: подписи селектов и таблиц, которые визуально читаются из заголовка раздела. */
+  .visually-hidden:where(:not(:focus-within, :active)) {
+    position: absolute !important; clip-path: inset(50%) !important; overflow: hidden !important;
+    width: 1px !important; height: 1px !important; margin: -1px !important; padding: 0 !important; border: 0 !important; white-space: nowrap !important;
+  }
 
   /* ---------- приборная рейка ---------- */
   .rail {
@@ -52,9 +59,9 @@
     display: flex; flex-direction: column; gap: 22px;
   }
   .brand { display: flex; align-items: baseline; gap: 10px; }
-  .brand b { font: 600 17px/1 var(--display); letter-spacing: .01em; }
-  .brand span { color: var(--ink-soft); font-size: 12px; }
-  .link { margin-left: auto; font-size: 12px; color: var(--ink-soft); }
+  .brand h1 { font: 600 1.0625rem/1 var(--display); letter-spacing: .01em; margin: 0; }
+  .brand span { color: var(--ink-soft); font-size: .75rem; }
+  .link { margin-left: auto; font-size: .75rem; color: var(--ink-soft); }
   .link.down { color: var(--fail); }
 
   .readout { border-top: 1px solid var(--rule); padding-top: 16px; }
@@ -64,21 +71,21 @@
   .lamp.wait { background: var(--wait); box-shadow: 0 0 0 4px var(--wait-wash); animation: blink 1s steps(2, end) infinite; }
   @keyframes breathe { 50% { opacity: .3; } }
   @keyframes blink { 50% { opacity: 0; } }
-  .lamp-row b { font: 500 15px/1.2 var(--display); }
-  .clock { font: 300 40px/1 var(--display); letter-spacing: -.01em; margin-top: 10px; }
-  .clock.idle { color: var(--ink-soft); }
-  .clock small { font-size: 13px; letter-spacing: 0; color: var(--ink-soft); margin-left: 6px; }
+  .lamp-row b { font: 500 .9375rem/1.2 var(--display); }
+  .clock { font: 300 2.5rem/1 var(--display); letter-spacing: -.01em; margin-top: 10px; }
+  .clock small { font-size: .8125rem; letter-spacing: 0; color: var(--ink-soft); margin-left: 6px; }
 
   .facts { border-top: 1px solid var(--rule); padding-top: 14px; }
   .facts dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; }
-  .facts dt { color: var(--ink-soft); font-size: 12.5px; }
+  .facts dt { color: var(--ink-soft); font-size: .78rem; }
   .facts dd { margin: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .gauges { border-top: 1px solid var(--rule); padding-top: 14px; }
-  .gauges h2, .facts h2 { font: 500 13px/1 var(--display); margin: 0 0 12px; }
-  .gauges h2 span { float: right; font: 400 11px/1 var(--sans); color: var(--ink-soft); }
+  .gauges h2, .facts h2 { font: 500 .8125rem/1 var(--display); margin: 0 0 12px; }
+  .gauges h2 { display: flex; justify-content: space-between; align-items: baseline; }
+  .gauges h2 span { font: 400 .6875rem/1 var(--sans); color: var(--ink-soft); }
   .gauge { margin-bottom: 12px; }
-  .gauge .cap { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; margin-bottom: 5px; }
+  .gauge .cap { display: flex; justify-content: space-between; gap: 8px; font-size: .78rem; margin-bottom: 5px; }
   .gauge .cap i { font-style: normal; color: var(--ink-soft); }
   /* Сегментная шкала — как деления на приборе, а не сплошная полоса. */
   .meter { height: 9px; background: repeating-linear-gradient(90deg, var(--rule) 0 5px, transparent 5px 8px); }
@@ -90,27 +97,29 @@
   main { margin-left: var(--rail); padding: 26px 30px 60px; max-width: 1500px; }
   .band { border-top: 1px solid var(--rule); padding-top: 18px; margin-top: 30px; }
   main > .band:first-child { border-top: 0; padding-top: 0; margin-top: 0; } /* только «Сейчас»: в .split первый раздел тоже first-child */
-  .band > h2 { font: 500 14px/1 var(--display); margin: 0 0 14px; display: flex; align-items: center; gap: 14px; }
-  .band > h2 .aside { margin-left: auto; font: 400 12px/1 var(--sans); color: var(--ink-soft); display: flex; gap: 12px; align-items: center; }
+  /* Селекты и ссылки живут рядом с заголовком, а не внутри него: иначе скринридер читал бы их как часть имени раздела. */
+  .band-head { display: flex; align-items: center; gap: 14px; margin: 0 0 14px; }
+  .band-head h2 { font: 500 .875rem/1 var(--display); margin: 0; }
+  .band-head .aside { margin-left: auto; font: 400 .75rem/1 var(--sans); color: var(--ink-soft); display: flex; gap: 12px; align-items: center; }
   .split { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; align-items: start; }
 
   .approval { border-left: 3px solid var(--wait); background: var(--wait-wash); padding: 9px 14px; margin-bottom: 10px; }
   .approval b { font-weight: 600; }
-  .approval div { color: var(--ink-soft); font-size: 12.5px; margin-top: 2px; }
+  .approval div { color: var(--ink-soft); font-size: .78rem; margin-top: 2px; }
 
-  .prompt { font-size: 16px; line-height: 1.45; max-width: 68ch; word-break: break-word; margin-bottom: 10px; }
+  .prompt { font-size: 1rem; line-height: 1.45; max-width: 68ch; overflow-wrap: anywhere; margin-bottom: 10px; }
   .prompt.idle { color: var(--ink-soft); }
-  .runmeta { display: flex; flex-wrap: wrap; gap: 4px 18px; color: var(--ink-soft); font-size: 12.5px; margin-bottom: 14px; }
+  .runmeta { display: flex; flex-wrap: wrap; gap: 4px 18px; color: var(--ink-soft); font-size: .78rem; margin-bottom: 14px; }
   .runmeta b { color: var(--ink); font-weight: 600; }
 
   /* Лента шагов: главный герой страницы — по ней видно, что процесс жив. */
-  .tape { font-family: var(--mono); font-size: 12.5px; max-height: 340px; overflow: auto; background: var(--surface); border: 1px solid var(--rule); padding: 10px 14px; }
+  .tape { font-family: var(--mono); font-size: .78rem; max-height: 340px; overflow: auto; background: var(--surface); border: 1px solid var(--rule); padding: 10px 14px; }
   .tape p { margin: 0 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tape p.nested { padding-left: 20px; color: var(--ink-soft); }
   .tape .t { color: var(--ink-soft); margin-right: 10px; }
   .tape .hint { color: var(--ink-soft); font-family: var(--sans); }
 
-  .queue { margin-top: 14px; font-size: 13px; }
+  .queue { margin-top: 14px; font-size: .8125rem; }
   .queue b { font-weight: 600; }
   .queue ol { margin: 6px 0 0; padding-left: 22px; color: var(--ink-soft); }
 
@@ -118,23 +127,25 @@
   .figures { display: flex; flex-wrap: wrap; gap: 0 0; margin-bottom: 20px; }
   .figures div { padding: 0 22px; border-left: 1px solid var(--rule-soft); }
   .figures div:first-child { padding-left: 0; border-left: 0; }
-  .figures b { display: block; font: 300 30px/1.1 var(--display); }
-  .figures span { color: var(--ink-soft); font-size: 12px; }
+  .figures b { display: block; font: 300 1.875rem/1.1 var(--display); }
+  .figures span { color: var(--ink-soft); font-size: .75rem; }
 
   #chart { width: 100%; height: 170px; display: block; }
   #chart rect { fill: var(--run); }
   #chart rect:hover { fill: var(--wait); }
   #chart text { fill: var(--ink-soft); font: 10px var(--sans); }
   #chart line { stroke: var(--rule); }
+  .chart-table { margin-top: 8px; }
+  .chart-table table { width: auto; margin-top: 6px; }
 
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; font-size: .8125rem; }
   th, td { text-align: left; padding: 6px 16px 6px 0; border-bottom: 1px solid var(--rule-soft); vertical-align: top; white-space: nowrap; }
   th:last-child, td:last-child { padding-right: 0; }
-  th { color: var(--ink-soft); font-weight: 500; font-size: 12px; border-bottom-color: var(--rule); }
-  td.wrap { white-space: normal; word-break: break-word; min-width: 22ch; max-width: 78ch; }
+  th { color: var(--ink-soft); font-weight: 500; font-size: .75rem; border-bottom-color: var(--rule); }
+  td.wrap { white-space: normal; overflow-wrap: anywhere; min-width: 22ch; max-width: 78ch; }
   td.num, th.num { text-align: right; }
   .scroll { overflow: auto; max-height: 430px; }
-  .mono { font-family: var(--mono); font-size: 12.5px; }
+  .mono { font-family: var(--mono); font-size: .78rem; }
   .muted { color: var(--ink-soft); }
   .empty { color: var(--ink-soft); }
 
@@ -145,16 +156,19 @@
   .mark.error, .mark.rate-limit, .mark.interrupted, .mark.Error, .mark.Critical { color: var(--fail); }
   .mark.Information { color: var(--ink-soft); font-weight: 400; }
 
-  select { font: inherit; font-size: 12.5px; color: var(--ink); background: transparent; border: 0; border-bottom: 1px solid var(--rule); padding: 2px 2px 3px; }
-  details summary { cursor: pointer; color: var(--ink-soft); font-size: 12px; }
+  select { font: inherit; font-size: .78rem; color: var(--ink); background: transparent; border: 0; border-bottom: 1px solid var(--rule); padding: 2px 2px 3px; min-block-size: 24px; }
+  details summary { cursor: pointer; color: var(--ink-soft); font-size: .75rem; }
   details pre { white-space: pre-wrap; margin: 4px 0 0; }
 
+  @media (pointer: coarse) {
+    select { min-block-size: 32px; }
+  }
   @media (max-width: 1000px) {
     /* На телефоне рейка становится шапкой: чем она короче, тем ближе к экрану лента запуска. */
     .rail { position: static; width: auto; border-right: 0; border-bottom: 1px solid var(--rule); padding: 16px 18px; gap: 16px; }
     main { margin-left: 0; padding: 22px 18px 50px; }
     .split { grid-template-columns: 1fr; }
-    .clock { font-size: 34px; }
+    .clock { font-size: 2.125rem; }
     .figures div { padding: 0 16px; }
   }
   @media (max-width: 1000px) and (min-width: 560px) {
@@ -164,16 +178,23 @@
   @media (prefers-reduced-motion: reduce) {
     .lamp.run, .lamp.wait { animation: none; }
   }
+  /* Высокая контрастность Windows стирает фоны и тени: шкалы и лампа иначе пропали бы вместе с показанием. */
+  @media (forced-colors: active) {
+    .meter { border: 1px solid CanvasText; }
+    .meter i { background: Highlight; forced-color-adjust: none; }
+    .lamp { border: 1px solid CanvasText; }
+    .approval { border: 1px solid CanvasText; }
+  }
 </style>
 </head>
 <body>
 
 <aside class="rail">
-  <div class="brand"><b>AgentsTracker</b><span id="conn" class="link">подключение…</span></div>
+  <div class="brand"><h1>AgentsTracker</h1><span id="conn" class="link" role="status">подключение…</span></div>
 
   <div class="readout">
-    <div class="lamp-row"><span class="lamp" id="lamp"></span><b id="state-text">—</b></div>
-    <div class="clock idle" id="clock">—</div>
+    <div class="lamp-row"><span class="lamp" id="lamp"></span><b id="state-text" role="status">—</b></div>
+    <div class="clock" id="clock" hidden><span id="clock-val"></span><small id="clock-note"></small></div>
   </div>
 
   <div class="facts">
@@ -197,15 +218,16 @@
 
 <main>
   <section class="band">
-    <h2>Сейчас <span class="aside" id="now-time"></span></h2>
+    <div class="band-head"><h2>Сейчас</h2><span class="aside" id="now-time"></span></div>
     <div id="approval"></div>
     <div id="run"></div>
     <div class="queue" id="queue"></div>
   </section>
 
   <section class="band">
-    <h2>Работа по дням
+    <div class="band-head"><h2>Работа по дням</h2>
       <span class="aside">
+        <label class="visually-hidden" for="metric">Показатель</label>
         <select id="metric">
           <option value="runs">запуски</option>
           <option value="costUsd">стоимость, $</option>
@@ -214,50 +236,57 @@
         </select>
         <a href="/api/stats.csv">Скачать CSV</a>
       </span>
-    </h2>
+    </div>
     <div class="figures" id="figures"></div>
-    <svg id="chart"></svg>
+    <svg id="chart" role="img" aria-labelledby="chart-title"><title id="chart-title">Работа по дням</title></svg>
+    <details class="chart-table"><summary>таблицей</summary>
+      <table id="chart-data"><caption class="visually-hidden">Работа по дням</caption><thead><tr><th scope="col">День</th><th scope="col" class="num" id="chart-data-metric">Значение</th></tr></thead><tbody></tbody></table>
+    </details>
   </section>
 
   <section class="band">
-    <h2>Запуски
+    <div class="band-head"><h2>Запуски</h2>
       <span class="aside">
+        <label class="visually-hidden" for="run-project">Проект</label>
         <select id="run-project"><option value="">все проекты</option></select>
-        <a href="/api/runs">JSON</a>
+        <a href="/api/runs">JSON запусков</a>
       </span>
-    </h2>
-    <div class="scroll"><table id="runs"><thead><tr>
-      <th>Когда</th><th>Проект</th><th>Промпт</th><th>Исход</th><th class="num">Время</th><th class="num">Ходов</th><th class="num">Вызовов</th><th class="num">Токены</th><th class="num">$</th><th>Сессия</th>
+    </div>
+    <div class="scroll" tabindex="0"><table id="runs"><caption class="visually-hidden">Запуски</caption><thead><tr>
+      <th scope="col">Когда</th><th scope="col">Проект</th><th scope="col">Промпт</th><th scope="col">Исход</th><th scope="col" class="num">Время</th><th scope="col" class="num">Ходов</th><th scope="col" class="num">Вызовов</th><th scope="col" class="num">Токены</th><th scope="col" class="num">$</th><th scope="col">Сессия</th>
     </tr></thead><tbody></tbody></table></div>
   </section>
 
   <div class="split">
     <section class="band">
-      <h2>Модели</h2>
-      <div class="scroll"><table id="models"><thead><tr><th>Модель</th><th class="num">Запусков</th><th class="num">Вход</th><th class="num">Выход</th><th class="num">Кэш</th><th class="num">$</th></tr></thead><tbody></tbody></table></div>
+      <div class="band-head"><h2>Модели</h2></div>
+      <div class="scroll" tabindex="0"><table id="models"><caption class="visually-hidden">Модели</caption><thead><tr><th scope="col">Модель</th><th scope="col" class="num">Запусков</th><th scope="col" class="num">Вход</th><th scope="col" class="num">Выход</th><th scope="col" class="num">Кэш</th><th scope="col" class="num">$</th></tr></thead><tbody></tbody></table></div>
     </section>
 
     <section class="band">
-      <h2>Скиллы</h2>
-      <div class="scroll"><table id="skills"><thead><tr><th>Команда</th><th class="num">Запусков</th></tr></thead><tbody></tbody></table></div>
+      <div class="band-head"><h2>Скиллы</h2></div>
+      <div class="scroll" tabindex="0"><table id="skills"><caption class="visually-hidden">Скиллы</caption><thead><tr><th scope="col">Команда</th><th scope="col" class="num">Запусков</th></tr></thead><tbody></tbody></table></div>
     </section>
   </div>
 
   <section class="band">
-    <h2>Сессии</h2>
-    <div class="scroll"><table id="sessions"><thead><tr><th>Проект</th><th>Сессия</th><th>Название</th><th>Активность</th><th class="num">Ходов</th><th class="num">$</th></tr></thead><tbody></tbody></table></div>
+    <div class="band-head"><h2>Сессии</h2></div>
+    <div class="scroll" tabindex="0"><table id="sessions"><caption class="visually-hidden">Сессии</caption><thead><tr><th scope="col">Проект</th><th scope="col">Сессия</th><th scope="col">Название</th><th scope="col">Активность</th><th scope="col" class="num">Ходов</th><th scope="col" class="num">$</th></tr></thead><tbody></tbody></table></div>
   </section>
 
   <section class="band">
-    <h2>Аудит <span class="aside"><a href="/api/audit?count=1000">JSON</a></span></h2>
-    <div class="scroll"><table id="audit"><thead><tr><th>Когда</th><th>Вид</th><th>Что</th><th>Исход</th><th>Кто</th><th>Проект</th></tr></thead><tbody></tbody></table></div>
+    <div class="band-head"><h2>Аудит</h2><span class="aside"><a href="/api/audit?count=1000">JSON аудита</a></span></div>
+    <div class="scroll" tabindex="0"><table id="audit"><caption class="visually-hidden">Аудит</caption><thead><tr><th scope="col">Когда</th><th scope="col">Вид</th><th scope="col">Что</th><th scope="col">Исход</th><th scope="col">Кто</th><th scope="col">Проект</th></tr></thead><tbody></tbody></table></div>
   </section>
 
   <section class="band">
-    <h2>Лог
-      <span class="aside"><select id="log-level"><option>Information</option><option>Warning</option><option>Error</option></select></span>
-    </h2>
-    <div class="scroll"><table id="log"><thead><tr><th>Когда</th><th>Уровень</th><th>Кто</th><th>Сообщение</th></tr></thead><tbody></tbody></table></div>
+    <div class="band-head"><h2>Лог</h2>
+      <span class="aside">
+        <label class="visually-hidden" for="log-level">Уровень</label>
+        <select id="log-level"><option>Information</option><option>Warning</option><option>Error</option></select>
+      </span>
+    </div>
+    <div class="scroll" tabindex="0"><table id="log"><caption class="visually-hidden">Лог</caption><thead><tr><th scope="col">Когда</th><th scope="col">Уровень</th><th scope="col">Кто</th><th scope="col">Сообщение</th></tr></thead><tbody></tbody></table></div>
   </section>
 </main>
 
@@ -291,10 +320,11 @@
   const shortCategory = c => (c || '').split('.').slice(-2).join('.');
 
   // ---- живое состояние ----
-  let last = null;
+  // renderLive перестраивает DOM только по кадру сервера; тикающие показания правит tick() через textContent —
+  // перерисовка innerHTML раз в секунду сбрасывала бы выделение текста в ленте и прыгала скроллом.
+  let last = null, tapeKey = null;
   function renderLive(s) {
     last = s;
-    $('uptime').textContent = fmtDur(Date.now() - new Date(s.gatewayStartedUtc));
     $('agent').textContent = s.agent || 'Агент';
     // CLI повторяет своё имя в строке версии («2.1.261 (Claude Code)») — рядом с подписью это дубль.
     const version = (s.cliVersion || '?').replace(` (${s.agent})`, '');
@@ -305,29 +335,24 @@
     $('effort').textContent = s.effort || '—';
     $('now-time').textContent = 'обновлено ' + fmtTime(s.at);
 
-    const lamp = $('lamp'), clock = $('clock');
+    const lamp = $('lamp');
     lamp.className = 'lamp';
-    clock.className = 'clock idle';
-    let text = 'Свободен', readout = '—';
+    let text = 'Свободен';
     const approvals = s.approvals || [];
     if (approvals.length) {
       lamp.classList.add('wait');
       text = approvals.length > 1 ? `Ждёт подтверждений: ${approvals.length}` : 'Ждёт подтверждения';
-      readout = fmtClock(Date.now() - new Date(approvals[0].sinceUtc));
-      clock.className = 'clock';
     } else if (s.run) {
       lamp.classList.add('run');
       text = 'Работает';
-      readout = fmtClock(Date.now() - new Date(s.run.startedUtc));
-      clock.className = 'clock';
     }
     $('state-text').textContent = text;
     // В простое секундомер убирается совсем: пустой прочерк на его месте читался бы как сбой.
-    clock.hidden = readout === '—';
-    clock.innerHTML = clock.hidden ? '' : `${readout}<small>${approvals.length ? 'ждёт ответа' : 'идёт запуск'}</small>`;
+    $('clock').hidden = !(approvals.length || s.run);
+    $('clock-note').textContent = approvals.length ? 'ждёт ответа' : 'идёт запуск';
 
     $('approval').innerHTML = approvals.map(a =>
-      `<div class="approval"><b>${esc(a.tool)}</b> <span class="mono">${esc(a.brief)}</span><div>ждёт ${fmtDur(Date.now() - new Date(a.sinceUtc))} — ответьте кнопками в Telegram</div></div>`).join('');
+      `<div class="approval"><b>${esc(a.tool)}</b> <span class="mono">${esc(a.brief)}</span><div>ждёт <span data-since="${esc(a.sinceUtc)}"></span> — ответьте кнопками в Telegram</div></div>`).join('');
 
     if (s.run) {
       const r = s.run, st = r.start;
@@ -337,9 +362,12 @@
         <div class="runmeta"><span>сессия <b class="mono">${esc(st.sessionId ? shortId(st.sessionId) : 'новая')}</b></span>
           <span>${esc(st.model || 'модель по умолчанию')}</span><span>${esc(st.permissionMode)}</span>${st.effort ? `<span>${esc(st.effort)}</span>` : ''}
           <span>вызовов инструментов <b>${r.toolCalls}</b></span></div>
-        <div class="tape">${r.droppedSteps ? `<p class="hint">… ещё ${r.droppedSteps} ранних шагов</p>` : ''}${steps || '<p class="hint">ждём первый шаг…</p>'}</div>`;
-      const box = $('run').querySelector('.tape'); box.scrollTop = box.scrollHeight;
+        <div class="tape" tabindex="0">${r.droppedSteps ? `<p class="hint">… ещё ${r.droppedSteps} ранних шагов</p>` : ''}${steps || '<p class="hint">ждём первый шаг…</p>'}</div>`;
+      // Прокрутка к концу — только когда появились новые шаги, иначе читать старые шаги во время запуска нельзя.
+      const key = `${r.startedUtc}:${r.toolCalls}:${r.steps.length}`;
+      if (key !== tapeKey) { const box = $('run').querySelector('.tape'); box.scrollTop = box.scrollHeight; tapeKey = key; }
     } else {
+      tapeKey = null;
       // Пустой экран без единой цифры выглядит как поломка, поэтому в простое показываем последний запуск.
       const prev = runs[0];
       $('run').innerHTML = `<div class="prompt idle">Запусков нет. Напишите боту в Telegram — работа появится здесь.</div>
@@ -357,9 +385,18 @@
       $('budget').innerHTML = `<div class="gauge"><div class="cap"><span>Бюджет на день</span><i>${fmtMoney(s.budget.spentToday)} из ${fmtMoney(s.budget.daily)}</i></div>
         <div class="meter"><i class="${pct > 90 ? 'bad' : pct > 70 ? 'warn' : ''}" style="width:${pct}%"></i></div></div>`;
     }
+    tick();
   }
-  // Часы и «прошло времени» тикают между кадрами сервера.
-  setInterval(() => { if (last) renderLive(last); }, 1000);
+  // Часы и «прошло времени» тикают между кадрами сервера; в скрытой вкладке — незачем.
+  function tick() {
+    if (!last || document.hidden) return;
+    const now = Date.now();
+    $('uptime').textContent = fmtDur(now - new Date(last.gatewayStartedUtc));
+    const since = last.approvals?.[0]?.sinceUtc || last.run?.startedUtc;
+    if (since) $('clock-val').textContent = fmtClock(now - new Date(since));
+    for (const el of document.querySelectorAll('[data-since]')) el.textContent = fmtDur(now - new Date(el.dataset.since));
+  }
+  setInterval(tick, 1000);
 
   let refreshTimer = null;
   function connect() {
@@ -376,7 +413,9 @@
   }
 
   // ---- статистика ----
-  const get = (url, fallback) => fetch(url).then(r => r.ok ? r.json() : fallback).catch(() => fallback);
+  const get = (url, fallback, init) => fetch(url, init).then(r => r.ok ? r.json() : fallback).catch(() => fallback);
+  // Журналы и лимиты — фон: не должны соперничать за сеть с обновлением состояния.
+  const background = { priority: 'low' };
   let stats = null, runs = [];
 
   async function loadAll() {
@@ -407,21 +446,25 @@
   }
 
   function renderChart() {
-    const metric = $('metric').value;
+    const metricSel = $('metric'), metric = metricSel.value, metricName = metricSel.selectedOptions[0].textContent;
     const days = stats.byDay.slice(-30);
     const value = d => metric === 'tokens' ? d.inputTokens + d.outputTokens : metric === 'minutes' ? d.durationMs / 60000 : d[metric];
+    const label = v => metric === 'costUsd' ? fmtMoney(v) : metric === 'minutes' ? v.toFixed(1) + ' мин' : metric === 'tokens' ? fmtTokens(v) : v;
     const W = 1000, H = 170, pad = 20;
     // Шаг ограничен сверху: за первые дни работы шлюза два столбца растянулись бы во всю ширину.
     const bw = Math.min(W / Math.max(days.length, 1), 46);
     const max = Math.max(...days.map(value), 0.0001);
     const svg = $('chart'); svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-    svg.innerHTML = (days.map((d, i) => {
+    svg.innerHTML = `<title id="chart-title">Работа по дням: ${esc(metricName)}</title>` + (days.map((d, i) => {
       const v = value(d), h = (H - pad - 4) * v / max;
-      const label = metric === 'costUsd' ? fmtMoney(v) : metric === 'minutes' ? v.toFixed(1) + ' мин' : metric === 'tokens' ? fmtTokens(v) : v;
-      return `<rect x="${i * bw + 2}" y="${H - pad - h}" width="${Math.max(bw - 5, 1)}" height="${h}"><title>${d.day}: ${label}</title></rect>
-        ${(days.length <= 15 || i % Math.ceil(days.length / 15) === 0) ? `<text x="${i * bw + bw / 2}" y="${H - 5}" text-anchor="middle">${d.day.slice(5)}</text>` : ''}`;
+      return `<rect x="${i * bw + 2}" y="${H - pad - h}" width="${Math.max(bw - 5, 1)}" height="${h}"><title>${esc(d.day)}: ${label(v)}</title></rect>
+        ${(days.length <= 15 || i % Math.ceil(days.length / 15) === 0) ? `<text x="${i * bw + bw / 2}" y="${H - 5}" text-anchor="middle">${esc(d.day.slice(5))}</text>` : ''}`;
     }).join('') || '<text x="0" y="80">пока пусто</text>')
       + `<line x1="0" y1="${H - pad}" x2="${W}" y2="${H - pad}"/>`;
+    // Те же числа таблицей — альтернатива графику для скринридера и для точного чтения.
+    $('chart-data-metric').textContent = metricName;
+    $('chart-data').querySelector('tbody').innerHTML = days.map(d => `<tr><td>${esc(d.day)}</td><td class="num">${label(value(d))}</td></tr>`).join('')
+      || '<tr><td colspan="2" class="empty">пока пусто</td></tr>';
   }
   $('metric').onchange = renderChart;
 
@@ -446,7 +489,7 @@
   };
   const windowName = k => k === 'five_hour' ? '5 часов' : k === 'seven_day' ? 'неделя' : 'неделя, ' + k.replace(/^(seven_day|five_hour)_/, '').replace(/_/g, ' ');
   async function loadLimits() {
-    const l = await get('/api/limits', null);
+    const l = await get('/api/limits', null, background);
     if (!l) return;
     $('limits-note').textContent = l.fetchedUtc ? 'на ' + fmtTime(l.fetchedUtc) : '';
     if (l.error) { $('limits-body').innerHTML = `<span class="muted">${esc(l.error)}</span>`; return; }
@@ -459,23 +502,27 @@
     }).join('') || '<span class="empty">окон нет</span>';
     if (l.extraUsageEnabled) $('limits-body').innerHTML += '<div class="mark Warning">на аккаунте включены кредиты (extra usage)</div>';
   }
-  setInterval(loadLimits, 60000);
 
   async function loadAudit() {
-    const list = await get('/api/audit?count=100', []);
+    const list = await get('/api/audit?count=100', [], background);
     $('audit').querySelector('tbody').innerHTML = list.slice().reverse().map(a =>
       `<tr><td>${fmtWhen(a.at)}</td><td class="mono">${esc(a.kind)}</td><td class="wrap">${esc(a.summary)}</td><td>${esc(a.outcome || '')}</td><td>${esc(a.userId || '')}</td><td title="${esc(a.project || '')}">${esc(shortPath(a.project))}</td></tr>`).join('')
       || '<tr><td colspan="6" class="empty">пусто</td></tr>';
   }
 
   async function loadLog() {
-    const list = await get('/api/log?count=200&level=' + $('log-level').value, []);
+    const list = await get('/api/log?count=200&level=' + $('log-level').value, [], background);
     $('log').querySelector('tbody').innerHTML = list.slice().reverse().map(e =>
       `<tr><td>${fmtWhen(e.at)}</td><td><span class="mark ${esc(e.level)}">${esc(e.level)}</span></td><td class="mono" title="${esc(e.category)}">${esc(shortCategory(e.category))}</td><td class="wrap">${esc(e.message)}${e.exception ? `<details><summary>исключение</summary><pre class="mono">${esc(e.exception)}</pre></details>` : ''}</td></tr>`).join('')
       || '<tr><td colspan="4" class="empty">пусто</td></tr>';
   }
   $('log-level').onchange = loadLog;
-  setInterval(() => { loadAudit(); loadLog(); }, 30000);
+
+  // Скрытая вкладка не опрашивает журналы и лимиты; при возврате — догоняет сразу, а не ждёт следующего тика.
+  const periodic = fn => () => { if (!document.hidden) fn(); };
+  setInterval(periodic(loadLimits), 60000);
+  setInterval(periodic(() => { loadAudit(); loadLog(); }), 30000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { tick(); loadAll(); } });
 
   connect();
 })();
