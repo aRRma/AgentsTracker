@@ -44,7 +44,7 @@ public sealed class RootScreen(SessionStore store, IAgentBackend agent, ChatWork
         var keyboard = new InlineKeyboardMarkup(
         [
             [Button("📟 Статус", "status"), Button("🧵 Сессии", "sess")],
-            [Button("🤖 Агент: модель · effort · режим", "agent")],
+            [Button("🤖 Агент", "agent")],
             [Button("🧩 Скиллы", "skills"), Button("📁 Репозиторий", "proj")],
             [Button("📊 Статистика", "usage"), Button("✖️ Закрыть", "close")],
         ]);

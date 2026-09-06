@@ -109,9 +109,8 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 | `/sessions` | сессии проекта: активная, переключение, новая, остановка запуска |
 | `/new` | начать разговор заново |
 | `/stop` | прервать текущую задачу |
-| `/model` | модель, effort и режим одним экраном; `/model sonnet` — сразу сменить |
-| `/effort` | сколько модели думать (low … max) |
-| `/mode` | что агенту можно делать без спроса |
+| `/agent` | настройки агента: модель, effort, режим |
+| `/model`, `/effort`, `/mode` | то же текстом: `/model sonnet`, `/effort high`, `/mode plan` |
 | `/skills` | скиллы Claude Code: описание, аргументы, запуск кнопкой |
 | `/project` | сменить папку проекта |
 | `/usage` | остаток тарифа и расход |

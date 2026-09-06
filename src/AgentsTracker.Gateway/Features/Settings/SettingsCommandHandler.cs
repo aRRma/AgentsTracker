@@ -17,7 +17,7 @@ public sealed class SettingsCommandHandler(
     IOptions<GatewayOptions> options) : ITelegramCommandHandler
 {
     public IReadOnlyCollection<string> Commands { get; } =
-        ["/menu", "/settings", "/status", "/sessions", "/model", "/effort", "/mode", "/skills", "/project", "/usage"];
+        ["/menu", "/settings", "/status", "/sessions", "/agent", "/model", "/effort", "/mode", "/skills", "/project", "/usage"];
 
     public async Task HandleAsync(TelegramCommandContext context, CancellationToken ct)
     {
@@ -51,6 +51,7 @@ public sealed class SettingsCommandHandler(
 
             // Команда без аргумента открывает тот же экран с кнопками, что и меню: набирать
             // значение руками после подсказки текстом — лишний шаг с телефона.
+            case "/agent":
             case "/model" or "/effort" or "/mode" when argument.Length == 0:
                 await menu.OpenAsync(chatId, userId, ct, "agent");
                 break;

@@ -5,7 +5,9 @@ namespace AgentsTracker.Gateway.Infrastructure.Telegram;
 
 /// <summary>
 /// Список команд для кнопки «Меню» в Telegram: без него бот выглядит как окно без подсказок.
-/// Ошибку публикации глотаем — сам шлюз работает и без опубликованного списка.
+/// Здесь только экраны: /new, /stop, /model, /effort, /mode работают текстом, но в списке
+/// их нет — то же самое есть кнопками на экранах «Сессии» и «Агент», а длинный список
+/// у кнопки «Меню» хуже короткого. Ошибку публикации глотаем — шлюз работает и без списка.
 /// </summary>
 public sealed class BotCommandsCatalog(ITelegramBotClient bot, ILogger<BotCommandsCatalog> logger)
 {
@@ -14,12 +16,8 @@ public sealed class BotCommandsCatalog(ITelegramBotClient bot, ILogger<BotComman
     [
         new() { Command = "menu", Description = "меню" },
         new() { Command = "status", Description = "статус" },
-        new() { Command = "sessions", Description = "сессии" },
-        new() { Command = "new", Description = "новая сессия" },
-        new() { Command = "stop", Description = "стоп" },
-        new() { Command = "model", Description = "модель, effort, режим" },
-        new() { Command = "effort", Description = "effort" },
-        new() { Command = "mode", Description = "режим" },
+        new() { Command = "sessions", Description = "сессии: выбрать, новая, стоп" },
+        new() { Command = "agent", Description = "настройки агента" },
         new() { Command = "skills", Description = "скиллы" },
         new() { Command = "project", Description = "репозиторий" },
         new() { Command = "usage", Description = "лимиты и расход" },

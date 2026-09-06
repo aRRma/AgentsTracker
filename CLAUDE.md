@@ -99,9 +99,11 @@ git worktree add ..\AgentsTracker-<задача> -b <ветка>   # main ост
 `services.AddSingleton<ITelegramCommandHandler, …>()` в её `*Module` + запись в
 `BotCommandsCatalog` (кнопка «Меню») и в тексте `HelpCommandHandler`. Занятые команды:
 `/start /help` (Help), `/new /stop` (Chat), `/rules` (Approvals), `/audit` (Audit),
-`/menu /settings /status /sessions /model /effort /mode /skills /project /usage` (Settings).
-Порядок в `BotCommandsCatalog`, справке и клавиатуре `RootScreen` один и тот же — по частоте:
-статус и сессии, потом агент и скиллы, в конце репозиторий, статистика и журналы.
+`/menu /settings /status /sessions /agent /model /effort /mode /skills /project /usage` (Settings).
+У кнопки «Меню» (`BotCommandsCatalog`) публикуются только экраны — `/new /stop /model /effort /mode`
+работают текстом, но в списке их нет: то же есть кнопками на «Сессиях» и «Агенте». Порядок в
+списке, справке и клавиатуре `RootScreen` один — по частоте: статус и сессии, потом агент и
+скиллы, в конце репозиторий, статистика и журналы.
 Остальные слэш-команды уходят в CLI как есть.
 
 Новый экран настроек: класс с `ISettingsScreen` в `Features/Settings/Screens/`, регистрация
