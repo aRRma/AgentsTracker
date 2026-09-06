@@ -171,8 +171,8 @@ src/AgentsTracker.Gateway/
   Infrastructure/       техническая часть, общая для фич (AppPaths, GatewayInfrastructure — в корне):
     Configuration/      GatewayOptions (+Validate, +ValidateFor(capabilities)), ProjectCatalog (Normalize/Same — ключ сессий)
     State/              SessionStore — state.json под Lock, атомарная запись
-    Telegram/           TelegramBotService (роутер), TelegramClientFactory, TelegramFormatter,
-                        DisplayFormat, BotCommandsCatalog,
+    Telegram/           TelegramBotService (роутер), StartupNotice («шлюз запущен», прерванный запуск),
+                        TelegramClientFactory, TelegramFormatter, DisplayFormat, BotCommandsCatalog,
                         Dispatch/ — ITelegramCommandHandler / ITelegramCallbackHandler / ITelegramTextHandler
     Audit/              IAuditLog, JsonlAuditLog — журнал «кто, куда, что»
     Monitoring/         RunMonitor — живое состояние (запуск, шаги, очередь, ожидание карточки) и подписка;
@@ -358,7 +358,7 @@ callback, что у `RunStatusMessage`) и финиш; `OperatorConsole` — о�
 `window.EventSource` (`?state=run|wait|idle`); раздать `python -m http.server <порт>
 --bind 127.0.0.1` из scratchpad (Playwright не открывает `file://`), тёмная тема —
 `page.emulateMedia({colorScheme:'dark'})`. Скриншоты Playwright падают в корень
-репозитория — убрать `*.png` и `.playwright-mcp/` до коммита.
+репозитория — они в `.gitignore`.
 Строй страницы — «рейка + лента»: слева фиксированная рейка (лампа состояния, секундомер,
 факты, сегментные шкалы лимитов), справа лента шагов и разделы через линии, без карточек;
 цвет только как сигнал (`--run`, `--wait`, `--fail`), шрифты `Bahnschrift` / `Segoe UI` /

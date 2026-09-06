@@ -10,3 +10,10 @@ publish/
 
 # Токен бота и список разрешённых пользователей — не в репозиторий.
 appsettings.Local.json
+
+# Скриншоты и след Playwright при проверке монитора
+/*.png
+.playwright-mcp/
+
+# Личные заметки Claude Code
+.claude.local.md
