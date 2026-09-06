@@ -12,19 +12,19 @@ public sealed class BotCommandsCatalog(ITelegramBotClient bot, ILogger<BotComman
     /// <summary>Порядок — по частоте: сначала то, что нужно в каждой сессии, потом настройки, в конце журналы.</summary>
     private static readonly BotCommand[] Commands =
     [
-        new() { Command = "menu", Description = "настройки кнопками: статус, сессии, агент, скиллы" },
-        new() { Command = "status", Description = "что происходит и сколько осталось тарифа" },
-        new() { Command = "sessions", Description = "сессии проекта: активная, переключение, новая, стоп" },
-        new() { Command = "new", Description = "новая сессия, контекст сбрасывается" },
-        new() { Command = "stop", Description = "прервать текущий запуск" },
-        new() { Command = "model", Description = "агент: модель, effort и режим одним экраном" },
-        new() { Command = "effort", Description = "сколько модели думать" },
-        new() { Command = "mode", Description = "режим работы агента" },
-        new() { Command = "skills", Description = "скиллы агента кнопками" },
-        new() { Command = "project", Description = "сменить репозиторий" },
-        new() { Command = "usage", Description = "остаток тарифа и расход: запуски, токены" },
-        new() { Command = "rules", Description = "разрешения, выданные кнопкой «Всегда»" },
-        new() { Command = "audit", Description = "журнал действий: кто, где, что" },
+        new() { Command = "menu", Description = "меню" },
+        new() { Command = "status", Description = "статус" },
+        new() { Command = "sessions", Description = "сессии" },
+        new() { Command = "new", Description = "новая сессия" },
+        new() { Command = "stop", Description = "стоп" },
+        new() { Command = "model", Description = "модель, effort, режим" },
+        new() { Command = "effort", Description = "effort" },
+        new() { Command = "mode", Description = "режим" },
+        new() { Command = "skills", Description = "скиллы" },
+        new() { Command = "project", Description = "репозиторий" },
+        new() { Command = "usage", Description = "лимиты и расход" },
+        new() { Command = "rules", Description = "правила «всегда»" },
+        new() { Command = "audit", Description = "журнал" },
         new() { Command = "help", Description = "справка" },
     ];
 
