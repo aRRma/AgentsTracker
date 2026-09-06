@@ -28,7 +28,13 @@ IReadOnlyList<IFeatureModule> modules =
     new ChatModule(),
 ];
 
-var builder = WebApplication.CreateBuilder(args);
+// Content root — папка exe, а не текущая папка процесса: иначе запуск из другой папки
+// (Start-Process из корня репозитория, ярлык) молча теряет appsettings.json.
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory,
+});
 builder.AddGatewayConfiguration();
 
 // Бэкенд выбирается до сборки контейнера: он сам регистрирует свои сервисы.

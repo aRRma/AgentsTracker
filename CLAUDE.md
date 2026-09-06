@@ -58,14 +58,14 @@ $env:Gateway__ProjectPath = 'C:\tmp\test'; $env:Gateway__AllowedUserIds__0 = '1'
 ```powershell
 Get-Process AgentsTracker.Gateway | Stop-Process -Force   # иначе сборка упадёт с MSB3021
 dotnet build src\AgentsTracker.Gateway
-Start-Process -FilePath src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.exe -WorkingDirectory src\AgentsTracker.Gateway\bin\Debug\net10.0
+Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.exe
 ```
 
-`-WorkingDirectory` обязателен: content root хоста — текущая папка процесса, и запущенный
-из корня репозитория exe не найдёт `appsettings.json`. Шлюз при этом стартует (дефолты
-зашиты в `GatewayOptions`, секреты — в папке данных), но без фильтра
-`Microsoft.AspNetCore: Warning` монитор тонет в логах каждого запроса. Проверка: в логе
-монитора строка `Content root path` должна указывать на `bin\Debug\net10.0`.
+Рабочая папка при запуске не важна: `Program.cs` закрепляет content root за папкой exe
+(`ContentRootPath = AppContext.BaseDirectory`). Без этого запущенный из корня репозитория exe
+молча терял `appsettings.json` — стартовал на дефолтах `GatewayOptions`, а монитор без фильтра
+`Microsoft.AspNetCore: Warning` тонул в логах каждого запроса. Проверка: строка
+`Content root path` в логе указывает на `bin\Debug\net10.0`.
 
 Если сессия запущена самим шлюзом (из Telegram), перезапускать его из неё нельзя: Stop-Process
 убьёт и текущий `claude -p`, а отложенный перезапуск через `schtasks /SC ONCE` не срабатывал.
