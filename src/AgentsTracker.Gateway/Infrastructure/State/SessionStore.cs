@@ -228,6 +228,26 @@ public sealed class SessionStore
         });
     }
 
+    /// <summary>Отмечает начало запуска: пока запись на месте, шлюз обязан либо ответить, либо признать запуск прерванным.</summary>
+    public void BeginRun(ActiveRun run) => Mutate(s => s.ActiveRun = run);
+
+    public void EndRun() => Mutate(s => s.ActiveRun = null);
+
+    /// <summary>
+    /// Запуск, переживший перезапуск шлюза, если такой был; запись снимается. Зовётся один
+    /// раз на старте: прошлый экземпляр не успел ни ответить, ни записать итог.
+    /// </summary>
+    public ActiveRun? TakeInterruptedRun()
+    {
+        ActiveRun? run = null;
+        Mutate(s =>
+        {
+            run = s.ActiveRun;
+            s.ActiveRun = null;
+        });
+        return run;
+    }
+
     /// <summary>Последние запуски, свежие сверху: копия, чтобы читать без замка.</summary>
     public IReadOnlyList<RunRecord> RecentRuns()
     {

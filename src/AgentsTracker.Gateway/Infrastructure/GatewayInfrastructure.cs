@@ -43,6 +43,7 @@ public static class GatewayInfrastructure
             services.AddSingleton<ITelegramBotClient>(sp =>
                 TelegramClientFactory.Create(sp.GetRequiredService<IOptions<GatewayOptions>>().Value));
             services.AddSingleton<BotCommandsCatalog>();
+            services.AddSingleton<StartupNotice>();
             services.AddHostedService<TelegramBotService>();
 
             // Эндпоинт подтверждений и монитор доступны только с этой машины. Монитор — на

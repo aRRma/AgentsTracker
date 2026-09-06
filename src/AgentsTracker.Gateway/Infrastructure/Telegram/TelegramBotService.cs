@@ -17,6 +17,7 @@ public sealed class TelegramBotService(
     IEnumerable<ITelegramCallbackHandler> callbackHandlers,
     IEnumerable<ITelegramTextHandler> textHandlers,
     BotCommandsCatalog commands,
+    StartupNotice notice,
     SessionStore store,
     IAuditLog audit,
     IHostApplicationLifetime lifetime,
@@ -52,6 +53,7 @@ public sealed class TelegramBotService(
         }
 
         audit.Write(AuditEvent.Now(AuditKinds.Gateway, "старт", project: store.ProjectPath));
+        await notice.SendAsync(stoppingToken);
 
         var receiverOptions = new ReceiverOptions
         {

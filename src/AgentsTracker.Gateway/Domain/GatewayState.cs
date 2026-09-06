@@ -56,6 +56,27 @@ public sealed class GatewayState
 
     /// <summary>Последние запуски для веб-монитора, свежие в конце. Хранится ограниченное число.</summary>
     public List<RunRecord> RecentRuns { get; set; } = [];
+
+    /// <summary>
+    /// Запуск, который идёт прямо сейчас. Живёт от старта процесса агента до его итога;
+    /// если при старте шлюза запись на месте — прошлый экземпляр умер посреди работы
+    /// (Stop-Process, падение), и об этом надо сказать в чат: иначе ответа не будет, а чат молчит.
+    /// </summary>
+    public ActiveRun? ActiveRun { get; set; }
+}
+
+/// <summary>Идущий запуск: кому отвечать и что было запущено — чтобы после перезапуска сказать, что прервано.</summary>
+public sealed class ActiveRun
+{
+    public long ChatId { get; set; }
+    public long UserId { get; set; }
+    public DateTimeOffset StartedUtc { get; set; }
+    public string ProjectPath { get; set; } = "";
+    public string? SessionId { get; set; }
+    public string? Model { get; set; }
+
+    /// <summary>Превью промпта через Text.Preview — как в RunRecord.</summary>
+    public string Prompt { get; set; } = "";
 }
 
 /// <summary>
@@ -70,7 +91,7 @@ public sealed class RunRecord
     public string Prompt { get; set; } = "";
     public string? Model { get; set; }
 
-    /// <summary>ok / cancel / rate-limit / error — как в аудите.</summary>
+    /// <summary>ok / cancel / rate-limit / error / interrupted — как в аудите; interrupted — шлюз умер посреди запуска.</summary>
     public string Outcome { get; set; } = "";
 
     public long DurationMs { get; set; }

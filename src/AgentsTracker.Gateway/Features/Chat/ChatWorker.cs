@@ -126,6 +126,19 @@ public sealed partial class ChatWorker(
         var preview = Text.Preview(prompt.Text);
         monitor.RunStarted(new RunStart(project, session, preview, model, store.EffectivePermissionMode, store.EffectiveEffort));
 
+        // В state.json, а не только в памяти: если шлюз убьют посреди запуска, следующий
+        // экземпляр должен знать, кому и про что сказать «прервано».
+        store.BeginRun(new ActiveRun
+        {
+            ChatId = prompt.ChatId,
+            UserId = prompt.UserId,
+            StartedUtc = startedUtc,
+            ProjectPath = project,
+            SessionId = session,
+            Model = model,
+            Prompt = preview,
+        });
+
         // Сессию и папку фиксируем до запуска: переключение из меню посреди работы не должно
         // развести рабочий каталог процесса и проект, которому запишется сессия. Id новой
         // сессии выдаём сами — так /stop или падение первого запуска не теряют ветку.
@@ -152,6 +165,7 @@ public sealed partial class ChatWorker(
         finally
         {
             _runCts = null;
+            store.EndRun();
             finished = monitor.RunFinished();
             await status.DisposeAsync();
             // Процесс завершён — отвечать на висящие карточки уже некому.
