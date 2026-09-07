@@ -156,10 +156,10 @@ public sealed class TelegramChannel(
             var sent = await Bot.SendMessage(id, message.Text, ParseMode(message), replyMarkup: markup, cancellationToken: ct);
             return new MessageRef(chat, MessageIdOf(sent.MessageId));
         }
-        catch (ApiRequestException ex) when (message.Rich && IsMarkupRejected(ex))
+        catch (ApiRequestException ex) when (message.Rich && RetryWithoutMarkup(ex))
         {
             // Разметка могла не пережить конвертацию — лучше отправить как есть, чем ничего.
-            logger.LogWarning(ex, "Telegram отверг HTML, отправляю без разметки");
+            logger.LogWarning(ex, "Telegram отверг сообщение с разметкой, отправляю без неё");
         }
         catch (RequestException ex)
         {
@@ -275,8 +275,21 @@ public sealed class TelegramChannel(
 
     private static InlineKeyboardMarkup? Markup(Keyboard? keyboard) =>
         keyboard is { Rows.Count: > 0 }
-            ? new InlineKeyboardMarkup(keyboard.Rows.Select(row => row.Select(b => InlineKeyboardButton.WithCallbackData(b.Label, b.Data))))
+            ? new InlineKeyboardMarkup(keyboard.Rows.Select(row => row.Select(Button)))
             : null;
+
+    /// <summary>
+    /// Длинный callback_data Telegram отвергает вместе со всем сообщением, и ответ пропадал бы
+    /// как «отказ Telegram». Это ошибка экрана, а не транспорта — пусть в логе будет имя кнопки.
+    /// </summary>
+    private static InlineKeyboardButton Button(KeyboardButton button)
+    {
+        var bytes = Encoding.UTF8.GetByteCount(button.Data);
+        if (bytes > TelegramLimits.ButtonDataBytes)
+            throw new ArgumentException($"Данные кнопки «{button.Label}» занимают {bytes} байт, предел Telegram — {TelegramLimits.ButtonDataBytes}.", nameof(button));
+
+        return InlineKeyboardButton.WithCallbackData(button.Label, button.Data);
+    }
 
     /// <summary>Адрес чужого канала сюда попасть не должен: это ошибка хоста, а не транспорта.</summary>
     private static long ChatIdOf(ChatId chat) => chat is TelegramChatId { Value: var id }
@@ -287,9 +300,21 @@ public sealed class TelegramChannel(
 
     private static int MessageId(MessageRef message) => int.Parse(message.Id, CultureInfo.InvariantCulture);
 
-    /// <summary>Bad Request с «can't parse entities»: остальные 400 (чат не найден, текст пуст) без разметки не пройдут тоже.</summary>
+    /// <summary>Bad Request с «can't parse entities» — единственный отказ, у которого есть своё имя в <see cref="ChannelFailure"/>.</summary>
     private static bool IsMarkupRejected(ApiRequestException ex) =>
         ex.ErrorCode == 400 && ex.Message.Contains("parse", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Повторяем без разметки любой Bad Request, а не только «can't parse»: неподдерживаемый тег
+    /// и «message is too long» после экранирования тоже 400, и без повтора ответ агента просто
+    /// пропал бы. Исключение — «chat not found»: туда не дойдёт и голый текст. 429 и 403 сюда
+    /// не попадают намеренно: первый ждёт retry_after у вызывающего, второй повтором не лечится.
+    /// </summary>
+    private static bool RetryWithoutMarkup(ApiRequestException ex) =>
+        ex.ErrorCode == 400 && !IsUnreachable(ex);
+
+    private static bool IsUnreachable(ApiRequestException ex) =>
+        ex.ErrorCode == 403 || ex.Message.Contains("chat not found", StringComparison.OrdinalIgnoreCase);
 
     private static ChannelRequestException Translate(RequestException ex)
     {
@@ -303,7 +328,7 @@ public sealed class TelegramChannel(
             return new ChannelRequestException(api.Message, ChannelFailure.MarkupRejected, inner: api);
 
         // 403 — бот заблокирован или ещё не может писать первым; «chat not found» — тот же смысл.
-        if (api.ErrorCode == 403 || api.Message.Contains("chat not found", StringComparison.OrdinalIgnoreCase))
+        if (IsUnreachable(api))
             return new ChannelRequestException(api.Message, ChannelFailure.CannotReach, inner: api);
 
         return new ChannelRequestException(api.Message, ChannelFailure.Unknown, inner: api);

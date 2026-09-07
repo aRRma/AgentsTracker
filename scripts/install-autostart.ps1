@@ -52,7 +52,10 @@ if (-not (Test-Path $dataLocal) -and (Test-Path $projectLocal)) {
     & $exe protect-secrets $projectLocal
     if ($LASTEXITCODE -ne 0) { throw 'protect-secrets завершился с ошибкой' }
 } elseif (Test-Path $dataLocal) {
-    & $exe protect-secrets | Out-Null
+    # Конфиг в старой форме protect-secrets не шифрует и возвращает 1 с подсказкой: глушить её
+    # значило бы зарегистрировать задачу, которую шлюз не запустит, и отчитаться об успехе.
+    & $exe protect-secrets
+    if ($LASTEXITCODE -ne 0) { throw 'protect-secrets завершился с ошибкой' }
 } else {
     Write-Warning "Нет ни $dataLocal, ни $projectLocal — заполните конфиг перед первым запуском."
 }

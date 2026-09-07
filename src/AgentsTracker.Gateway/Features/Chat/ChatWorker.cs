@@ -95,7 +95,6 @@ public sealed class ChatWorker(
         broker.ActiveChat = prompt.Chat;
 
         using var runCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-        _runCts = runCts;
 
         // Сразу говорим, в какой ветке пойдёт работа: продолжаем известную сессию или начинаем новую.
         var session = store.SessionId;
@@ -141,6 +140,11 @@ public sealed class ChatWorker(
         // Тот же id нужен после запуска: активной становится только сессия, с которой
         // он шёл, — иначе итог перетёр бы /new или смену сессии, сделанные по ходу.
         var runSessionId = session is { Length: > 0 } ? session : request.NewSessionId;
+
+        // Признак «занят» ставим только перед самим запуском: снимает его finally ниже, а всё,
+        // что выше (отправка статусного сообщения), может бросить — и шлюз навсегда считал бы
+        // себя занятым: /stop останавливать нечего, очередь стоит до перезапуска.
+        _runCts = runCts;
 
         AgentRunResult result;
         CurrentRun? finished;
