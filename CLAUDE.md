@@ -3,6 +3,7 @@
 Подсказки для Claude Code при работе с этим репозиторием. Подробности — в `docs/`:
 
 - `docs/operations.md` — перезапуск шлюза, пробный экземпляр, worktree, инструменты.
+- `docs/deployment.md` — промышленный запуск: публикация, задача Планировщика, порты, секреты.
 - `docs/cli-contract.md` — контракт с CLI: подтверждения, stream-json, сессии, лимиты, скиллы.
 - `docs/monitor.md` — веб-монитор: эндпоинты, мок, стиль, доступность.
 
@@ -20,7 +21,7 @@
 dotnet build                                    # TreatWarningsAsErrors включён
 dotnet run --project src\AgentsTracker.Gateway  # нужен appsettings.Local.json (рядом или в папке данных)
 dotnet run --project src\AgentsTracker.Gateway -- protect-secrets   # зашифровать BotToken/Proxy, перенести конфиг в %LOCALAPPDATA%
-pwsh -File scripts\install-autostart.ps1        # publish + protect-secrets + ACL + задача Планировщика
+pwsh -File scripts\install-autostart.ps1 -InstallDir C:\Apps\AgentsTracker   # publish + protect-secrets + ACL + задача Планировщика
 ```
 
 Тестов нет. Всё, что трогает контракт с CLI, проверяется руками: запустить шлюз и смотреть лог.
