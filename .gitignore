@@ -10,6 +10,7 @@ publish/
 
 # Токен бота и список разрешённых пользователей — не в репозиторий.
 appsettings.Local.json
+appsettings.Local.json.backup
 
 # Секреты для docker compose.
 .env
