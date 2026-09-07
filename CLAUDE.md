@@ -112,7 +112,7 @@ src/AgentsTracker.Agents.Abstractions/   контракты агента, без
   AgentCapabilities     какие модели/effort/режимы умеет агент (effort null — не умеет)
   IOperatorConsole      что агент просит у человека: ApproveAsync, AskAsync; PersistentRule — правило «всегда»
   IAgentLimits          лимиты тарифа; IAgentSkillCatalog — слэш-команды
-  IAgentBackendModule   AddServices + MapEndpoints; AgentHost — папка данных, порт, прокси от хоста
+  IAgentBackendModule   AddServices + MapEndpoints; AgentHost — папка данных, порт, прокси, таймаут карточки от хоста
 src/AgentsTracker.Agents.Claude/         Claude Code за этими контрактами:
   ClaudeBackend         процесс claude -p: аргументы, stream-json, «сессия не найдена», лимит
   ClaudeLimits, ClaudeSkillCatalog, ClaudePluginRegistry, ClaudeCliLocator, ClaudeStreamEvent
@@ -187,7 +187,9 @@ src/AgentsTracker.Gateway/
 Контракт подтверждений проверен на живом CLI 2.1.x и не задокументирован — `docs/cli-contract.md`.
 Главное: в ответе `allow` обязателен `updatedInput`; кнопка «Всегда» либо отдаёт правило CLI
 (`permission_suggestions`), либо шлюз хранит сигнатуру в `state.json` только для своего
-проекта; обрезанный ввод перед карточкой уходит файлом.
+проекта; обрезанный ввод перед карточкой уходит файлом. `ApprovalTimeoutMinutes` попадает в
+`AgentHost` и оттуда в `timeout` MCP-сервера в конфиге: без этого CLI обрывал вызов через
+5 минут молчания, и карточка после этого была мертва.
 
 ### `--permission-mode` передаётся всегда
 
@@ -288,8 +290,11 @@ src/AgentsTracker.Gateway/
 - Русские тексты и windows-пути правьте Edit/Write, не heredoc из Bash. Исходники — UTF-8
   **без BOM**. Остальное про инструменты — `docs/operations.md`.
 - Комментарии объясняют, какой отказ предотвращает код, а не что он делает.
-- Из сессии через Telegram `AskUserQuestion` и `ExitPlanMode` ждут ≤5 минут: без ответа берите
-  рекомендуемый вариант.
+- Из сессии через Telegram `AskUserQuestion` и `ExitPlanMode` ждут `ApprovalTimeoutMinutes`
+  (15 мин): без ответа берите рекомендуемый вариант.
+- Монитор `http://127.0.0.1:5100` из сессии по `curl`/`Invoke-RestMethod` недоступен — они в
+  `deny` для любых адресов, не пробуйте обходить. Снимок и другие `/api/*` —
+  `pwsh -File scripts\monitor-api.ps1 /api/snapshot`.
 
 ## Как работать
 

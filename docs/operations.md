@@ -87,10 +87,13 @@ git worktree add ..\AgentsTracker-<задача> -b <ветка>   # основ�
   `-F -` с here-string из инструмента PowerShell stdin не получает.
 - Ревьюеру-сабагенту без Bash `git show`/`git diff` недоступны: выгружайте старые версии
   файлов в scratchpad (`git show <коммит>:<путь> > …`).
-- Из сессии через Telegram `AskUserQuestion` и `ExitPlanMode` ждут ≤5 минут (idle-таймаут
-  MCP): без ответа берите рекомендуемый вариант. Длинный однострочник PowerShell на
+- Из сессии через Telegram `AskUserQuestion` и `ExitPlanMode` ждут `ApprovalTimeoutMinutes`
+  (15): без ответа берите рекомендуемый вариант. Длинный однострочник PowerShell на
   подтверждении легко отклонить не глядя — многошаговую проверку кладите в скрипт и
   запускайте `pwsh -File`.
+- `curl`, `Invoke-WebRequest`, `Invoke-RestMethod` в `deny` — и для `127.0.0.1` тоже. Снимок
+  монитора из сессии: `pwsh -File scripts\monitor-api.ps1 /api/snapshot` (только loopback,
+  разрешён в `.claude/settings.json`); страницу целиком — `browser_run_code_unsafe` Playwright.
 - `modern-web-guidance` (`npx.cmd -y modern-web-guidance@latest search "…"`) — из инструмента
   PowerShell: из Git Bash `npx.cmd` молча отдаёт пустой вывод.
 - Промышленная установка и Docker (публикация, порты, секреты, обновление) — `deployment.md`.

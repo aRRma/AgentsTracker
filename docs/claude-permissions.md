@@ -95,7 +95,11 @@
   `protect-secrets` уже выполнен, там `dpapi:…`, но правило дешевле проверки;
 - `dotnet run`, `AgentsTracker.Gateway.exe`, `schtasks`, `docker compose`, `Stop-Process` —
   с вопросом: из сессии, запущенной через Telegram, это остановит или задвоит сам шлюз
-  (`docs/operations.md`).
+  (`docs/operations.md`);
+- `scripts\monitor-api.ps1` — без вопроса. Запрет на `curl`/`Invoke-RestMethod` не различает
+  интернет и `127.0.0.1`, и агент по логам сессий раз за разом бился в него, пытаясь прочитать
+  `/api/snapshot` монитора. Скрипт ходит только на loopback и только читает; расширять
+  правило до `Invoke-RestMethod http://127.0.0.1*` нельзя — `deny` проверяется раньше `allow`.
 
 Личное для проекта — в `.claude/settings.local.json`, он в `.gitignore`.
 
