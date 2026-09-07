@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -11,6 +12,11 @@ namespace AgentsTracker.Agents.Claude.Mcp;
 /// посторонний процесс на той же машине не сможет постучаться в эндпоинт подтверждений,
 /// а сам токен не попадает в URL и в логи запросов.
 ///
+/// Имя файла содержит PID: раньше файл был общим, и второй экземпляр шлюза (пробный прогон,
+/// гонка при перезапуске, двойной автозапуск) перезаписывал его своим токеном, а на выходе
+/// удалял — рабочий шлюз этого не замечал, и каждый запуск CLI падал с «mcp__tg__approve not
+/// found». Свой файл у каждого процесса делает такое пересечение невозможным.
+///
 /// Конструктор классический, а не primary: файл нужно записать ровно один раз при создании
 /// singleton-а, до того как хост смонтирует эндпоинт.
 /// </summary>
@@ -23,13 +29,18 @@ public sealed class McpConfigFile : IDisposable
     /// <summary>Путь эндпоинта. Статичный: секрет теперь в заголовке, а не в URL.</summary>
     public const string RoutePattern = "/mcp";
 
+    private const string FilePrefix = "mcp-gateway-";
+    private const string FileSuffix = ".json";
+
     private readonly ILogger<McpConfigFile> _logger;
 
     public McpConfigFile(AgentHost host, ILogger<McpConfigFile> logger)
     {
         _logger = logger;
         Token = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
-        Path = System.IO.Path.Combine(host.DataDirectory, "mcp-gateway.json");
+        Path = System.IO.Path.Combine(host.DataDirectory, $"{FilePrefix}{Environment.ProcessId}{FileSuffix}");
+
+        RemoveStaleFiles(host.DataDirectory);
 
         var config = new
         {
@@ -70,5 +81,65 @@ public sealed class McpConfigFile : IDisposable
     {
         try { File.Delete(Path); }
         catch (Exception ex) { _logger.LogDebug(ex, "Не удалось удалить {Path}", Path); }
+    }
+
+    /// <summary>
+    /// Убирает файлы экземпляров, которые упали и не дошли до Dispose. Файл живого процесса
+    /// (параллельный экземпляр на другом порту) не трогаем — иначе вернулась бы та же поломка.
+    /// Старое общее имя mcp-gateway.json тоже подметается: его больше никто не пишет.
+    /// </summary>
+    private void RemoveStaleFiles(string directory)
+    {
+        IEnumerable<string> candidates;
+        try
+        {
+            candidates = Directory.EnumerateFiles(directory, $"{FilePrefix}*{FileSuffix}")
+                .Append(System.IO.Path.Combine(directory, "mcp-gateway.json"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Не удалось перечислить старые MCP-конфиги в {Directory}", directory);
+            return;
+        }
+
+        foreach (var file in candidates)
+        {
+            if (string.Equals(file, Path, StringComparison.OrdinalIgnoreCase) || !File.Exists(file)) continue;
+
+            var name = System.IO.Path.GetFileNameWithoutExtension(file);
+            if (name.Length > FilePrefix.Length
+                && int.TryParse(name.AsSpan(FilePrefix.Length), out var pid)
+                && IsRunning(pid))
+            {
+                continue;
+            }
+
+            try
+            {
+                File.Delete(file);
+                _logger.LogInformation("Удалён MCP-конфиг завершившегося экземпляра: {Path}", file);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Не удалось удалить {Path}", file);
+            }
+        }
+    }
+
+    private static bool IsRunning(int pid)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            return !process.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 }

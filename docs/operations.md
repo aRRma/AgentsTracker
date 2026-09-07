@@ -42,10 +42,9 @@ Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.
 Конфиг перекрывается переменными окружения (`$env:Gateway__ProjectPath`,
 `Gateway__AllowedUserIds__0`), поэтому можно запустить второй exe с поддельным
 `Gateway__BotToken` и своими `Gateway__McpPort`/`Gateway__MonitorPort`. Живёт ~минуту (бот
-один, `getUpdates` отдаёт 409) — хватает дёрнуть монитор. Но `mcp-gateway.json` в папке данных
-он перезапишет в любом случае (`%LOCALAPPDATA%` берётся не из переменной), и рабочий шлюз
-после пробы **надо перезапустить** — иначе каждый вызов инструмента падает с «MCP tool
-mcp__tg__approve not found».
+один, `getUpdates` отдаёт 409) — хватает дёрнуть монитор. MCP-конфиг у каждого экземпляра
+свой (`mcp-gateway-<pid>.json`), поэтому рабочему шлюзу проба не мешает. А вот `state.json`
+общий: не запускайте пробу, пока рабочий шлюз выполняет задачу.
 
 Дымовой прогон после правок инфраструктуры: скрипт в scratchpad, `pwsh -File`; через ~8 с
 проверить:

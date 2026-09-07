@@ -81,7 +81,7 @@ src/AgentsTracker.Agents.Abstractions/   контракты агента, без
 src/AgentsTracker.Agents.Claude/         Claude Code за этими контрактами:
   ClaudeBackend         процесс claude -p: аргументы, stream-json, «сессия не найдена», лимит
   ClaudeLimits, ClaudeSkillCatalog, ClaudePluginRegistry, ClaudeCliLocator, ClaudeStreamEvent
-  Mcp/                  McpConfigFile — mcp-gateway.json с токеном; ClaudePermissionTool — payload CLI ↔ IOperatorConsole
+  Mcp/                  McpConfigFile — mcp-gateway-<pid>.json с токеном; ClaudePermissionTool — payload CLI ↔ IOperatorConsole
 src/AgentsTracker.Gateway/
   Program.cs            список агентов (выбор по Gateway:Agent) и фич
   Domain/               чистые модели: GatewayState (state.json), AuditEvent
@@ -126,8 +126,9 @@ Telegram ──▶ TelegramBotService ──▶ ChatWorker ──▶ ClaudeBacke
                                                                               Authorization: Bearer <токен>
 ```
 
-`McpConfigFile` при старте генерирует токен, пишет `mcp-gateway.json` и удаляет его при
-остановке; `/mcp` монтируется с фильтром `McpConfigFile.Authorizes`; CLI получает
+`McpConfigFile` при старте генерирует токен, пишет `mcp-gateway-<pid>.json` и удаляет его при
+остановке (имя с PID: общий файл второй экземпляр перезаписывал и удалял, и рабочий шлюз падал
+на «mcp__tg__approve not found»; файлы мёртвых PID подметаются при старте); `/mcp` монтируется с фильтром `McpConfigFile.Authorizes`; CLI получает
 `--mcp-config` и `--permission-prompt-tool mcp__tg__approve`. Имя сервера и инструмента —
 константы `McpConfigFile`, `[McpServerTool]` берёт ту же константу. README — инструкция для
 пользователя; меняя защиту эндпоинта или папку данных, проверьте раздел «Безопасность».
@@ -164,7 +165,7 @@ Telegram ──▶ TelegramBotService ──▶ ChatWorker ──▶ ClaudeBacke
 ### Состояние, секреты, слои конфига
 
 `%LOCALAPPDATA%\AgentsTracker\` (`AppPaths.DataDirectory`, ACL — владелец и SYSTEM):
-`state.json` (атомарно), `mcp-gateway.json`, `appsettings.Local.json` с секретами,
+`state.json` (атомарно), `mcp-gateway-<pid>.json`, `appsettings.Local.json` с секретами,
 `audit\audit-ГГГГ-ММ.jsonl`.
 
 Конфиг слоями: `appsettings.json` → `appsettings.Local.json` рядом с exe (IDE) → тот же файл в
