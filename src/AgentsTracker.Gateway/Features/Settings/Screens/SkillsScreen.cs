@@ -5,10 +5,9 @@ namespace AgentsTracker.Gateway.Features.Settings.Screens;
 
 /// <summary>
 /// Скиллы агента кнопками: источник (встроенные, проект, личные, плагин) → скилл →
-/// карточка с описанием, подсказкой по аргументам и флагами. Из карточки скилл запускается
-/// сразу или после ввода аргументов следующим сообщением (<see cref="SkillLauncher"/>).
-/// Отдельный экран «Плагины» включает и выключает плагины агента: список скиллов
-/// меняется сразу, сам агент подхватывает настройку со следующего запуска.
+/// карточка с описанием, подсказкой и флагами. Из карточки скилл идёт сразу или после
+/// ввода аргументов следующим сообщением (<see cref="SkillLauncher"/>). Экран «Плагины»
+/// включает их и выключает: список скиллов меняется сразу, агент — со следующего запуска.
 /// </summary>
 public sealed class SkillsScreen(
     SessionStore store, IAgentSkillCatalog catalog, SkillLauncher launcher, IAuditLog audit) : ISettingsScreen
@@ -33,7 +32,7 @@ public sealed class SkillsScreen(
     /// <summary>Сброс кэша каталога: плагин выключили в IDE, а шлюз ещё показывает его скиллы.</summary>
     private const string ReloadArgument = "reload";
 
-    /// <summary>Открыть список плагинов. Хранится как «группа» позиции: не hex, с ключами групп не спутать.</summary>
+    /// <summary>Открыть плагины. Лежит в «группе» позиции: не hex, с ключами групп не спутается.</summary>
     private const string PluginsArgument = "plugins";
 
     /// <summary>Сколько частых скиллов выносить в отдельную группу наверх.</summary>
@@ -124,9 +123,9 @@ public sealed class SkillsScreen(
         catalog.Grouped(store.ProjectPath).SelectMany(g => g.Skills).FirstOrDefault(s => Key12(s.Command) == key);
 
     /// <summary>
-    /// Переворачивает состояние плагина. Кнопка несёт только ключ, а не желаемое состояние:
-    /// если плагин тем временем переключили в IDE, нажатие по устаревшей кнопке всё равно
-    /// приведёт к состоянию, противоположному действующему, — и экран сразу покажет его.
+    /// Переворачивает состояние плагина. Кнопка несёт только ключ, без желаемого состояния:
+    /// если плагин тем временем переключили в IDE, нажатие всё равно даст противоположное
+    /// действующему, и экран сразу его покажет.
     /// </summary>
     private string? Toggle(string key, UserId user)
     {
@@ -149,15 +148,15 @@ public sealed class SkillsScreen(
         var position = _nav.Of(user);
         var usage = store.SkillUsage();
 
-        // Плагины раньше проверки на пустоту: когда выключены все, включить их можно только отсюда.
+        // Плагины раньше проверки на пустоту: если выключены все, включить их можно только отсюда.
         if (position.Group == PluginsArgument) return RenderPlugins(user, position.Page);
 
-        // Каталог кэширует обход диска на несколько секунд: сюда попадают и Apply, и Render одного нажатия.
+        // Каталог кэширует обход диска: одно нажатие — это Apply и Render подряд.
         var sources = catalog.Grouped(store.ProjectPath);
 
         if (sources.Count == 0)
         {
-            // Где агент ищет скиллы, знает только его каталог: подсказка приходит оттуда.
+            // Где агент ищет скиллы, знает только он сам — подсказка приходит из каталога.
             var empty = $"""
                 🧩 <b>Скиллы</b>
 
@@ -175,7 +174,7 @@ public sealed class SkillsScreen(
             _nav.Update(user, p => p with { Card = null });
         }
 
-        // Один источник — экран выбора источника лишний; группа «Частые» это не отменяет.
+        // Источник один — выбирать не из чего, экран выбора лишний.
         if (sources.Count == 1) return RenderSkills(user, sources[0], single: true, position.Page, usage);
 
         var groups = WithTop(sources, usage);
@@ -191,9 +190,9 @@ public sealed class SkillsScreen(
     }
 
     /// <summary>
-    /// Первой группой — до пяти самых запускаемых скиллов из каталога; счётчики ведёт
-    /// <see cref="SessionStore.RecordSkillUse"/>. Остальные группы остаются по алфавиту:
-    /// частый скилл виден и там, чтобы в списке источника не было «дыр».
+    /// Первой группой — самые запускаемые скиллы; счётчики ведёт
+    /// <see cref="SessionStore.RecordSkillUse"/>. Из своих групп они не исчезают,
+    /// иначе в списке источника появились бы дыры.
     /// </summary>
     private static IReadOnlyList<SkillGroup> WithTop(IReadOnlyList<SkillGroup> groups, IReadOnlyDictionary<string, int> usage)
     {
@@ -241,8 +240,8 @@ public sealed class SkillsScreen(
     }
 
     /// <summary>
-    /// Ряд служебных кнопок верхнего уровня. «Обновить» — сброс кэша: скилл добавили или плагин
-    /// выключили в IDE, а шлюз ещё показывает старое. «Плагины» — только если они у агента есть.
+    /// Служебный ряд кнопок. «Обновить» сбрасывает кэш — скилл добавили или плагин выключили
+    /// в IDE, а шлюз показывает старое. «Плагины» — только если они у агента есть.
     /// </summary>
     private KeyboardButton[] ToolsRow()
     {
@@ -254,9 +253,9 @@ public sealed class SkillsScreen(
     }
 
     /// <summary>
-    /// Плагины с переключателями. В кнопке — текущее состояние, нажатие переворачивает его.
-    /// Плагин, заданный в настройках проекта, помечен замком: из чата шлюз правит только
-    /// личные настройки, а слой проекта их перекрыл бы.
+    /// Плагины с переключателями: в кнопке текущее состояние, нажатие его переворачивает.
+    /// Заданный в настройках проекта помечен замком — из чата шлюз правит только личные
+    /// настройки, а слой проекта их перекрыл бы.
     /// </summary>
     private (string Html, Keyboard Keyboard) RenderPlugins(UserId user, int pageIndex)
     {
@@ -311,8 +310,8 @@ public sealed class SkillsScreen(
             <i>Нажатие открывает карточку скилла.</i>{counter}
             """;
 
-        // В кнопке — имя без префикса плагина: он и так в заголовке, а место в кнопке дорого.
-        // В группе частых источники разные, там префикс остаётся — иначе два одноимённых не различить.
+        // Имя без префикса плагина: он и так в заголовке, а место в кнопке дорого. В группе
+        // частых источники разные, там префикс нужен — иначе одноимённые не различить.
         var mixed = group.Name == TopGroup;
         var buttons = page
             .Select(skill => Button(mixed ? skill.Command : ShortName(skill.Command), $"{Key}:{CardPrefix}{Key12(skill.Command)}"))
@@ -327,9 +326,8 @@ public sealed class SkillsScreen(
     }
 
     /// <summary>
-    /// Карточка: всё, что известно о скилле до запуска. Формальной схемы аргументов у скиллов
-    /// нет, поэтому показываем то, что удалось достать — подсказку из frontmatter и флаги,
-    /// упомянутые в тексте.
+    /// Карточка: всё, что известно о скилле до запуска. Схемы аргументов у скиллов нет,
+    /// поэтому показываем что нашлось — подсказку из frontmatter и флаги из текста.
     /// </summary>
     private (string Html, Keyboard Keyboard) RenderCard(SkillInfo skill, IReadOnlyDictionary<string, int> usage)
     {

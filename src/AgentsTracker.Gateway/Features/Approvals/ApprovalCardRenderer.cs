@@ -6,14 +6,13 @@ using AgentsTracker.Gateway.Infrastructure.Chat;
 namespace AgentsTracker.Gateway.Features.Approvals;
 
 /// <summary>
-/// Собирает карточку запроса разрешения для чата: вместо сырого JSON показывает то, что
-/// человек реально решает — команду, файл и суть правки. Незнакомые инструменты получают
-/// аккуратно отформатированный вход.
+/// Карточка запроса разрешения: вместо сырого JSON показывает то, что человек реально
+/// решает — команду, файл, суть правки. Незнакомый инструмент показывается общим рендером.
 /// </summary>
 public static class ApprovalCardRenderer
 {
-    // Бюджеты в символах уже экранированного HTML. Сумма всех фрагментов с запасом влезает
-    // в лимит сообщения канала, даже если текст целиком состоит из «&».
+    // Бюджеты в символах уже экранированного HTML: сумма фрагментов влезает в лимит
+    // сообщения даже если текст целиком состоит из «&».
     private const int ToolNameBudget = 200;
     private const int PathBudget = 300;
     private const int CommandBudget = 1200;
@@ -28,9 +27,8 @@ public static class ApprovalCardRenderer
     private const int PreviewLines = 12;
 
     /// <summary>
-    /// Карточка и, если что-то в неё не влезло, полный текст обрезанных фрагментов: человек
-    /// не должен разрешать команду, хвост которой он не видел. Файл отправляется перед
-    /// карточкой; в самой карточке об этом говорится.
+    /// Карточка и, если что-то не влезло, полный текст обрезанного: разрешать команду,
+    /// хвоста которой не видел, нельзя. Файл уходит перед карточкой, карточка о нём говорит.
     /// </summary>
     public sealed record ApprovalCard(string Html, ApprovalAttachment? Attachment);
 
@@ -38,8 +36,8 @@ public static class ApprovalCardRenderer
     public sealed record ApprovalAttachment(string FileName, string Text);
 
     /// <summary>
-    /// Фрагменты, которые обрезала карточка. Обрезанный «Bash» с опасным хвостом или
-    /// правка с лишним куском в конце иначе были бы одобрены вслепую.
+    /// Фрагменты, обрезанные карточкой: без них команду с опасным хвостом или правку
+    /// с лишним куском в конце одобрили бы вслепую.
     /// </summary>
     private sealed class Truncated
     {
@@ -57,9 +55,9 @@ public static class ApprovalCardRenderer
         public void Add(string title, string text) => _items.Add((title, text));
 
         /// <summary>
-        /// Целый документ вместо сводки «=== фрагмент ===»: план в .md чат открывает
-        /// с разметкой, а в .txt с заголовком-разделителем он читался как сырой текст.
-        /// Заменяет сводку целиком — у инструмента с документом других обрезанных полей нет.
+        /// Целый документ вместо сводки «=== фрагмент ===»: .md чат открывает с разметкой,
+        /// а .txt с заголовком-разделителем читался сырым текстом. Заменяет сводку целиком —
+        /// у инструмента с документом других обрезанных полей нет.
         /// </summary>
         public void AddDocument(string fileName, string text) => _document = new(fileName, text);
 
@@ -79,7 +77,7 @@ public static class ApprovalCardRenderer
 
     private static readonly HashSet<char> InvalidFileNameChars = [.. Path.GetInvalidFileNameChars()];
 
-    /// <summary>Имя инструмента приходит от агента: в имени файла ему нечего делать с разделителями путей.</summary>
+    /// <summary>Имя инструмента приходит от агента — в имени файла разделители путей недопустимы.</summary>
     private static string SafeFileName(string toolName)
     {
         var safe = new string([.. toolName.Select(c => InvalidFileNameChars.Contains(c) ? '_' : c)]);
@@ -87,8 +85,8 @@ public static class ApprovalCardRenderer
     }
 
     /// <param name="suggested">
-    /// Правила, которые агент сам запишет у себя по кнопке «Всегда». Когда они есть, показываем
-    /// их, а не сигнатуру шлюза: правило агента обычно префиксное и шире точного совпадения.
+    /// Правила, которые агент запишет у себя по кнопке «Всегда». Если они есть, показываем
+    /// их вместо сигнатуры шлюза: правило агента префиксное и шире точного совпадения.
     /// </param>
     public static ApprovalCard Render(
         string toolName, JsonElement? input, string signature, IReadOnlyList<PersistentRule>? suggested, string projectPath)
@@ -108,8 +106,8 @@ public static class ApprovalCardRenderer
         // Блоки <pre> не всегда заканчиваются переводом строки — выравниваем перед подписью.
         if (card[^1] != '\n') card.Append('\n');
 
-        // Предупреждение и файл — из одного решения: карточка без файла «не всё показано»
-        // или файл без предупреждения одинаково ведут к одобрению вслепую.
+        // Предупреждение и файл ставим вместе: любое из них по отдельности ведёт
+        // к одобрению вслепую.
         var attachment = truncated.Render($"{SafeFileName(toolName)}-input.txt");
         if (attachment is not null)
             card.Append("\n⚠️ <b>Показано не всё</b> — полный текст в файле выше. Не разрешайте, не прочитав его.\n");
@@ -130,10 +128,10 @@ public static class ApprovalCardRenderer
         return new ApprovalCard(card.ToString(), attachment);
     }
 
-    /// <summary>Сколько предложенных агентом правил показывать: больше и не пришлёт, и не влезет.</summary>
+    /// <summary>Сколько правил от агента показывать: больше он и не присылает.</summary>
     private const int MaxSuggestedRules = 4;
 
-    /// <summary>Короткое пояснение к имени инструмента: человеку в чате «Glob» ничего не говорит.</summary>
+    /// <summary>Пояснение к имени инструмента: «Glob» в чате ничего не говорит.</summary>
     private static string? Caption(string toolName) => toolName switch
     {
         "Bash" or "PowerShell" => "выполнить команду",
@@ -183,8 +181,8 @@ public static class ApprovalCardRenderer
                 {
                     var list = edits.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.Object).ToArray();
                     card.Append("Правок: ").Append(list.Length).Append('\n');
-                    // Показываем только первую: остальные не влезут. Но одобряются все —
-                    // поэтому они уходят в файл целиком.
+                    // Показываем только первую — остальные не влезут. Но одобряются все,
+                    // поэтому они уходят в файл.
                     if (list.Length > 0)
                         AppendDiff(card, truncated, Str(list[0], "old_string"), Str(list[0], "new_string"));
                     for (var i = 1; i < list.Length; i++)
@@ -246,11 +244,11 @@ public static class ApprovalCardRenderer
                 return true;
 
             case "ExitPlanMode":
-                // Пустой план — не план: пусть его покажет общий рендер, а не «Строк: 1» с пустым блоком.
+                // Пустой план отдаём общему рендеру: «Строк: 1» с пустым блоком бесполезно.
                 if (Str(input, "plan") is not { Length: > 0 } rawPlan) return false;
                 var plan = rawPlan.Replace("\r\n", "\n").Trim('\n');
-                // План — это markdown: целиком он уходит файлом .md, который чат и
-                // редакторы показывают с заголовками и списками, а не сплошным текстом.
+                // План — markdown, поэтому целиком уходит файлом .md: чат и редакторы
+                // покажут его с заголовками и списками, а не сплошным текстом.
                 if (!AppendPreview(card, "📋 Строк: ", plan))
                     truncated.AddDocument("plan.md", PlanDocument(plan));
                 return true;
@@ -261,8 +259,8 @@ public static class ApprovalCardRenderer
     }
 
     /// <summary>
-    /// Незнакомый инструмент: плоский объект показываем как список «поле: значение»,
-    /// всё остальное — отформатированным JSON с нормальными буквами вместо \u-последовательностей.
+    /// Незнакомый инструмент: плоский объект — списком «поле: значение», остальное —
+    /// отформатированным JSON с читаемыми буквами вместо \u-последовательностей.
     /// </summary>
     private static void RenderGeneric(JsonElement? input, StringBuilder card, Truncated truncated)
     {
@@ -275,9 +273,8 @@ public static class ApprovalCardRenderer
 
             if (props.All(p => p.Value.ValueKind is JsonValueKind.String or JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False))
             {
-                // Общий бюджет на весь список: полей у незнакомого инструмента может быть
-                // сколько угодно, а переполненное сообщение канал не примет — отправка упадёт,
-                // и исключение превратится в отказ вместо карточки.
+                // Бюджет общий на весь список: полей может быть сколько угодно, а слишком
+                // длинное сообщение канал не примет — вместо карточки выйдет отказ.
                 var left = RawInputBudget;
 
                 foreach (var p in props)
@@ -314,7 +311,7 @@ public static class ApprovalCardRenderer
     private static readonly JsonSerializerOptions PrettyJson = new()
     {
         WriteIndented = true,
-        // Кириллица в исходном JSON приходит как А…: без этого карточка нечитаема.
+        // Иначе кириллица в JSON остаётся \u-последовательностями и карточка нечитаема.
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
@@ -340,7 +337,7 @@ public static class ApprovalCardRenderer
                 .Append("</pre>\n");
     }
 
-    /// <summary>Убирает префикс проекта из пути: абсолютные Windows-пути съедают половину экрана телефона.</summary>
+    /// <summary>Убирает префикс проекта: полный windows-путь съедает половину экрана телефона.</summary>
     private static string Shorten(string text, string projectPath)
     {
         if (projectPath.Length == 0) return text;
@@ -356,16 +353,15 @@ public static class ApprovalCardRenderer
     }
 
     /// <summary>
-    /// Сигнатура без ключевого поля — это JSON входа, и многострочный текст (план ExitPlanMode)
-    /// приходил в карточку с буквальными «\n». Ключ в state.json не трогаем — только показ.
+    /// Сигнатура без ключевого поля — это JSON входа, и многострочный текст попадал
+    /// в карточку с буквальными «\n». Меняем только показ, ключ в state.json тот же.
     /// </summary>
     private static string Unescape(string signature) =>
         signature.Replace("\\r\\n", "\n").Replace("\\n", "\n").Replace("\\t", "\t");
 
     /// <summary>
-    /// Счётчик строк и первые <see cref="PreviewLines"/> строк в блоке <pre>.
-    /// Возвращает false, если что-то осталось за кадром — хвост или обрезанные строки:
-    /// тогда полный текст должен уйти файлом.
+    /// Счётчик строк и первые <see cref="PreviewLines"/> строк в блоке <pre>. false —
+    /// что-то осталось за кадром, полный текст должен уйти файлом.
     /// </summary>
     private static bool AppendPreview(StringBuilder card, string counter, string content)
     {
@@ -377,7 +373,7 @@ public static class ApprovalCardRenderer
         var cut = ChatHtml.Escape(preview).Length > ContentBudget;
 
         card.Append("<pre>").Append(shown);
-        // EscapeCapped уже поставил многоточие, если обрезал строки; второе на хвост не нужно.
+        // Если EscapeCapped уже обрезал, многоточие он поставил сам — второго не нужно.
         if (lines.Length > PreviewLines && !cut) card.Append("\n…");
         card.Append("</pre>");
 
@@ -385,8 +381,8 @@ public static class ApprovalCardRenderer
     }
 
     /// <summary>
-    /// План агента как самостоятельный документ: без заголовка файл в просмотрщике начинается
-    /// с середины — добавляем его, когда агент не начал с заголовка любого уровня.
+    /// План как самостоятельный документ: без заголовка файл в просмотрщике начинается
+    /// с середины, поэтому дописываем свой, если агент своего не поставил.
     /// </summary>
     private static string PlanDocument(string plan)
     {

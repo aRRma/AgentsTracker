@@ -7,38 +7,29 @@ using Polly.Timeout;
 namespace AgentsTracker.Agents.Claude;
 
 /// <summary>
-/// Следит за лимитами тарифа Claude (пятичасовое окно, недельные — общее и на отдельные модели)
-/// эндпоинтом <c>api.anthropic.com/api/oauth/usage</c> и не даёт запустить агента, когда окно
-/// выбрано до конца: исчерпанный тариф иначе молча переходит на платные кредиты.
-///
-/// Эндпоинт недокументирован — им пользуется сам CLI для <c>/usage</c>, наружу CLI эти данные
-/// не отдаёт ни командой, ни флагом. Токен подписки не запрашивается заново: берётся тот,
-/// что Claude Code держит в <c>~/.claude/.credentials.json</c> (или из CLAUDE_CODE_OAUTH_TOKEN).
+/// Окна тарифа (5 часов, неделя, неделя на модель) с <c>api.anthropic.com/api/oauth/usage</c>:
+/// не даёт запустить агента на исчерпанном окне, иначе тариф молча уедет на платные кредиты.
+/// Эндпоинт недокументирован — его же зовёт CLI для <c>/usage</c>. Токен берём готовый из
+/// <c>~/.claude/.credentials.json</c> или CLAUDE_CODE_OAUTH_TOKEN, свой вход не заводим.
 /// </summary>
 public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<ClaudeLimits> logger) : IAgentLimits
 {
     /// <summary>Имя клиента в <see cref="IHttpClientFactory"/>; регистрирует <see cref="ClaudeAgentModule"/>.</summary>
     public const string HttpClientName = "claude-limits";
 
-    /// <summary>
-    /// Полный URL в каждом запросе, не BaseAddress: адрес разрешается на момент вызова, а не
-    /// на момент сборки клиента, и не переживает переезд эндпоинта.
-    /// </summary>
+    /// <summary>Полный URL в каждом запросе, а не BaseAddress: переезд эндпоинта заметнее.</summary>
     private const string Endpoint = "https://api.anthropic.com/api/oauth/usage";
 
     /// <summary>
-    /// Эндпоинт отвечает 429 всем, кто не похож на CLI, поэтому User-Agent обязателен.
-    /// Версия здесь фиксированная: узнать настоящую можно только запуском claude --version.
+    /// Без User-Agent «как у CLI» эндпоинт отвечает 429. Версия фиксированная: настоящую
+    /// узнать можно только запуском claude --version.
     /// </summary>
     public const string UserAgent = "claude-code/2.1.260 (external, cli)";
 
     /// <summary>Кэш: у эндпоинта жёсткий rate limit, частый опрос упирается в 429.</summary>
     private static readonly TimeSpan CacheFor = TimeSpan.FromMinutes(3);
 
-    /// <summary>
-    /// Одна попытка и не дольше этого: проверка стоит перед каждым запуском, и зависший
-    /// эндпоинт задержал бы ответ пользователю на всё это время.
-    /// </summary>
+    /// <summary>Одна попытка и не дольше: проверка стоит перед каждым запуском.</summary>
     public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
 
     private static readonly CultureInfo Russian = CultureInfo.GetCultureInfo("ru-RU");
@@ -49,27 +40,27 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
     private DateTimeOffset _lastFetch;
 
     /// <summary>
-    /// Причина отказа, если тарифное окно исчерпано, иначе null. model — модель, которой пойдёт
-    /// запуск: недельное окно отдельной модели блокирует только её.
+    /// Причина отказа, если окно исчерпано, иначе null. model — модель запуска: недельное
+    /// окно отдельной модели блокирует только её.
     /// </summary>
     public async Task<string?> RefusalAsync(string? model, CancellationToken ct)
     {
         var snapshot = await GetAsync(ct);
 
-        // Эндпоинт недокументирован и может отвалиться в любой момент. Отказывать тогда на каждую
-        // задачу было бы хуже — шлюз замолчал бы целиком, поэтому запуск пропускаем.
+        // Эндпоинт может отвалиться в любой момент; отказывать на каждую задачу — значит
+        // замолчать целиком, поэтому запуск пропускаем.
         if (snapshot.Error is { } error)
         {
             logger.LogWarning("Лимиты тарифа не проверены: {Error}", error);
             return null;
         }
 
-        // Кредиты включаются на аккаунте, а не флагом CLI: пока они включены, исчерпанный тариф
-        // может уехать на них в любой сессии, не только в шлюзовой. Об этом стоит знать.
+        // Кредиты включаются на аккаунте, а не флагом CLI: пока они включены, на них может
+        // уехать любая сессия, не только шлюзовая.
         if (snapshot.ExtraUsage is { IsEnabled: true })
             logger.LogWarning("На аккаунте включены кредиты (extra usage) — выключите их в claude.ai → Settings → Usage");
 
-        // Снимок живёт до трёх минут: окно, чей срок сброса уже прошёл, больше не держит.
+        // Снимку до трёх минут, поэтому окно с прошедшим сбросом уже не считается.
         var window = snapshot.Windows
             .Where(w => w.Used >= 1.0 && Applies(w.Key, model) && !Passed(w.ResetsAt))
             .OrderBy(w => w.ResetsAt ?? DateTimeOffset.MaxValue)
@@ -113,7 +104,7 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
 
     /// <summary>
     /// Остаток окон одной строкой — «5 часов 66% · неделя 88%» — для шапки меню и /status.
-    /// Пусто, если окон нет: показывать нечего, а строка «—» только зашумит сводку.
+    /// Если окон нет, строка пустая: показывать нечего.
     /// </summary>
     public async Task<string> ShortSummaryAsync(string? model, CancellationToken ct)
     {
@@ -126,8 +117,8 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
     }
 
     /// <summary>
-    /// Окна для шкал: остаток и подпись сброса. Подпись собирается здесь, а не в хосте:
-    /// формат времени сброса — часть представления агента, как и названия окон.
+    /// Окна для шкал: остаток и подпись сброса. Подпись собирает агент, а не хост — формат
+    /// времени тут такая же часть представления, как и названия окон.
     /// </summary>
     public async Task<LimitsView> ViewAsync(string? model, CancellationToken ct)
     {
@@ -145,22 +136,22 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
     }
 
     /// <summary>
-    /// Окна, которые действуют на следующий запуск: без просроченных и без чужих моделей.
-    /// Порядок — по времени сброса, чтобы ближайшее было первым.
+    /// Окна, действующие на следующий запуск: без просроченных и без чужих моделей,
+    /// ближайший сброс первым.
     /// </summary>
     private static IEnumerable<LimitWindow> Live(LimitsSnapshot snapshot, string? model) =>
         snapshot.Windows
             .Where(w => Applies(w.Key, model) && !Passed(w.ResetsAt))
             .OrderBy(w => w.ResetsAt ?? DateTimeOffset.MaxValue);
 
-    /// <summary>Остаток окна в процентах. Округляем вниз: «1%» честнее, чем обнадёживающий «2%».</summary>
+    /// <summary>Остаток окна в процентах, округление вниз — чтобы не обнадёживать.</summary>
     private static string Left(double used) =>
         ((int)Math.Floor(Math.Clamp(1.0 - used, 0.0, 1.0) * 100)).ToString(CultureInfo.InvariantCulture) + "%";
 
     /// <summary>
-    /// Окна без модели в ключе действуют на любой запуск; окно отдельной модели — только когда
-    /// запуск пойдёт этой моделью. Сравниваем по вхождению: «fable» ⊂ «claude-fable-5-1».
-    /// Когда модель не выбрана, её выбирает CLI — тогда учитываем только общие окна.
+    /// Окно без модели в ключе действует на любой запуск, окно модели — только на её запуск.
+    /// Сравнение по вхождению: «fable» ⊂ «claude-fable-5-1». Если модель не выбрана, её
+    /// выберет CLI — считаем только общие окна.
     /// </summary>
     private static bool Applies(string key, string? model)
     {
@@ -170,7 +161,7 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
             && model.Replace('_', '-').Contains(suffix.Replace('_', '-'), StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Срок сброса окна уже прошёл: снимок устарел, держать запуск больше нечем.</summary>
+    /// <summary>Сброс уже прошёл — окно из устаревшего снимка запуск не держит.</summary>
     private static bool Passed(DateTimeOffset? resetsAt) => resetsAt is { } at && at <= DateTimeOffset.UtcNow;
 
     private static string? Suffix(string key) => key switch
@@ -189,9 +180,8 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
     };
 
     /// <summary>
-    /// «через 2 ч 10 мин», как в панели usage самого Claude Code: относительное время
-    /// отвечает на вопрос «сколько ждать», абсолютное заставляет считать в уме.
-    /// Точное время — в скобках, оно нужно, чтобы спланировать возвращение.
+    /// «через 2 ч 10 мин (19:40)», как в панели usage у Claude Code: относительное время
+    /// отвечает на «сколько ждать», абсолютное в скобках — на «когда возвращаться».
     /// </summary>
     private static string Moment(DateTimeOffset moment)
     {
@@ -224,8 +214,8 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
 
         try
         {
-            // Клиент на каждый запрос: фабрика меняет обработчик по расписанию, и смена DNS
-            // у api.anthropic.com не требует перезапуска шлюза.
+            // Клиент из фабрики на каждый запрос: она меняет обработчик по расписанию, и смена
+            // DNS у api.anthropic.com не требует перезапуска шлюза.
             using var http = httpClientFactory.CreateClient(HttpClientName);
             using var response = await http.SendAsync(request, ct);
             var body = await response.Content.ReadAsStringAsync(ct);
@@ -240,8 +230,8 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
             var (windows, extra) = Parse(body);
             return new LimitsSnapshot(windows, extra, DateTimeOffset.UtcNow, null);
         }
-        // InvalidOperationException — это чтение поля не того вида: ответ недокументирован,
-        // и любой его сдвиг должен пропустить проверку лимитов, а не уронить запуск.
+        // InvalidOperationException — чтение поля не того вида. Ответ недокументирован, любой
+        // его сдвиг должен пропустить проверку, а не уронить запуск.
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
             logger.LogWarning(ex, "Не разобран ответ эндпоинта лимитов");
@@ -253,8 +243,8 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
             return new LimitsSnapshot(
                 [], null, DateTimeOffset.UtcNow, $"не достучаться до api.anthropic.com: {ex.Message}");
         }
-        // Таймаут конвейера — TimeoutRejectedException, не TaskCanceledException: своя отмена
-        // (ct) сюда не попадает и уходит вызывающему.
+        // Таймаут конвейера Polly — это TimeoutRejectedException; своя отмена (ct) сюда
+        // не попадает и уходит вызывающему.
         catch (TimeoutRejectedException)
         {
             return new LimitsSnapshot(
@@ -272,8 +262,8 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
     };
 
     /// <summary>
-    /// Токен подписки. Обновлять его шлюз не пытается: refresh — дело самого Claude Code,
-    /// две стороны, переписывающие .credentials.json, легко затрут друг друга.
+    /// Токен подписки. Обновлять его шлюз не пытается: это дело Claude Code, а две стороны,
+    /// пишущие в .credentials.json, затрут друг друга.
     /// </summary>
     private static (string? Token, string? Problem) ReadToken()
     {
@@ -312,9 +302,8 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
     }
 
     /// <summary>
-    /// Разбирает ответ, не завязываясь на список окон: тариф отдаёт five_hour, seven_day и
-    /// seven_day_&lt;модель&gt; (opus, sonnet, fable — набор меняется вместе с тарифами),
-    /// поэтому берём всё, что похоже на окно.
+    /// Берём всё, что похоже на окно (five_hour, seven_day, seven_day_&lt;модель&gt;), а не
+    /// фиксированный список: набор моделей меняется вместе с тарифами.
     /// </summary>
     private static (IReadOnlyList<LimitWindow> Windows, ExtraUsageState? ExtraUsage) Parse(string body)
     {
@@ -327,7 +316,7 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
 
         foreach (var property in document.RootElement.EnumerateObject())
         {
-            // Не окно, а купленный сверх тарифа расход: без сброса и с другой шкалой.
+            // Не окно, а расход сверх тарифа: без сброса и с другой шкалой.
             if (property.Name is "extra_usage")
             {
                 extra = ParseExtraUsage(property.Value);
@@ -365,10 +354,8 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
     }
 
     /// <summary>
-    /// Числовое поле объекта или <c>null</c>, если его нет либо оно не число.
-    /// Проверка вида обязательна: <c>TryGetDouble</c> на <c>null</c> не возвращает false,
-    /// а бросает <see cref="InvalidOperationException"/> — а её тут ловить некому,
-    /// и сбой опроса лимитов превратился бы в отказ всего запуска.
+    /// Числовое поле или <c>null</c>. Вид проверяем сами: <c>TryGetDouble</c> на JSON-null
+    /// не возвращает false, а бросает <see cref="InvalidOperationException"/>.
     /// </summary>
     private static double? Number(JsonElement owner, string name) =>
         owner.TryGetProperty(name, out var field)
@@ -378,8 +365,8 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
             : null;
 
     /// <summary>
-    /// Шкала <c>utilization</c> у Anthropic то доля (0..1), то проценты, и меняться она может
-    /// без предупреждения. Всё, что больше единицы, считаем процентами.
+    /// <c>utilization</c> приходит то долей (0..1), то процентами — всё, что больше единицы,
+    /// считаем процентами.
     /// </summary>
     private static double Fraction(double raw) => raw > 1.0 ? raw / 100.0 : raw;
 

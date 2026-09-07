@@ -45,8 +45,8 @@ public static partial class MarkdownRenderer
                     ? $" class=\"language-{ChatHtml.Escape(l)}\""
                     : "";
 
-                // Меряем готовый HTML: экранирование и теги раздувают исходник,
-                // а лимит канала считается по тому, что реально уходит в сообщение.
+                // Меряем готовый HTML: лимит канала считается по тому, что уходит
+                // в сообщение, а теги и экранирование раздувают исходник.
                 var html = $"<pre><code{cls}>{ChatHtml.Escape(block.Content)}</code></pre>";
 
                 if (html.Length > maxLength)
@@ -126,9 +126,8 @@ public static partial class MarkdownRenderer
     }
 
     /// <summary>
-    /// Выделяет из обычного текста markdown-таблицы и отдаёт их как блоки кода.
-    /// В HTML канала таблиц нет: без выравнивания моноширинным шрифтом столбцы
-    /// расползаются и читать нечего.
+    /// Выделяет markdown-таблицы и отдаёт их блоками кода: таблиц в HTML канала нет,
+    /// а без моноширинного шрифта столбцы расползаются.
     /// </summary>
     private static IEnumerable<Block> SplitTables(string content)
     {
@@ -253,7 +252,7 @@ public static partial class MarkdownRenderer
 
     private static string RenderInline(string text)
     {
-        // Содержимое `...` вынимаем до экранирования, чтобы внутри не сработали остальные правила.
+        // Содержимое `...` вынимаем заранее, чтобы внутри не сработали остальные правила.
         var spans = new List<string>();
         var withPlaceholders = InlineCodeRegex().Replace(text, m =>
         {
@@ -269,9 +268,9 @@ public static partial class MarkdownRenderer
         html = StrikeRegex().Replace(html, "<s>$1</s>");
         html = HeadingRegex().Replace(html, "<b>$1</b>");
 
-        // Курсив только с «*» и только когда звёздочки вплотную к тексту: «*.cs и *.md»
-        // или «2 * 3 * 4» иначе превращались бы в курсив. «_» не разбираем вовсе —
-        // он встречается в именах (__init__.py, snake_case) чаще, чем как разметка.
+        // Курсив только на «*» вплотную к тексту: иначе «*.cs и *.md» или «2 * 3 * 4»
+        // уезжают в курсив. «_» не разбираем совсем — в именах (snake_case) он частее,
+        // чем как разметка.
         html = ItalicRegex().Replace(html, "<i>$1</i>");
 
         html = ApplyLineBlocks(html);
@@ -283,8 +282,8 @@ public static partial class MarkdownRenderer
     }
 
     /// <summary>
-    /// Построчные элементы markdown, которых в HTML канала нет: маркеры списка,
-    /// горизонтальная линия, цитата. Без этого «- пункт» и «---» уходят в чат как есть.
+    /// Построчные элементы, которых в HTML канала нет: маркеры списка, линия, цитата.
+    /// Без этого «- пункт» и «---» уходят в чат как есть.
     /// </summary>
     private static string ApplyLineBlocks(string html)
     {
@@ -315,8 +314,8 @@ public static partial class MarkdownRenderer
                 continue;
             }
 
-            // Вложенный уровень отличаем пустым кружком — отступ сохраняется,
-            // но одинаковые маркеры на разных уровнях сливаются в одну кашу.
+            // Вложенный уровень — пустым кружком: отступ сохраняется, но одинаковые
+            // маркеры на разных уровнях сливаются в кашу.
             result
                 .Append(BulletRegex().Replace(line, m => m.Groups[1].Value.Length > 0 ? $"{m.Groups[1].Value}◦ " : "• "))
                 .Append('\n');
@@ -327,8 +326,8 @@ public static partial class MarkdownRenderer
     }
 
     /// <summary>
-    /// Рендерит кусок текста так, чтобы каждая отданная часть уложилась в лимит уже
-    /// после экранирования и вставки тегов. Режем исходник (а не HTML) — теги не рвутся.
+    /// Рендерит текст так, чтобы каждая часть уложилась в лимит уже с тегами. Режем
+    /// исходник, а не HTML — иначе рвутся теги.
     /// </summary>
     private static IEnumerable<string> RenderInlineCapped(string text, int maxLength)
     {
@@ -370,7 +369,7 @@ public static partial class MarkdownRenderer
     [GeneratedRegex(@"\[([^\]\n]+)\]\((https?://[^\s)]+)\)")]
     private static partial Regex LinkRegex();
 
-    // Только «**»: вариант с «__» превращал __init__.py в жирный «init», а Claude им не пишет.
+    // Только «**»: с «__» жирным становился «init» из __init__.py, а Claude так не пишет.
     [GeneratedRegex(@"\*\*([^\n*]+)\*\*")]
     private static partial Regex BoldRegex();
 

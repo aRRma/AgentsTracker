@@ -25,17 +25,17 @@ public sealed class TelegramChannel(
     private static readonly ChannelLimits TelegramLimits = new(MessageLength: 3800, ButtonLabelLength: 64, ButtonDataBytes: 64);
 
     /// <summary>
-    /// Кадры анимации шкал идут чаще, чем Telegram позволяет править одно сообщение; выждав
-    /// не дольше этого, повторяем один раз — иначе шкала осталась бы застывшей на промежуточном кадре.
+    /// Кадры шкал идут чаще, чем Telegram позволяет править сообщение. Подождав не дольше
+    /// этого, повторяем один раз — иначе шкала застынет на промежуточном кадре.
     /// </summary>
     private static readonly TimeSpan EditRetryCeiling = TimeSpan.FromSeconds(5);
 
     private readonly TelegramOptions _options = options.Value;
 
     /// <summary>
-    /// Клиент создаётся при первом обращении: его конструктор сам проверяет токен и на пустом
-    /// или неверном бросает <see cref="ArgumentException"/>, а канал хост создаёт раньше, чем
-    /// печатает ошибки настроек, — иначе вместо «BotToken не задан» пользователь видел бы стектрейс.
+    /// Клиент создаётся при первом обращении: его конструктор бросает
+    /// <see cref="ArgumentException"/> на пустом токене, а канал хост создаёт раньше, чем
+    /// печатает ошибки настроек — вместо «BotToken не задан» вышел бы стектрейс.
     /// </summary>
     private ITelegramBotClient Bot => bot.Value;
 
@@ -68,7 +68,7 @@ public sealed class TelegramChannel(
         }
     }
 
-    // Эмодзи — в описании: иконок у команд Bot API не даёт, а имя команды — только латиница.
+    // Эмодзи уходит в описание: иконок у команд Bot API нет, а имя — только латиница.
     public async Task PublishCommandsAsync(IReadOnlyList<ChatCommand> commands, CancellationToken ct)
     {
         try
@@ -126,9 +126,9 @@ public sealed class TelegramChannel(
     }
 
     /// <summary>
-    /// Telegram может не прислать сообщение у callback-а (оно старое или недоступно боту), и
-    /// тогда тип чата неизвестен: отдаём <see cref="ChatKind.Unknown"/>, а не «личный», иначе
-    /// кнопку из группы нажали бы в обход проверки, которую сообщения проходят.
+    /// У callback-а сообщения может не быть (старое или недоступно боту), и тогда тип чата
+    /// неизвестен. Отдаём <see cref="ChatKind.Unknown"/>, а не «личный»: иначе кнопка
+    /// из группы прошла бы в обход проверки.
     /// </summary>
     private static ButtonPress ToPress(CallbackQuery callback)
     {
@@ -163,8 +163,8 @@ public sealed class TelegramChannel(
         }
         catch (RequestException ex)
         {
-            // Остальные отказы транспорта наружу уходят только как ChannelRequestException:
-            // иначе хост не узнает ни про retry_after у 429, ни про «писать первым некуда».
+            // Остальные отказы уходят только как ChannelRequestException: иначе хост
+            // не узнает ни про retry_after у 429, ни про «писать первым некуда».
             throw Translate(ex);
         }
 
@@ -279,8 +279,8 @@ public sealed class TelegramChannel(
             : null;
 
     /// <summary>
-    /// Длинный callback_data Telegram отвергает вместе со всем сообщением, и ответ пропадал бы
-    /// как «отказ Telegram». Это ошибка экрана, а не транспорта — пусть в логе будет имя кнопки.
+    /// Длинный callback_data Telegram отвергает вместе со всем сообщением. Это ошибка экрана,
+    /// а не транспорта, поэтому в логе называем кнопку.
     /// </summary>
     private static InlineKeyboardButton Button(KeyboardButton button)
     {
@@ -300,15 +300,15 @@ public sealed class TelegramChannel(
 
     private static int MessageId(MessageRef message) => int.Parse(message.Id, CultureInfo.InvariantCulture);
 
-    /// <summary>Bad Request с «can't parse entities» — единственный отказ, у которого есть своё имя в <see cref="ChannelFailure"/>.</summary>
+    /// <summary>Единственный отказ со своим именем в <see cref="ChannelFailure"/>.</summary>
     private static bool IsMarkupRejected(ApiRequestException ex) =>
         ex.ErrorCode == 400 && ex.Message.Contains("parse", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Повторяем без разметки любой Bad Request, а не только «can't parse»: неподдерживаемый тег
-    /// и «message is too long» после экранирования тоже 400, и без повтора ответ агента просто
-    /// пропал бы. Исключение — «chat not found»: туда не дойдёт и голый текст. 429 и 403 сюда
-    /// не попадают намеренно: первый ждёт retry_after у вызывающего, второй повтором не лечится.
+    /// Без разметки повторяем любой Bad Request, не только «can't parse»: неподдерживаемый
+    /// тег и «message is too long» после экранирования — тоже 400, и без повтора ответ агента
+    /// пропал бы. Кроме «chat not found»: туда не дойдёт и голый текст. 429 и 403 исключены
+    /// намеренно — первый ждёт retry_after у вызывающего, второй повтором не лечится.
     /// </summary>
     private static bool RetryWithoutMarkup(ApiRequestException ex) =>
         ex.ErrorCode == 400 && !IsUnreachable(ex);
@@ -327,7 +327,7 @@ public sealed class TelegramChannel(
         if (IsMarkupRejected(api))
             return new ChannelRequestException(api.Message, ChannelFailure.MarkupRejected, inner: api);
 
-        // 403 — бот заблокирован или ещё не может писать первым; «chat not found» — тот же смысл.
+        // 403 — бот заблокирован или не может писать первым; «chat not found» о том же.
         if (IsUnreachable(api))
             return new ChannelRequestException(api.Message, ChannelFailure.CannotReach, inner: api);
 

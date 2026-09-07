@@ -6,10 +6,10 @@ using AgentsTracker.Agents.Claude.Mcp;
 namespace AgentsTracker.Agents.Claude;
 
 /// <summary>
-/// Запускает <c>claude -p</c> одним процессом на сообщение. Непрерывность диалога держится
-/// на сессии: id новой выдаёт хост (<c>--session-id</c>), следующий запуск продолжает её
-/// через <c>--resume &lt;id&gt;</c>. Что с сессией делать дальше — регистрировать, сбрасывать
-/// на «не найдена» — решает хост по <see cref="AgentRunResult"/>: здесь только процесс и разбор вывода.
+/// Запускает <c>claude -p</c> одним процессом на сообщение. Диалог держится на сессии:
+/// id новой выдаёт хост (<c>--session-id</c>), следующий запуск продолжает её через
+/// <c>--resume &lt;id&gt;</c>. Что делать с сессией дальше, решает хост по
+/// <see cref="AgentRunResult"/>; здесь только процесс и разбор вывода.
 /// </summary>
 public sealed class ClaudeBackend(
     ClaudeCliLocator locator,
@@ -18,7 +18,7 @@ public sealed class ClaudeBackend(
 {
     public const string BackendId = "claude";
 
-    /// <summary>Сколько stdout/stderr показывать в логе на уровне Error: полный дамп — на Debug.</summary>
+    /// <summary>Сколько вывода показывать в логе на Error; полный дамп уходит на Debug.</summary>
     private const int ErrorDetailsLimit = 200;
 
     public string Id => BackendId;
@@ -53,15 +53,15 @@ public sealed class ClaudeBackend(
             StandardErrorEncoding = new UTF8Encoding(false),
         };
 
-        // Кредиты («extra usage») агенту запрещены: с этой переменной CLI не показывает и не
-        // выполняет /extra-usage, так что включить их изнутри запуска нельзя. Совсем снять их
-        // может только владелец аккаунта в claude.ai — переменная закрывает путь через агента.
+        // Кредиты («extra usage») агенту запрещены: с этой переменной CLI не показывает
+        // и не выполняет /extra-usage, то есть включить их изнутри запуска нельзя.
+        // Выключить их совсем может только владелец аккаунта в claude.ai.
         psi.Environment["DISABLE_EXTRA_USAGE_COMMAND"] = "1";
 
         foreach (var arg in BuildArguments(request, resumedSessionId, sessionId))
             psi.ArgumentList.Add(arg);
 
-        // Промпт в лог не пишем целиком: это сообщение пользователя, ему хватит короткого начала.
+        // Промпт в лог целиком не пишем: это сообщение пользователя, хватит начала.
         logger.LogInformation("claude -p «{Prompt}» {Args}", Truncate(request.Prompt.ReplaceLineEndings(" "), 80),
             string.Join(' ', psi.ArgumentList.Skip(2)));
 
@@ -77,8 +77,8 @@ public sealed class ClaudeBackend(
             return AgentRunResult.Failure($"Не удалось запустить claude: {ex.Message}", started.Elapsed);
         }
 
-        // Процесс живёт — хост запоминает сессию сразу, не дожидаясь ответа: с этого момента
-        // её можно продолжить, даже если запуск оборвут.
+        // Процесс поднялся — хост запоминает сессию сразу, не дожидаясь ответа: с этого
+        // момента её можно продолжить, даже если запуск оборвут.
         if (resumedSessionId is null)
         {
             observer.SessionStarted(sessionId);
@@ -126,17 +126,17 @@ public sealed class ClaudeBackend(
         return Parse(output, stderr, process.ExitCode, started.Elapsed, resumedSessionId, sessionId);
     }
 
-    /// <summary>То, что нужно разбору итога из stdout: строка <c>result</c> и всё, что ею не было.</summary>
-    /// <param name="ResultLine">Последняя строка <c>"type":"result"</c>; null — CLI умер, не дойдя до итога.</param>
+    /// <summary>Что осталось от stdout для разбора итога.</summary>
+    /// <param name="ResultLine">Последняя строка <c>"type":"result"</c>; null — CLI до итога не дошёл.</param>
     /// <param name="Noise">
-    /// Не-JSON строки (баннер обновления, текст ошибки до потока) и, если итога не было,
-    /// последнее событие — единственная подсказка, на чём всё оборвалось.
+    /// Не-JSON строки (баннер обновления, текст ошибки) плюс, если итога не было, последнее
+    /// событие — единственная подсказка, на чём всё оборвалось.
     /// </param>
     private sealed record StreamOutput(string? ResultLine, string Noise);
 
     /// <summary>
     /// Читает stdout построчно: вызовы инструментов отдаёт наблюдателю, остальные события
-    /// не копит — в долгом запуске их мегабайты, а для ответа они не нужны.
+    /// не копит — в долгом запуске их мегабайты, а ответу они не нужны.
     /// </summary>
     private async Task<StreamOutput> ReadStreamAsync(StreamReader stdout, IAgentRunObserver observer)
     {
@@ -167,7 +167,7 @@ public sealed class ClaudeBackend(
             foreach (var activity in parsed.ToolCalls)
             {
                 // Наблюдатель — чужой код (статус в чате). Его исключение уронило бы чтение
-                // stdout, пайп заполнился бы, и процесс завис бы до таймаута.
+                // stdout, пайп заполнился бы и процесс завис до таймаута.
                 try { observer.Activity(activity); }
                 catch (Exception ex) { logger.LogWarning(ex, "Обработчик шага запуска бросил исключение"); }
             }
@@ -183,15 +183,15 @@ public sealed class ClaudeBackend(
         yield return "-p";
         yield return request.Prompt;
 
-        // Поток событий, а не один JSON в конце: по нему чат показывает, что агент делает
-        // сейчас. Итог приходит последней строкой той же формы, что у --output-format json.
-        // --verbose обязателен: без него CLI отказывается писать stream-json в режиме -p.
+        // Поток событий, а не один JSON в конце: по нему чат показывает, чем агент занят.
+        // Итог приходит последней строкой той же формы, что у --output-format json.
+        // --verbose обязателен: без него CLI не пишет stream-json в режиме -p.
         yield return "--output-format";
         yield return "stream-json";
         yield return "--verbose";
 
-        // Продолжаем известную сессию либо создаём новую с заранее выданным id: CLI принимает
-        // его как есть и возвращает тем же. Оба флага вместе передавать нельзя.
+        // Либо продолжаем сессию, либо создаём новую с заранее выданным id — CLI принимает
+        // его как есть. Вместе эти флаги передавать нельзя.
         if (resumedSessionId is not null)
         {
             yield return "--resume";
@@ -206,8 +206,8 @@ public sealed class ClaudeBackend(
         yield return "--permission-prompt-tool";
         yield return McpConfigFile.PermissionToolName;
 
-        // Без явного режима действует defaultMode из настроек пользователя: при "auto"
-        // решения принимает классификатор и карточки в чате не появляются.
+        // Без явного режима действует defaultMode из настроек пользователя, а при "auto"
+        // карточки в чате не появляются вовсе.
         yield return "--permission-mode";
         yield return request.PermissionMode;
 
@@ -240,7 +240,7 @@ public sealed class ClaudeBackend(
             }
             catch (JsonException ex)
             {
-                // Полная строка — на Debug: это может быть ответ агента с содержимым файлов.
+                // Целиком — только на Debug: в строке может быть ответ с содержимым файлов.
                 logger.LogWarning(ex, "Итог CLI не разобран как JSON: {Line}", Truncate(resultLine, ErrorDetailsLimit));
                 logger.LogDebug("итог целиком: {Line}", Truncate(resultLine, 2000));
             }
@@ -252,9 +252,9 @@ public sealed class ClaudeBackend(
             logger.LogError("claude завершился с кодом {Code}: {Details}", exitCode, Truncate(details, ErrorDetailsLimit));
             logger.LogDebug("вывод целиком: {Details}", details);
 
-            // Сессию объявляем потерянной только когда CLI прямо говорит, что --resume не нашёл
-            // её. На любой другой сбой (баннер обновления перед JSON, падение процесса) сессия
-            // цела, и терять её контекст было бы хуже, чем повторить запуск.
+            // Потерянной сессию объявляем только если CLI прямо сказал, что --resume её
+            // не нашёл: при любом другом сбое сессия цела, и терять её контекст хуже,
+            // чем повторить запуск.
             var lost = resumedSessionId is not null && LooksLikeMissingSession(details, resumedSessionId);
 
             return AgentRunResult.Failure(
@@ -267,9 +267,9 @@ public sealed class ClaudeBackend(
             };
         }
 
-        // В stream-json текст ошибки CLI часто оставляет в stderr, а result присылает пустым
-        // (так с «No conversation found» при битом --resume): без stderr пользователь
-        // увидел бы безликое «ошибка без текста», а сброс сессии не сработал бы.
+        // В stream-json текст ошибки часто уходит в stderr, а result приходит пустым (так
+        // с «No conversation found» при битом --resume). Без stderr пользователь увидел бы
+        // «ошибка без текста», а сброс сессии не сработал бы.
         var text = payload.Result;
         if (string.IsNullOrWhiteSpace(text))
             text = payload.IsError
@@ -283,9 +283,8 @@ public sealed class ClaudeBackend(
             logger.LogWarning("Запуск завершился ошибкой ({Subtype}, код {Code})", payload.Subtype, exitCode);
             var suffix = payload.Subtype is { Length: > 0 } s ? $"\n\n_({s})_" : "";
 
-            // Тот же случай, но в валидном JSON: «No conversation found with session ID …».
-            // На неудачном --resume CLI возвращает свой session_id — его отдавать нельзя,
-            // иначе хост сделал бы битый id активным.
+            // Тот же случай, но в валидном JSON. На неудачном --resume CLI возвращает свой
+            // session_id — отдавать его нельзя, иначе хост сделает битый id активным.
             var lost = resumedSessionId is not null && LooksLikeMissingSession(text + "\n" + stderr, resumedSessionId);
 
             return new AgentRunResult
@@ -311,10 +310,9 @@ public sealed class ClaudeBackend(
     }
 
     /// <summary>
-    /// Отдельного кода для «сессия не найдена» CLI не даёт — узнаём по тексту, которым он
-    /// это сообщает («No conversation found with session ID …»). Кроме маркера требуем сам id:
-    /// иначе ответ агента, где эти слова просто упомянуты (скажем, разбор этого файла),
-    /// снёс бы живую сессию, стоит запуску вернуть ненулевой код.
+    /// Отдельного кода для «сессия не найдена» у CLI нет, узнаём по тексту
+    /// («No conversation found with session ID …»). Кроме маркера требуем сам id: иначе
+    /// ответ агента, где эти слова просто упомянуты, снёс бы живую сессию.
     /// </summary>
     private static bool LooksLikeMissingSession(string? text, string resumedSessionId)
     {
@@ -331,8 +329,8 @@ public sealed class ClaudeBackend(
     }
 
     /// <summary>
-    /// Похоже ли на обрыв по лимиту тарифа. Отдельного признака CLI не даёт — ни поля в JSON,
-    /// ни своего exit code, — остаётся текст, которым он это объявляет пользователю.
+    /// Похоже ли на обрыв по лимиту тарифа. Признака у CLI нет — ни поля в JSON, ни своего
+    /// кода возврата, остаётся только текст.
     /// </summary>
     private static bool HitPlanLimit(string? text)
     {

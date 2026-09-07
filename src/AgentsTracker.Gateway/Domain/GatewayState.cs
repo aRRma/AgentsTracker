@@ -30,10 +30,9 @@ public sealed class GatewayState
     public List<string> AlwaysAllow { get; set; } = [];
 
     /// <summary>
-    /// Сигнатуры действий, разрешённых кнопкой «Всегда» (когда CLI не прислал suggestions,
-    /// которые можно было бы записать в .claude/settings.local.json). Ключ — нормализованный
-    /// путь проекта: «git push --force», разрешённый в одном репозитории, не должен
-    /// действовать во всех остальных.
+    /// Сигнатуры, разрешённые кнопкой «Всегда», когда CLI не прислал своих правил. Ключ —
+    /// нормализованный путь проекта: «git push --force», разрешённый в одном репозитории,
+    /// не должен действовать во всех остальных.
     /// </summary>
     public Dictionary<string, List<string>> AlwaysAllowByProject { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
@@ -49,8 +48,8 @@ public sealed class GatewayState
     public UsageStats Usage { get; set; } = new();
 
     /// <summary>
-    /// Сколько раз запускали каждую слэш-команду агента (кнопкой или текстом). Ключ —
-    /// команда в нижнем регистре. По этому счётчику экран скиллов выносит частые наверх.
+    /// Сколько раз запускали каждую слэш-команду, кнопкой или текстом; ключ в нижнем
+    /// регистре. По счётчику экран скиллов выносит частые наверх.
     /// </summary>
     public Dictionary<string, int> SkillUsage { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
@@ -58,17 +57,17 @@ public sealed class GatewayState
     public List<RunRecord> RecentRuns { get; set; } = [];
 
     /// <summary>
-    /// Запуск, который идёт прямо сейчас. Живёт от старта процесса агента до его итога;
-    /// если при старте шлюза запись на месте — прошлый экземпляр умер посреди работы
-    /// (Stop-Process, падение), и об этом надо сказать в чат: иначе ответа не будет, а чат молчит.
+    /// Запуск, идущий прямо сейчас: живёт от старта процесса до итога. Запись, оставшаяся
+    /// к моменту старта шлюза, значит, что прошлый экземпляр умер посреди работы — об этом
+    /// надо сказать в чат, иначе он просто промолчит.
     /// </summary>
     public ActiveRun? ActiveRun { get; set; }
 }
 
-/// <summary>Идущий запуск: кому отвечать и что было запущено — чтобы после перезапуска сказать, что прервано.</summary>
+/// <summary>Идущий запуск: кому отвечать и что запускали, чтобы после перезапуска сказать «прервано».</summary>
 public sealed class ActiveRun
 {
-    /// <summary>Адрес чата строкой «канал:значение»: разобрать его умеет канал, выбранный в конфиге.</summary>
+    /// <summary>Адрес чата строкой «канал:значение» — разбирает его сам канал.</summary>
     public string ChatKey { get; set; } = "";
 
     public string UserKey { get; set; } = "";
@@ -82,8 +81,8 @@ public sealed class ActiveRun
 }
 
 /// <summary>
-/// Один завершённый запуск CLI — строка в таблице монитора. Промпт здесь только превью:
-/// в state.json полный текст не кладём по той же причине, что и в аудит.
+/// Один завершённый запуск — строка в таблице монитора. Промпт только превью: полный
+/// текст в state.json не кладём по той же причине, что и в аудит.
 /// </summary>
 public sealed class RunRecord
 {
@@ -93,7 +92,7 @@ public sealed class RunRecord
     public string Prompt { get; set; } = "";
     public string? Model { get; set; }
 
-    /// <summary>ok / cancel / rate-limit / error / interrupted — как в аудите; interrupted — шлюз умер посреди запуска.</summary>
+    /// <summary>ok / cancel / rate-limit / error / interrupted, как в аудите. interrupted — шлюз умер посреди запуска.</summary>
     public string Outcome { get; set; } = "";
 
     public long DurationMs { get; set; }
@@ -103,7 +102,7 @@ public sealed class RunRecord
     public long OutputTokens { get; set; }
 }
 
-/// <summary>Сессия агента, о которой знает шлюз, — чтобы её можно было выбрать в меню.</summary>
+/// <summary>Сессия агента, известная шлюзу: её можно выбрать в меню.</summary>
 public sealed class SessionRecord
 {
     public string Id { get; set; } = "";
@@ -111,7 +110,7 @@ public sealed class SessionRecord
     /// <summary>Нормализованный путь папки, в которой сессия создана.</summary>
     public string ProjectPath { get; set; } = "";
 
-    /// <summary>Начало первого сообщения — по нему сессию узнаёшь в списке.</summary>
+    /// <summary>Начало первого сообщения — по нему сессия узнаётся в списке.</summary>
     public string Title { get; set; } = "";
 
     public DateTimeOffset CreatedUtc { get; set; }
@@ -127,7 +126,7 @@ public sealed class UsageStats
 
     public UsageTotals Total { get; set; } = new();
 
-    /// <summary>Ключ — локальная дата «yyyy-MM-dd»: дневной лимит должен совпадать с календарём пользователя.</summary>
+    /// <summary>Ключ — локальная дата «yyyy-MM-dd»: сутки должны совпадать с календарём пользователя.</summary>
     public Dictionary<string, UsageTotals> ByDay { get; set; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, UsageTotals> ByModel { get; set; } = new(StringComparer.Ordinal);

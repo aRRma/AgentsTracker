@@ -112,9 +112,9 @@ public sealed class SessionStore
     }
 
     /// <summary>
-    /// Меняет активную сессию конкретного проекта, но только если она всё ещё равна
-    /// <paramref name="onlyIfActive"/>. Так завершившийся запуск не перетирает /new или
-    /// смену сессии, сделанные пользователем, пока он шёл. Возвращает, произошла ли запись.
+    /// Меняет активную сессию проекта, только если она всё ещё равна
+    /// <paramref name="onlyIfActive"/>: так итог запуска не перетирает /new или смену
+    /// сессии, сделанные по ходу. Возвращает, была ли запись.
     /// </summary>
     public bool TrySetSessionId(string projectPath, string? sessionId, string? onlyIfActive)
     {
@@ -167,8 +167,8 @@ public sealed class SessionStore
     }
 
     /// <summary>
-    /// Записывает расход запуска: статистику, а при известном id сессии — ещё и саму сессию,
-    /// чтобы к ней можно было вернуться из меню.
+    /// Расход запуска: статистика, а при известном id — ещё и сама сессия, чтобы к ней
+    /// можно было вернуться из меню.
     /// </summary>
     public void RecordRun(string projectPath, string prompt, string? sessionId, RunUsage usage)
     {
@@ -189,17 +189,16 @@ public sealed class SessionStore
 
             if (sessionId is not { Length: > 0 }) return;
 
-            // Активной сессию здесь не делаем: это решает ChatWorker через TrySetSessionId,
-            // сверяясь с тем, что было активно на старте. Иначе запись расхода откатила бы
-            // /new или смену сессии, сделанные во время запуска.
+            // Активной сессию здесь не делаем — это решает ChatWorker через TrySetSessionId.
+            // Иначе запись расхода откатила бы /new или смену сессии по ходу запуска.
             var record = Touch(s, project, prompt, sessionId, now, activate: false);
             record.Turns += usage.Turns;
         });
     }
 
     /// <summary>
-    /// Записывает итог запуска для монитора. Отдельно от <see cref="RecordRun"/>: расход
-    /// известен только по ответу агента, а исход, превью промпта и число вызовов — ChatWorker.
+    /// Итог запуска для монитора. Отдельно от <see cref="RecordRun"/>: расход приходит
+    /// от агента, а исход, превью промпта и число вызовов знает ChatWorker.
     /// </summary>
     public void RecordRunOutcome(RunRecord record)
     {
@@ -211,14 +210,14 @@ public sealed class SessionStore
         });
     }
 
-    /// <summary>Отмечает начало запуска: пока запись на месте, шлюз обязан либо ответить, либо признать запуск прерванным.</summary>
+    /// <summary>Пока запись на месте, шлюз обязан либо ответить, либо признать запуск прерванным.</summary>
     public void BeginRun(ActiveRun run) => Mutate(s => s.ActiveRun = run);
 
     public void EndRun() => Mutate(s => s.ActiveRun = null);
 
     /// <summary>
-    /// Запуск, переживший перезапуск шлюза, если такой был; запись снимается. Зовётся один
-    /// раз на старте: прошлый экземпляр не успел ни ответить, ни записать итог.
+    /// Запуск, оставшийся от убитого экземпляра, если такой был; запись снимается.
+    /// Зовётся один раз на старте.
     /// </summary>
     public ActiveRun? TakeInterruptedRun()
     {
@@ -238,10 +237,9 @@ public sealed class SessionStore
     }
 
     /// <summary>
-    /// Заводит сессию заранее, до ответа CLI: id шлюз выдаёт сам (<c>--session-id</c>), поэтому
-    /// прерванный или упавший запуск не теряет ветку — следующее сообщение продолжит её
-    /// через <c>--resume</c>. Раньше id узнавался только из ответа, и всё, что не дожило
-    /// до ответа, начинало разговор заново.
+    /// Заводит сессию заранее, до ответа CLI: id шлюз выдаёт сам (<c>--session-id</c>),
+    /// поэтому прерванный или упавший запуск не теряет ветку — следующее сообщение
+    /// продолжит её через <c>--resume</c>.
     /// </summary>
     public void RegisterSession(string projectPath, string prompt, string sessionId)
     {
@@ -256,8 +254,8 @@ public sealed class SessionStore
     }
 
     /// <summary>
-    /// Обновляет запись сессии (создавая при необходимости); при <paramref name="activate"/>
-    /// делает её активной в проекте. Вызывается под замком из <see cref="Mutate"/>.
+    /// Обновляет запись сессии, создавая при необходимости; при <paramref name="activate"/>
+    /// делает её активной в проекте. Зовётся под замком из <see cref="Mutate"/>.
     /// </summary>
     private static SessionRecord Touch(
         GatewayState state, string project, string prompt, string sessionId, DateTimeOffset now, bool activate)
@@ -392,8 +390,8 @@ public sealed class SessionStore
             .Where(r => string.Equals(r.ProjectPath, project, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(r => r.LastActivityUtc)
             .Skip(SessionsPerProject)
-            // Активную не выбрасываем даже если она давно не обновлялась: иначе следующий
-            // запуск ушёл бы с --resume на сессию, которой в списке уже нет.
+            // Активную не выбрасываем даже старую: иначе следующий запуск ушёл бы
+            // с --resume на сессию, которой в списке уже нет.
             .Where(r => !string.Equals(r.Id, state.ActiveSessions.GetValueOrDefault(project), StringComparison.Ordinal))
             .ToArray();
 
@@ -413,8 +411,8 @@ public sealed class SessionStore
     }
 
     /// <summary>
-    /// Переносит состояние старого формата: одна активная сессия без списка и без проекта;
-    /// общие правила «всегда» — в проект, который был текущим при обновлении.
+    /// Переносит состояние старого формата: единственную активную сессию — в список,
+    /// общие правила «всегда» — в текущий проект.
     /// </summary>
     private void Migrate()
     {
@@ -502,17 +500,16 @@ public sealed class SessionStore
     };
 
     /// <summary>
-    /// Десериализация теряет компаратор словаря: ActiveSessions приходит чувствительным к регистру,
-    /// и «C:\Proj» перестаёт находить сессию, записанную как «c:\proj». Пересобираем.
+    /// Десериализация теряет компаратор словарей, и «C:\Proj» перестаёт находить сессию,
+    /// записанную как «c:\proj». Пересобираем.
     /// </summary>
     private static GatewayState Rehydrate(GatewayState state)
     {
         state.ActiveSessions = new Dictionary<string, string>(state.ActiveSessions, StringComparer.OrdinalIgnoreCase);
         state.AlwaysAllowByProject = new Dictionary<string, List<string>>(state.AlwaysAllowByProject, StringComparer.OrdinalIgnoreCase);
 
-        // Старая версия писала голое имя инструмента («WebSearch») — такая сигнатура разрешала
-        // любые его аргументы. Теперь без ключевого поля в сигнатуру входит весь JSON, и голые
-        // записи никогда не совпадут: убираем, чтобы не висели в /rules.
+        // Старые версии писали голое имя инструмента («WebSearch»). Теперь в сигнатуру входят
+        // аргументы, так что такие записи не совпадут никогда — убираем из /rules.
         state.AlwaysAllow.RemoveAll(IsBareToolName);
         foreach (var rules in state.AlwaysAllowByProject.Values) rules.RemoveAll(IsBareToolName);
 

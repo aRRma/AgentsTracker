@@ -7,9 +7,9 @@ using AgentsTracker.Gateway.Infrastructure.Monitoring;
 namespace AgentsTracker.Gateway.Features.Chat;
 
 /// <summary>
-/// Обрабатывает сообщения строго по одному: пока идёт запуск агента, новые сообщения
-/// копятся в очереди, а не запускают второй процесс. Сессии — тоже здесь: бэкенд только
-/// сообщает, что сессия началась или что агент её не нашёл, а помнит их шлюз.
+/// Обрабатывает сообщения по одному: пока идёт запуск, новые копятся в очереди, а не
+/// поднимают второй процесс. Сессии тоже здесь: бэкенд лишь сообщает, что сессия началась
+/// или потерялась, помнит их шлюз.
 /// </summary>
 public sealed class ChatWorker(
     IChatChannel channel,
@@ -22,14 +22,11 @@ public sealed class ChatWorker(
     RunMonitor monitor,
     ILogger<ChatWorker> logger) : BackgroundService
 {
-    // SingleReader здесь ставить нельзя: канал становится SingleConsumerUnboundedChannel,
-    // у него Reader.CanCount == false, и QueueLength для /status падает с NotSupportedException.
-    // Читатель и так один — ExecuteAsync; выигрыш от оптимизации на десятке сообщений нулевой.
+    // Без SingleReader: с ним канал становится SingleConsumerUnboundedChannel, у которого
+    // Reader.Count бросает NotSupportedException, и /status падает на QueueLength.
     private readonly Channel<QueuedPrompt> _queue = Channel.CreateUnbounded<QueuedPrompt>();
 
-    /// <summary>
-    /// Дольше этого «подождите» от канала не ждём: ответ и так задерживается, а очередь стоит.
-    /// </summary>
+    /// <summary>Дольше этого «подождите» от канала не ждём: очередь всё это время стоит.</summary>
     private static readonly TimeSpan RateLimitWaitCeiling = TimeSpan.FromSeconds(30);
 
     private CancellationTokenSource? _runCts;
@@ -85,8 +82,8 @@ public sealed class ChatWorker(
         monitor.Dequeued();
 
         // Лимит проверяем здесь, а не при постановке в очередь: пока сообщение ждало,
-        // предыдущие запуски могли выбрать тарифное окно.
-        // Тариф кончился — запускать нечего: CLI продолжил бы за кредиты, а это запрещено.
+        // предыдущие запуски могли выбрать окно. На исчерпанном тарифе CLI ушёл бы
+        // на кредиты, а это запрещено.
         if (await limits.RefusalAsync(store.EffectiveModel, stoppingToken) is { } exhausted)
         {
             Audit(prompt, AuditKinds.LimitRefused, "лимит тарифа");
@@ -95,13 +92,12 @@ public sealed class ChatWorker(
             return;
         }
 
-        // Выставляем здесь, а не при получении сообщения: иначе карточки уже идущего запуска
-        // ушли бы в чат другого пользователя.
+        // Здесь, а не при получении сообщения: иначе карточки идущего запуска ушли бы
+        // в чат другого пользователя.
         broker.ActiveChat = prompt.Chat;
 
         using var runCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
 
-        // Сразу говорим, в какой ветке пойдёт работа: продолжаем известную сессию или начинаем новую.
         var session = store.SessionId;
         var thread = session is { Length: > 0 } ? session.ShortId : "новая сессия";
 
@@ -117,8 +113,8 @@ public sealed class ChatWorker(
         var preview = Text.Preview(prompt.Text);
         monitor.RunStarted(new RunStart(project, session, preview, model, store.EffectivePermissionMode, store.EffectiveEffort));
 
-        // В state.json, а не только в памяти: если шлюз убьют посреди запуска, следующий
-        // экземпляр должен знать, кому и про что сказать «прервано».
+        // В state.json, а не только в памяти: если шлюз убьют посреди запуска, следующему
+        // экземпляру нужно знать, кому и про что сказать «прервано».
         store.BeginRun(new ActiveRun
         {
             ChatKey = prompt.Chat.Key,
@@ -130,9 +126,9 @@ public sealed class ChatWorker(
             Prompt = preview,
         });
 
-        // Сессию и папку фиксируем до запуска: переключение из меню посреди работы не должно
-        // развести рабочий каталог процесса и проект, которому запишется сессия. Id новой
-        // сессии выдаём сами — так /stop или падение первого запуска не теряют ветку.
+        // Сессию и папку фиксируем до запуска: переключение из меню посреди работы иначе
+        // разведёт каталог процесса и проект, которому запишется сессия. Id новой сессии
+        // выдаём сами — так /stop или падение первого запуска не теряют ветку.
         var request = new AgentRunRequest(
             prompt.Text, project,
             ResumeSessionId: session,
@@ -142,13 +138,12 @@ public sealed class ChatWorker(
             PermissionMode: PermissionMode(),
             Timeout: TimeSpan.FromMinutes(options.Value.RunTimeoutMinutes));
 
-        // Тот же id нужен после запуска: активной становится только сессия, с которой
-        // он шёл, — иначе итог перетёр бы /new или смену сессии, сделанные по ходу.
+        // Тот же id нужен после запуска: активной станет только сессия, с которой он шёл,
+        // иначе итог перетёр бы /new или смену сессии по ходу работы.
         var runSessionId = session is { Length: > 0 } ? session : request.NewSessionId;
 
-        // Признак «занят» ставим только перед самим запуском: снимает его finally ниже, а всё,
-        // что выше (отправка статусного сообщения), может бросить — и шлюз навсегда считал бы
-        // себя занятым: /stop останавливать нечего, очередь стоит до перезапуска.
+        // «Занят» ставим прямо перед запуском: снимает его только finally ниже, а сбой выше
+        // (отправка статусного сообщения) оставил бы шлюз занятым до перезапуска.
         _runCts = runCts;
 
         AgentRunResult result;
@@ -168,8 +163,7 @@ public sealed class ChatWorker(
             await DeleteQuietlyAsync(status.Message, stoppingToken);
         }
 
-        // Неудачный запуск тоже стоит денег, поэтому пишем расход и по нему — лишь бы агент
-        // успел его сообщить.
+        // Неудачный запуск тоже расходует тариф, поэтому пишем и его — если агент успел сказать.
         if (result.Usage is { } usage)
             store.RecordRun(project, prompt.Text, result.SessionId, usage);
 
@@ -203,14 +197,14 @@ public sealed class ChatWorker(
         var text = result.Ok ? result.Text : $"⚠️ {result.Text}";
         await SendRenderedAsync(prompt.Chat, text + note + Footer(result), stoppingToken);
 
-        // Запуск упёрся в лимит тарифа: следующие задачи упрутся в тот же лимит, а платить
-        // за них кредитами шлюзу запрещено — очередь чистим, чтобы не жечь её на отказах.
+        // Упёрлись в лимит — следующие задачи упрутся в него же; очередь чистим,
+        // чтобы не жечь её на отказах.
         if (result.RateLimited) await DropQueueAsync(prompt.Chat, stoppingToken);
     }
 
     /// <summary>
-    /// Режим работы: выбранный командой /mode, иначе из конфига. Значение из state.json
-    /// проверяем — файл правится руками, а неизвестный режим уронил бы каждый запуск.
+    /// Режим из /mode, иначе из конфига. Значение из state.json проверяем: файл правят
+    /// руками, а неизвестный режим уронил бы каждый запуск.
     /// </summary>
     private string PermissionMode() =>
         store.PermissionMode is { Length: > 0 } mode && agent.Capabilities.PermissionMode.IsValid(mode)
@@ -218,11 +212,10 @@ public sealed class ChatWorker(
             : options.Value.PermissionMode;
 
     /// <summary>
-    /// Что делать с активной сессией проекта по итогу запуска. Возвращает приписку к ответу.
-    /// Сбрасываем только когда агент прямо сказал, что не нашёл сессию: битый id переживает
-    /// перезапуск в state.json и валил бы каждый следующий запуск. Пишем в проект запуска,
-    /// а не в текущий, и только если активная сессия там не менялась, пока шёл запуск:
-    /// /new или выбор другой сессии из меню важнее.
+    /// Судьба активной сессии проекта по итогу запуска; возвращает приписку к ответу.
+    /// Сбрасываем только если агент прямо сказал «не нашёл»: битый id переживёт перезапуск
+    /// в state.json и будет валить каждый запуск. Пишем в проект запуска и только когда
+    /// сессия там не менялась по ходу — /new и выбор из меню важнее.
     /// </summary>
     private string SettleSession(string project, string? resumed, string runSessionId, AgentRunResult result)
     {
@@ -246,8 +239,8 @@ public sealed class ChatWorker(
     }
 
     /// <summary>
-    /// Мост между бэкендом и шлюзом на время запуска: новая сессия сразу попадает
-    /// в state.json, шаги — в статусное сообщение и монитор.
+    /// Мост между бэкендом и шлюзом на время запуска: новая сессия — в state.json,
+    /// шаги — в статусное сообщение и монитор.
     /// </summary>
     private sealed class RunObserver(
         SessionStore store, RunMonitor monitor, AgentRunRequest request, RunStatusMessage status) : IAgentRunObserver
@@ -266,9 +259,9 @@ public sealed class ChatWorker(
         audit.Write(AuditEvent.Now(kind, summary, prompt.User, prompt.Chat, store.ProjectPath, session, outcome));
 
     /// <summary>
-    /// Подпись под ответом: id сессии, которой отвечал агент. По нему ответ узнаётся в
-    /// <c>/sessions</c> и <c>/status</c>, а из терминала агента сессия продолжается
-    /// по этому id в той же папке.
+    /// Подпись под ответом: id сессии, которой отвечал агент. По нему ответ находится
+    /// в <c>/sessions</c> и <c>/status</c>, и по нему же сессию можно продолжить
+    /// из терминала в той же папке.
     /// </summary>
     private static string Footer(AgentRunResult result)
     {
@@ -283,8 +276,8 @@ public sealed class ChatWorker(
     }
 
     /// <summary>
-    /// Снимает очередь целиком: пока тарифное окно не сбросится, запускать нечего.
-    /// Задачи не переносим, а возвращаем пользователю — за время ожидания они могли устареть.
+    /// Снимает очередь целиком: до сброса окна запускать нечего. Задачи не переносим,
+    /// а возвращаем пользователю — за время ожидания они могли устареть.
     /// </summary>
     private async Task DropQueueAsync(ChatId chat, CancellationToken ct)
     {
@@ -303,8 +296,8 @@ public sealed class ChatWorker(
     }
 
     /// <summary>
-    /// Ответ агента: markdown переводится в формат канала и режется под его лимит. Порцию,
-    /// которая не влезла и в файл разметки не нуждается, канал отправляет документом.
+    /// Ответ агента: markdown переводится в формат канала и режется под его лимит.
+    /// Не влезающая порция уходит документом.
     /// </summary>
     private async Task SendRenderedAsync(ChatId chat, string markdown, CancellationToken ct)
     {
@@ -316,18 +309,16 @@ public sealed class ChatWorker(
             }
             catch (ChannelRequestException ex)
             {
-                // Следующую порцию всё равно пробуем: отказ бывает и на одной (канал притормозил
-                // на длинном куске), а выход из цикла оставил бы пользователя с началом ответа
-                // и без остального — молча, ведь фича сама ничего в чат не пишет.
+                // Следующие порции всё равно пробуем: отказ бывает и на одной, а выход
+                // из цикла молча оставил бы пользователя с началом ответа.
                 logger.LogError(ex, "Не удалось отправить часть ответа в чат {Chat}", chat.Key);
             }
         }
     }
 
     /// <summary>
-    /// Длинный ответ — это серия сообщений подряд, и канал вправе притормозить посреди неё.
-    /// Срок ожидания он называет сам; ждём его один раз и повторяем ту же часть — иначе она
-    /// выпала бы из ответа, а следующие уткнулись бы в тот же лимит.
+    /// Длинный ответ идёт серией сообщений, и канал вправе притормозить посреди неё. Срок
+    /// он называет сам: ждём один раз и повторяем ту же часть, иначе она выпала бы из ответа.
     /// </summary>
     private async Task SendPartAsync(ChatId chat, OutgoingPart part, CancellationToken ct)
     {

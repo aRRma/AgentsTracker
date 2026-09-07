@@ -1,18 +1,17 @@
 namespace AgentsTracker.Gateway.Infrastructure.Configuration;
 
 /// <summary>
-/// Какой канал связи стоит перед шлюзом. <see cref="Type"/> — ключ модуля канала;
-/// его собственные настройки (токен, кому можно) лежат в <c>Settings</c> и читает их
-/// только сам модуль: хост не знает, из чего они состоят.
+/// Канал связи перед шлюзом. <see cref="Type"/> — ключ модуля; его настройки (токен, кому
+/// можно) лежат в <c>Settings</c>, и читает их только сам модуль.
 /// </summary>
 public sealed class ChannelOptions
 {
     public const string DefaultType = "telegram";
 
     /// <summary>
-    /// Ключи, которые раньше лежали в корне секции Gateway, а теперь — в <c>Channel:Settings</c>.
-    /// Один список на проверку при старте и на protect-secrets: разойдись они, шлюз отказывал
-    /// бы стартовать из-за ключа, который protect-secrets только что «успешно» обработал.
+    /// Ключи, переехавшие из корня Gateway в <c>Channel:Settings</c>. Список один на проверку
+    /// при старте и на protect-secrets: разойдись они — шлюз откажет стартовать из-за ключа,
+    /// который protect-secrets только что «успешно» обработал.
     /// </summary>
     public static readonly IReadOnlyList<string> MovedKeys = ["BotToken", "AllowedUserIds"];
 
@@ -37,10 +36,10 @@ public sealed class GatewayOptions
     public string[] Projects { get; set; } = [];
 
     /// <summary>
-    /// Корень, под которым искать репозитории для меню: обход идёт вглубь, пока не встретится
-    /// папка, похожая на проект. Нужен, когда репозитории лежат не одной кучей, а по группам
-    /// (source/repos/ГруппаА/Репозиторий): соседей <see cref="ProjectPath"/> тут мало.
-    /// null — искать по-старому, среди соседей.
+    /// Корень поиска репозиториев для меню: обход идёт вглубь, пока не встретится папка,
+    /// похожая на проект. Нужен, когда репозитории разложены по группам
+    /// (source/repos/ГруппаА/Репозиторий) и соседей <see cref="ProjectPath"/> не хватает.
+    /// null — искать среди соседей.
     /// </summary>
     public string? ProjectsRoot { get; set; }
 
@@ -60,11 +59,10 @@ public sealed class GatewayOptions
     public string? Effort { get; set; }
 
     /// <summary>
-    /// Режим разрешений по умолчанию, с которым запускается агент; из чата его меняет /mode.
-    /// Допустимые значения объявляет бэкенд (<see cref="AgentCapabilities.PermissionMode"/>),
-    /// проверка — при старте, когда бэкенд уже выбран. Задаётся явно: у Claude Code без флага
-    /// действовал бы defaultMode из настроек пользователя, и при "auto" кнопки в чате
-    /// не появлялись бы вовсе.
+    /// Режим разрешений по умолчанию; из чата меняется через /mode. Допустимые значения
+    /// объявляет бэкенд (<see cref="AgentCapabilities.PermissionMode"/>), проверка — при
+    /// старте, когда бэкенд уже выбран. Задаётся всегда: без флага у Claude Code сработал бы
+    /// defaultMode из настроек пользователя, и при "auto" кнопок в чате не будет.
     /// </summary>
     public string PermissionMode { get; set; } = "default";
 
@@ -79,10 +77,9 @@ public sealed class GatewayOptions
 
     /// <summary>
     /// Где слушать монитор: <c>loopback</c> — только с этой машины, <c>any</c> — на всех
-    /// адресах. <c>any</c> нужен в контейнере: порт, привязанный к 127.0.0.1 внутри него,
-    /// наружу не опубликовать. Пароля у монитора нет, поэтому в Docker его публикуют как
-    /// <c>127.0.0.1:5100:5100</c>. Порт MCP всегда остаётся на loopback: его клиент —
-    /// дочерний процесс агента в том же окружении.
+    /// адресах. <c>any</c> нужен в контейнере: порт на 127.0.0.1 внутри него наружу
+    /// не опубликовать. Пароля у монитора нет, поэтому в Docker публикуют как
+    /// <c>127.0.0.1:5100:5100</c>. Порт MCP всегда на loopback — его клиент рядом.
     /// </summary>
     public string MonitorBind { get; set; } = MonitorBindLoopback;
 
@@ -92,9 +89,9 @@ public sealed class GatewayOptions
     /// <summary>
     /// Папка данных: state.json, аудит, appsettings.Local.json. null — по умолчанию
     /// (<c>%LOCALAPPDATA%\AgentsTracker</c>, на Linux и macOS <c>~/.local/share</c>).
-    /// Читается раньше остального конфига, поэтому задаётся только в appsettings.json рядом
-    /// с exe или переменной <c>Gateway__DataDirectory</c>: локальный конфиг сам лежит в этой
-    /// папке. В контейнере сюда монтируют том.
+    /// Локальный конфиг лежит в этой же папке, поэтому ключ читается раньше остального
+    /// конфига — только из appsettings.json рядом с exe или из <c>Gateway__DataDirectory</c>.
+    /// В контейнере сюда монтируют том.
     /// </summary>
     public string? DataDirectory { get; set; }
 
@@ -127,7 +124,7 @@ public sealed class GatewayOptions
 
         if (MonitorPort is < 0 or > 65535)
             errors.Add($"{SectionName}:MonitorPort вне диапазона: {MonitorPort}. 0 выключает монитор.");
-        // Один конвейер на оба порта: совпадение открыло бы страницу монитора и на порту MCP.
+        // Конвейер один на оба порта: при совпадении страница монитора открылась бы и на MCP.
         else if (MonitorPort != 0 && MonitorPort == McpPort)
             errors.Add($"{SectionName}:MonitorPort совпадает с McpPort: {MonitorPort}");
 
@@ -137,8 +134,8 @@ public sealed class GatewayOptions
             errors.Add($"{SectionName}:MonitorBind = «{MonitorBind}». Допустимо {MonitorBindLoopback} или {MonitorBindAny}.");
         }
 
-        // Нуль тут выглядит как «без ограничения», а на деле CancellationTokenSource
-        // с нулевым интервалом срабатывает сразу и убивает каждый запуск.
+        // Нуль похож на «без ограничения», а на деле CancellationTokenSource срабатывает
+        // сразу и убивает каждый запуск.
         if (RunTimeoutMinutes is < 1 or > 1440)
             errors.Add($"{SectionName}:RunTimeoutMinutes = {RunTimeoutMinutes}. Допустимо 1..1440 минут.");
 
@@ -154,12 +151,12 @@ public sealed class GatewayOptions
         if (ProjectsRoot is { Length: > 0 } root && !Directory.Exists(root))
             errors.Add($"{SectionName}:ProjectsRoot — папки не существует: {root}");
 
-        // Обход дерева на каждый показ меню: без потолка глубины один неудачный корень
-        // («C:\») подвесил бы отрисовку.
+        // Дерево обходится на каждый показ меню: без потолка глубины корень вроде «C:\»
+        // подвесил бы отрисовку.
         if (ProjectsRootDepth is < 1 or > 6)
             errors.Add($"{SectionName}:ProjectsRootDepth = {ProjectsRootDepth}. Допустимо 1..6.");
 
-        // Значение в текст ошибки не подставляем: в URI прокси бывает user:pass, а ошибка идёт в лог.
+        // Значение в ошибку не подставляем: в URI прокси бывает user:pass, а ошибка идёт в лог.
         if (Proxy is { Length: > 0 } && !Uri.TryCreate(Proxy, UriKind.Absolute, out _))
             errors.Add($"{SectionName}:Proxy — некорректный URI (ожидается вида http://host:port).");
 
@@ -167,8 +164,8 @@ public sealed class GatewayOptions
     }
 
     /// <summary>
-    /// Проверка значений, допустимость которых знает только бэкенд. Отдельно от
-    /// <see cref="Validate"/>: тот работает до выбора агента, а этот — когда агент уже есть.
+    /// Значения, допустимость которых знает только бэкенд. Отдельно от <see cref="Validate"/>:
+    /// тот работает до выбора агента.
     /// </summary>
     public IReadOnlyList<string> ValidateFor(AgentCapabilities capabilities)
     {

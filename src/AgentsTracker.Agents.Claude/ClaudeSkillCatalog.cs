@@ -3,12 +3,10 @@ using System.Text.RegularExpressions;
 namespace AgentsTracker.Agents.Claude;
 
 /// <summary>
-/// Собирает скиллы и команды Claude Code с диска: у CLI нет способа их перечислить
-/// из <c>-p</c>, а без списка из чата не видно, что вообще можно запустить.
-/// Смотрит туда же, куда сам CLI: <c>.claude/skills</c> и <c>.claude/commands</c> проекта
-/// и пользователя, плюс включённые плагины из <c>~/.claude/plugins</c>.
-/// Встроенные скиллы CLI (<c>/code-review</c> и подобные) на диске не лежат — они берутся
-/// из <c>Gateway:Claude:BuiltInSkills</c>.
+/// Собирает скиллы и команды с диска: перечислить их из <c>-p</c> CLI не умеет, а без
+/// списка из чата не видно, что можно запустить. Смотрим туда же, куда и CLI:
+/// <c>.claude/skills</c> и <c>.claude/commands</c> проекта и пользователя плюс включённые
+/// плагины. Встроенные скиллы на диске не лежат — они из <c>Gateway:Claude:BuiltInSkills</c>.
 /// </summary>
 public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<ClaudeSkillCatalog> logger) : IAgentSkillCatalog
 {
@@ -20,7 +18,7 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
 
     private const int FlagsLimit = 8;
 
-    /// <summary>Флаг в тексте скилла: <c>--fix</c>, <c>--no-post</c>. Одиночные буквы не ищем — слишком много ложных.</summary>
+    /// <summary>Флаг в тексте скилла: <c>--fix</c>, <c>--no-post</c>. Одиночные буквы дают слишком много ложных.</summary>
     private static readonly Regex FlagPattern = new(@"(?<![\w-])--[a-z][a-z0-9-]{1,30}\b", RegexOptions.Compiled);
 
     private static readonly string ClaudeHome =
@@ -28,8 +26,8 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
 
     /// <summary>
     /// Сколько держать результат обхода. Одно нажатие в меню — это Apply и Render подряд,
-    /// то есть два обхода диска и разбор всех SKILL.md; за несколько секунд плагин
-    /// включают редко, а лишний обход на каждое перелистывание заметен.
+    /// то есть два обхода диска с разбором всех SKILL.md; за пять секунд плагины
+    /// не меняются.
     /// </summary>
     private static readonly TimeSpan CacheFor = TimeSpan.FromSeconds(5);
 
@@ -66,8 +64,8 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
     }
 
     /// <summary>
-    /// Все установленные плагины, не только включённые. Не кэшируется: список нужен только
-    /// экрану управления плагинами, а после переключения он обязан быть свежим.
+    /// Все установленные плагины, не только включённые. Без кэша: список нужен экрану
+    /// плагинов, а после переключения он обязан быть свежим.
     /// </summary>
     public IReadOnlyList<PluginInfo> Plugins(string projectPath)
     {
@@ -85,8 +83,8 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
     }
 
     /// <summary>
-    /// Запись в личные настройки бессмысленна, если слой проекта её перекрывает: кнопка
-    /// показала бы «включено», а CLI продолжил бы считать плагин выключенным.
+    /// Писать в личные настройки нельзя, если слой проекта их перекрывает: кнопка показала
+    /// бы «включено», а CLI считал бы плагин выключенным.
     /// </summary>
     public string? SetPluginEnabled(string key, bool enabled, string projectPath)
     {
@@ -102,7 +100,7 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
         return error;
     }
 
-    /// <summary>Тот же проект с точностью до регистра и хвостового слэша: ключ кэша — путь, как его прислал хост.</summary>
+    /// <summary>Тот же проект с точностью до регистра и хвостового слэша: в кэше путь как есть.</summary>
     private static bool SamePath(string left, string right) =>
         string.Equals(
             Path.GetFullPath(left).TrimEnd('\\', '/'), Path.GetFullPath(right).TrimEnd('\\', '/'),
@@ -117,7 +115,7 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
         Add(groups, "Проект", ScanFolder(Path.Combine(projectPath, ".claude"), prefix: null, "Проект"));
         Add(groups, "Личные", ScanFolder(ClaudeHome, prefix: null, "Личные"));
 
-        // Плагин без записи в enabledPlugins считается включённым — так ведёт себя и сам CLI.
+        // Плагин без записи в enabledPlugins включён — так же считает и сам CLI.
         var settings = _plugins.Settings(projectPath);
         foreach (var plugin in _plugins.List().OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
         {
@@ -165,10 +163,10 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
     }
 
     /// <summary>
-    /// <c>skills/*/SKILL.md</c> (ровно один уровень: вложенный SKILL.md в examples — не скилл)
-    /// и <c>commands/**/*.md</c> под одной папкой. Команда в подпапке зовётся через двоеточие,
-    /// как у CLI: <c>commands/db/query.md</c> → <c>/db:query</c>. Команда с тем же именем,
-    /// что и скилл, не дублируется: CLI тоже показывает её один раз.
+    /// <c>skills/*/SKILL.md</c> — ровно один уровень, вложенный SKILL.md в examples не скилл —
+    /// и <c>commands/**/*.md</c>. Команда из подпапки зовётся через двоеточие, как у CLI:
+    /// <c>commands/db/query.md</c> → <c>/db:query</c>. Одноимённые скилл и команда
+    /// не дублируются.
     /// </summary>
     private List<SkillInfo> ScanFolder(string root, string? prefix, string group)
     {
@@ -211,8 +209,8 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
     }
 
     /// <summary>
-    /// Читает frontmatter. Скилл с <c>user-invocable: false</c> из чата не вызвать — его нет
-    /// в списке, иначе кнопка вела бы в никуда.
+    /// Читает frontmatter. Скилл с <c>user-invocable: false</c> в список не попадает:
+    /// вызвать его из чата нельзя, кнопка вела бы в никуда.
     /// </summary>
     private SkillInfo? Parse(string file, string name, string? prefix, string group)
     {
@@ -237,8 +235,8 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
         var hint = front.GetValueOrDefault("argument-hint");
         var command = "/" + (prefix is null ? name : $"{prefix}:{name}");
 
-        // Флаги из тела ищем только у скиллов, которые вообще читают аргументы ($ARGUMENTS, $1):
-        // у остальных «--providers» в тексте — это флаг dotnet-trace из примера, а не скилла.
+        // Флаги из тела берём только у скиллов, читающих аргументы ($ARGUMENTS, $1): у прочих
+        // «--providers» в тексте — флаг из примера, а не самого скилла.
         var takesArguments = body.Contains("$ARGUMENTS", StringComparison.Ordinal)
                              || body.Contains("$1", StringComparison.Ordinal);
 
@@ -249,9 +247,9 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
     }
 
     /// <summary>
-    /// Флаги, упомянутые в тексте: у скиллов нет формальной схемы аргументов, а «--fix» в
-    /// описании — единственный намёк, что его можно передать. Ложные срабатывания возможны,
-    /// поэтому в карточке они подписаны как «упомянутые».
+    /// Флаги, упомянутые в тексте: схемы аргументов у скиллов нет, и «--fix» в описании —
+    /// единственный намёк. Ложные срабатывания возможны, поэтому в карточке они подписаны
+    /// как «упомянутые».
     /// </summary>
     private static IReadOnlyList<string> Flags(string text) =>
         FlagPattern.Matches(text)
@@ -261,8 +259,8 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
             .ToList();
 
     /// <summary>
-    /// Блок между первыми двумя строками <c>---</c>. Разбор нарочно плоский: нужны только
-    /// «ключ: значение» верхнего уровня; вложенные структуры и списки в скиллах не встречаются.
+    /// Блок между первыми двумя строками <c>---</c>. Разбор плоский нарочно: нужны только
+    /// «ключ: значение» верхнего уровня, вложенных структур в скиллах не бывает.
     /// </summary>
     private static Dictionary<string, string> Frontmatter(IEnumerable<string> lines)
     {
@@ -283,8 +281,8 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
 
             if (!inside) continue;
 
-            // Продолжение многострочного значения (отступ) склеивается через пробел:
-            // описание часто переносят по словам, и одна первая строка обрывалась бы посреди фразы.
+            // Продолжение значения (строка с отступом) склеиваем через пробел: описания
+            // часто переносят, и одна первая строка обрывалась бы посреди фразы.
             if (line.Length > 0 && char.IsWhiteSpace(line[0]))
             {
                 if (lastKey is not null) result[lastKey] = (result[lastKey] + " " + line.Trim()).Trim();

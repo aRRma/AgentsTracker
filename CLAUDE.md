@@ -65,7 +65,7 @@ docker compose up -d --build                    # тот же шлюз в кон
 **Агента (Codex, Cursor).** Проект `src/AgentsTracker.Agents.<Имя>` со ссылкой на
 `Agents.Abstractions`: `IAgentBackendModule` регистрирует `IAgentBackend`, `IAgentLimits` (или
 `NoAgentLimits`), `IAgentSkillCatalog` (или `NoAgentSkills`) и свой канал подтверждений через
-`IOperatorConsole`. Строка в списке `agents` в `Program.cs`, ссылка в `Gateway.csproj`.
+`IOperatorConsole`. Строка в списке `agents` в `Program.cs`, ссылка в `Gateway.csproj` и строка `COPY` в `Dockerfile`.
 `grep -rn Claude src/AgentsTracker.Gateway --include=*.cs` должен находить только `Program.cs`
 и комментарии. Настройки агента — в `Gateway:<Id>`, хост их не читает.
 
@@ -74,7 +74,8 @@ docker compose up -d --build                    # тот же шлюз в кон
 настройки из `Gateway:Channel:Settings` и объявляет в `SecretKeys` то, что шифрует
 `protect-secrets`. Свои типы `ChatId`/`UserId` (в `Key` — «канал:значение»), свои
 `ChannelLimits`, отказы транспорта — только `ChannelRequestException`. Строка в списке
-`channels` в `Program.cs` (выбор по `Gateway:Channel:Type`), ссылка в `Gateway.csproj`.
+`channels` в `Program.cs` (выбор по `Gateway:Channel:Type`), ссылка в `Gateway.csproj`
+и строка `COPY` в `Dockerfile`.
 `grep -rn Telegram src/AgentsTracker.Gateway --include=*.cs` должен находить только
 `Program.cs` и комментарии. Транспортный клиент канал берёт **лениво**: хост создаёт канал
 раньше, чем печатает ошибки настроек, и падение конструктора на пустом токене подменило бы
