@@ -269,8 +269,8 @@ public static partial class MarkdownRenderer
         html = HeadingRegex().Replace(html, "<b>$1</b>");
 
         // Курсив только на «*» вплотную к тексту: иначе «*.cs и *.md» или «2 * 3 * 4»
-        // уезжают в курсив. «_» не разбираем совсем — в именах (snake_case) он частее,
-        // чем как разметка.
+        // уезжают в курсив. «_» не разбираем совсем — в именах (snake_case) он попадается
+        // чаще, чем как разметка.
         html = ItalicRegex().Replace(html, "<i>$1</i>");
 
         html = ApplyLineBlocks(html);

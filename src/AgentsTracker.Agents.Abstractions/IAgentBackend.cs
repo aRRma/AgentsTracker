@@ -4,7 +4,7 @@ namespace AgentsTracker.Agents;
 public sealed record AgentProbe(string Executable, string? Version);
 
 /// <summary>
-/// Агент, которого запускает шлюз: Claude Code, потом, может, Codex или Cursor. Хост знает
+/// Агент, которого запускает шлюз: Claude Code, в будущем Codex или Cursor. Хост знает
 /// только этот контракт — как запускается процесс, чем отвечает и как просит разрешения,
 /// остаётся внутри бэкенда.
 /// </summary>

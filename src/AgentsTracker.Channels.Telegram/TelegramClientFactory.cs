@@ -24,7 +24,7 @@ internal static class TelegramClientFactory
 
     /// <summary>
     /// Клиент живёт в синглтоне канала, и ротация обработчика фабрикой до него не доходит —
-    /// соединения пересоздаёт сам handler.
+    /// соединения пересоздаёт сам handler. Срок тот же, что у клиентов фабрики.
     /// </summary>
     private static readonly TimeSpan ConnectionLifetime = TimeSpan.FromMinutes(3);
 

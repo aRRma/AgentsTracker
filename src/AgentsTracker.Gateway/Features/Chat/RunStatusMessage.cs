@@ -10,7 +10,7 @@ namespace AgentsTracker.Gateway.Features.Chat;
 /// </summary>
 internal sealed class RunStatusMessage : IAsyncDisposable
 {
-    // Четыре секунды, а не пять: индикатор «печатает» гаснет через пять и на ровно пяти мигал бы.
+    // Четыре секунды, а не пять: индикатор «печатает» гаснет через пять, и на ровно пяти он мигал бы.
     private static readonly TimeSpan Tick = TimeSpan.FromSeconds(4);
     private static readonly string[] Clock = ["🕐", "🕑", "🕒", "🕓", "🕔", "🕕", "🕖", "🕗", "🕘", "🕙", "🕚", "🕛"];
     private const int RecentSteps = 3;
@@ -90,7 +90,7 @@ internal sealed class RunStatusMessage : IAsyncDisposable
             }
             catch (OperationCanceledException) { return; }
 
-            // Порознь: сбой индикатора не должен задерживать текст статуса.
+            // Два вызова порознь: сбой индикатора не должен задерживать текст статуса.
             await TryAsync(() => _channel.IndicateTypingAsync(_chat, _cts.Token));
 
             var text = Render();

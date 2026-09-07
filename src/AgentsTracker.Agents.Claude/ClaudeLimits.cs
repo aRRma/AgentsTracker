@@ -17,7 +17,10 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
     /// <summary>Имя клиента в <see cref="IHttpClientFactory"/>; регистрирует <see cref="ClaudeAgentModule"/>.</summary>
     public const string HttpClientName = "claude-limits";
 
-    /// <summary>Полный URL в каждом запросе, а не BaseAddress: переезд эндпоинта заметнее.</summary>
+    /// <summary>
+    /// Полный URL в каждом запросе, а не BaseAddress: адрес берётся на момент вызова,
+    /// а не запекается в клиента при сборке.
+    /// </summary>
     private const string Endpoint = "https://api.anthropic.com/api/oauth/usage";
 
     /// <summary>

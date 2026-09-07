@@ -28,7 +28,7 @@ public sealed record AgentSetting(
 /// (<c>claude-sonnet-5</c>) вводится текстом и проходит через <see cref="AgentSetting.Resolve"/>.
 /// </param>
 /// <param name="Effort">Уровень усилий; null — агент такого не умеет, экран и команда скрыты.</param>
-/// <param name="PermissionMode">Режим разрешений; обязателен — без него хосту нечего писать в конфиг.</param>
+/// <param name="PermissionMode">Обязателен: без него хост не знает, что писать в конфиг по умолчанию.</param>
 public sealed record AgentCapabilities(
     AgentSetting Model,
     AgentSetting? Effort,

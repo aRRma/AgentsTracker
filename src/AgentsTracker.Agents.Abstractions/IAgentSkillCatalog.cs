@@ -48,7 +48,8 @@ public interface IAgentSkillCatalog
 
     /// <summary>
     /// Включает или выключает плагин там же, где это сделал бы агент — в его личных
-    /// настройках. Возвращает текст ошибки, null — применено, со следующего запуска.
+    /// настройках. Возвращает текст ошибки; null — применено. Подействует со следующего
+    /// запуска агента.
     /// </summary>
     string? SetPluginEnabled(string key, bool enabled, string projectPath);
 }

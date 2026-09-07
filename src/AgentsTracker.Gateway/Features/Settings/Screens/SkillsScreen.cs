@@ -327,7 +327,7 @@ public sealed class SkillsScreen(
 
     /// <summary>
     /// Карточка: всё, что известно о скилле до запуска. Схемы аргументов у скиллов нет,
-    /// поэтому показываем что нашлось — подсказку из frontmatter и флаги из текста.
+    /// поэтому показываем, что нашлось: подсказку из frontmatter и флаги из текста.
     /// </summary>
     private (string Html, Keyboard Keyboard) RenderCard(SkillInfo skill, IReadOnlyDictionary<string, int> usage)
     {

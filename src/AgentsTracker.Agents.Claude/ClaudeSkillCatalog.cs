@@ -18,7 +18,7 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
 
     private const int FlagsLimit = 8;
 
-    /// <summary>Флаг в тексте скилла: <c>--fix</c>, <c>--no-post</c>. Одиночные буквы дают слишком много ложных.</summary>
+    /// <summary>Флаг в тексте скилла: <c>--fix</c>, <c>--no-post</c>. Одиночные буквы не ищем: много ложных срабатываний.</summary>
     private static readonly Regex FlagPattern = new(@"(?<![\w-])--[a-z][a-z0-9-]{1,30}\b", RegexOptions.Compiled);
 
     private static readonly string ClaudeHome =
@@ -100,7 +100,10 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
         return error;
     }
 
-    /// <summary>Тот же проект с точностью до регистра и хвостового слэша: в кэше путь как есть.</summary>
+    /// <summary>
+    /// Тот же проект с точностью до регистра и хвостового слэша: в кэше лежит путь ровно
+    /// таким, каким его прислал хост.
+    /// </summary>
     private static bool SamePath(string left, string right) =>
         string.Equals(
             Path.GetFullPath(left).TrimEnd('\\', '/'), Path.GetFullPath(right).TrimEnd('\\', '/'),

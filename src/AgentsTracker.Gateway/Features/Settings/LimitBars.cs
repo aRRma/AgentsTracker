@@ -11,7 +11,7 @@ namespace AgentsTracker.Gateway.Features.Settings;
 /// </summary>
 internal static class LimitBars
 {
-    /// <summary>Сколько правок на заполнение: больше красивее, но каналы режут частые правки.</summary>
+    /// <summary>Сколько правок на заполнение: больше — плавнее, но каналы режут частые правки.</summary>
     public const int Frames = 3;
 
     /// <summary>Пауза между кадрами; на трёх кадрах укладываемся в секунду.</summary>
@@ -44,7 +44,7 @@ internal static class LimitBars
             .Append('▱', Cells - filled)
             .ToString();
 
-        // Округляем вниз, как и в сводке, — чтобы не обнадёживать.
+        // Округляем вниз, как и в сводке: чтобы не обнадёживать.
         var percent = ((int)Math.Floor(shown * 100)).ToString(CultureInfo.InvariantCulture);
         var reset = gauge.ResetLabel is { } label ? $", сброс {E(label)}" : "";
 

@@ -16,7 +16,7 @@ public sealed class ChatDispatcher(
     IAuditLog audit,
     ILogger<ChatDispatcher> logger) : IChatInbound
 {
-    /// <summary>Команда → обработчик. Дубликат у двух фич роняет старт — это ошибка сборки.</summary>
+    /// <summary>Команда → обработчик. Дубликат команды у двух фич роняет старт: это ошибка регистрации.</summary>
     private readonly Dictionary<string, IChatCommandHandler> _commands = commandHandlers
         .SelectMany(h => h.Commands.Select(c => (Command: c, Handler: h)))
         .ToDictionary(p => p.Command, p => p.Handler, StringComparer.Ordinal);
@@ -53,8 +53,8 @@ public sealed class ChatDispatcher(
     }
 
     /// <summary>
-    /// Меню и карточки подтверждений делят один поток нажатий: свои обработчик узнаёт
-    /// по префиксу данных кнопки.
+    /// Меню и карточки подтверждений делят один поток нажатий: каждый обработчик узнаёт
+    /// свои по префиксу данных кнопки.
     /// </summary>
     public async Task OnButtonAsync(ButtonPress press, CancellationToken ct)
     {

@@ -46,7 +46,7 @@ public sealed class ClaudeAgentModule : IAgentBackendModule
             })
             // Только таймаут, без ретраев и предохранителя: на частый опрос эндпоинт
             // отвечает 429, и повтор внутри вызова дал бы четыре запроса вместо одного.
-            // Ответ кэшируется, а ошибка проверку пропускает, а не блокирует запуск.
+            // Ответ кэшируется на 3 минуты, а ошибка проверку пропускает, не блокируя запуск.
             .AddResilienceHandler("claude-limits", pipeline => pipeline.AddTimeout(ClaudeLimits.RequestTimeout));
 
         services

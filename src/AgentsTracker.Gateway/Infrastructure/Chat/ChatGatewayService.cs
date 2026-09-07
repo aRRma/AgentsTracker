@@ -26,7 +26,7 @@ public sealed class ChatGatewayService(
     {
         if (!await ConnectAsync(stoppingToken))
         {
-            // Без чата жить нельзя: хост выглядел бы работающим, а чат мёртвым.
+            // Без чата жить нельзя: хост выглядел бы работающим, а чат — мёртвым.
             // Ненулевой код выхода — повод для Планировщика перезапустить задачу.
             Environment.ExitCode = 1;
             lifetime.StopApplication();

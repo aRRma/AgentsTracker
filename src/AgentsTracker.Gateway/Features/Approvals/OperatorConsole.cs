@@ -18,7 +18,7 @@ public sealed class OperatorConsole(
     RunMonitor monitor,
     ILogger<OperatorConsole> logger) : IOperatorConsole
 {
-    // Бюджеты в символах уже экранированного HTML: сумма влезает в лимит сообщения
+    // Бюджеты в символах уже экранированного HTML: сумма влезает в лимит сообщения,
     // даже если текст целиком состоит из «&».
     private const int HeaderBudget = 200;
     private const int QuestionBudget = 1000;

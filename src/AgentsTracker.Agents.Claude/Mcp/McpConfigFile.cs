@@ -61,9 +61,9 @@ public sealed class McpConfigFile : IDisposable
     /// <summary>
     /// <c>timeout</c> сервера — предел одного вызова инструмента в мс. Без него CLI обрывает
     /// вызов после 5 минут молчания («sent no response or progress for 300s»), и карточка
-    /// оставалась висеть в чате уже мёртвой. Значение поднимает и порог простоя
-    /// (CLI ≥ 2.1.203); progress-уведомления его не продлевают. Минута сверх таймаута
-    /// хоста — запас на отправку карточки и ответ отказом.
+    /// остаётся висеть в чате уже мёртвой. Значение не ниже 1000 поднимает до себя и порог
+    /// простоя (CLI ≥ 2.1.203); progress-уведомления его не продлевают. Минута сверх
+    /// таймаута хоста — запас на отправку карточки и ответ отказом.
     /// </summary>
     private static long ToolCallTimeoutMs(TimeSpan approvalTimeout) =>
         (long)(approvalTimeout + TimeSpan.FromMinutes(1)).TotalMilliseconds;

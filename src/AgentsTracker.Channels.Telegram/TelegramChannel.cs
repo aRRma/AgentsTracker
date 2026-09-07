@@ -300,7 +300,7 @@ public sealed class TelegramChannel(
 
     private static int MessageId(MessageRef message) => int.Parse(message.Id, CultureInfo.InvariantCulture);
 
-    /// <summary>Единственный отказ со своим именем в <see cref="ChannelFailure"/>.</summary>
+    /// <summary>«can't parse entities» — единственный отказ со своим именем в <see cref="ChannelFailure"/>.</summary>
     private static bool IsMarkupRejected(ApiRequestException ex) =>
         ex.ErrorCode == 400 && ex.Message.Contains("parse", StringComparison.OrdinalIgnoreCase);
 

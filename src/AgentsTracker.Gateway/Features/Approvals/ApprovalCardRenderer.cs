@@ -12,7 +12,7 @@ namespace AgentsTracker.Gateway.Features.Approvals;
 public static class ApprovalCardRenderer
 {
     // Бюджеты в символах уже экранированного HTML: сумма фрагментов влезает в лимит
-    // сообщения даже если текст целиком состоит из «&».
+    // сообщения, даже если текст целиком состоит из «&».
     private const int ToolNameBudget = 200;
     private const int PathBudget = 300;
     private const int CommandBudget = 1200;
@@ -27,8 +27,9 @@ public static class ApprovalCardRenderer
     private const int PreviewLines = 12;
 
     /// <summary>
-    /// Карточка и, если что-то не влезло, полный текст обрезанного: разрешать команду,
-    /// хвоста которой не видел, нельзя. Файл уходит перед карточкой, карточка о нём говорит.
+    /// Карточка и, если что-то не влезло, полный текст обрезанного: человек не должен
+    /// разрешать команду, хвост которой он не видел. Файл уходит перед карточкой,
+    /// а карточка о нём говорит.
     /// </summary>
     public sealed record ApprovalCard(string Html, ApprovalAttachment? Attachment);
 
@@ -128,7 +129,7 @@ public static class ApprovalCardRenderer
         return new ApprovalCard(card.ToString(), attachment);
     }
 
-    /// <summary>Сколько правил от агента показывать: больше он и не присылает.</summary>
+    /// <summary>Сколько правил от агента показывать: больше он и не присылает, и не влезет.</summary>
     private const int MaxSuggestedRules = 4;
 
     /// <summary>Пояснение к имени инструмента: «Glob» в чате ничего не говорит.</summary>

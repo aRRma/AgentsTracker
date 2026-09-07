@@ -10,7 +10,7 @@ public sealed class ChannelOptions
 
     /// <summary>
     /// Ключи, переехавшие из корня Gateway в <c>Channel:Settings</c>. Список один на проверку
-    /// при старте и на protect-secrets: разойдись они — шлюз откажет стартовать из-за ключа,
+    /// при старте и на protect-secrets: разойдись они — шлюз откажется стартовать из-за ключа,
     /// который protect-secrets только что «успешно» обработал.
     /// </summary>
     public static readonly IReadOnlyList<string> MovedKeys = ["BotToken", "AllowedUserIds"];
@@ -79,7 +79,8 @@ public sealed class GatewayOptions
     /// Где слушать монитор: <c>loopback</c> — только с этой машины, <c>any</c> — на всех
     /// адресах. <c>any</c> нужен в контейнере: порт на 127.0.0.1 внутри него наружу
     /// не опубликовать. Пароля у монитора нет, поэтому в Docker публикуют как
-    /// <c>127.0.0.1:5100:5100</c>. Порт MCP всегда на loopback — его клиент рядом.
+    /// <c>127.0.0.1:5100:5100</c>. Порт MCP всегда на loopback: его клиент — дочерний
+    /// процесс агента в том же окружении.
     /// </summary>
     public string MonitorBind { get; set; } = MonitorBindLoopback;
 

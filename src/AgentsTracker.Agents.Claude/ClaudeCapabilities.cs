@@ -1,6 +1,6 @@
 namespace AgentsTracker.Agents.Claude;
 
-/// <summary>Что принимает Claude Code — по этому хост строит меню и проверяет конфиг.</summary>
+/// <summary>Что принимает Claude Code: по этим значениям хост строит меню и проверяет конфиг.</summary>
 public static class ClaudeCapabilities
 {
     /// <summary>Алиасы семейств для кнопок; полное имя (<c>claude-sonnet-5</c>) вводится текстом.</summary>
