@@ -23,19 +23,19 @@ public static partial class ChatHtml
     /// </summary>
     public static string EscapeCapped(string text, int maxLength)
     {
+        if (maxLength <= 0) return "";
+
+        // Уложившийся целиком текст символ под многоточие не тратит: иначе строка ровно в
+        // maxLength теряла бы последний символ и получала «…», хотя обрезать было нечего.
+        if (EscapedLength(text) <= maxLength) return Escape(text);
+
         // Один символ придерживаем под многоточие, чтобы обрезка не выходила за maxLength.
         var budget = maxLength - 1;
-        var result = new StringBuilder(Math.Min(text.Length, maxLength));
+        var result = new StringBuilder(maxLength);
 
         foreach (var ch in text)
         {
-            var entity = ch switch
-            {
-                '&' => "&amp;",
-                '<' => "&lt;",
-                '>' => "&gt;",
-                _ => null,
-            };
+            var entity = EntityOf(ch);
 
             if (result.Length + (entity?.Length ?? 1) > budget)
             {
@@ -51,6 +51,22 @@ public static partial class ChatHtml
         }
 
         return result.ToString();
+    }
+
+    private static string? EntityOf(char ch) => ch switch
+    {
+        '&' => "&amp;",
+        '<' => "&lt;",
+        '>' => "&gt;",
+        _ => null,
+    };
+
+    /// <summary>Длина экранированного текста без его сборки: нужна, чтобы решить, надо ли резать.</summary>
+    private static int EscapedLength(string text)
+    {
+        var length = 0;
+        foreach (var ch in text) length += EntityOf(ch)?.Length ?? 1;
+        return length;
     }
 
     /// <summary>

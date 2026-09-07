@@ -50,8 +50,15 @@ public sealed class TelegramChannel(
 
     public async Task<string> ConnectAsync(CancellationToken ct)
     {
-        var me = await bot.GetMe(ct);
-        return "@" + me.Username;
+        try
+        {
+            var me = await bot.GetMe(ct);
+            return "@" + me.Username;
+        }
+        catch (RequestException ex)
+        {
+            throw Translate(ex);
+        }
     }
 
     // Эмодзи — в описании: иконок у команд Bot API не даёт, а имя команды — только латиница.
@@ -146,6 +153,12 @@ public sealed class TelegramChannel(
         {
             // Разметка могла не пережить конвертацию — лучше отправить как есть, чем ничего.
             logger.LogWarning(ex, "Telegram отверг HTML, отправляю без разметки");
+        }
+        catch (RequestException ex)
+        {
+            // Остальные отказы транспорта наружу уходят только как ChannelRequestException:
+            // иначе хост не узнает ни про retry_after у 429, ни про «писать первым некуда».
+            throw Translate(ex);
         }
 
         try
