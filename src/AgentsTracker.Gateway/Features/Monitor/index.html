@@ -532,7 +532,7 @@
   async function loadAudit() {
     const list = await get('/api/audit?count=100', [], background);
     $('audit').querySelector('tbody').innerHTML = list.slice().reverse().map(a =>
-      `<tr><td class="when">${fmtWhen(a.at)}</td><td class="mono">${esc(a.kind)}</td><td class="wrap">${esc(a.summary)}</td><td>${esc(a.outcome || '')}</td><td>${esc(a.userId || '')}</td><td title="${esc(a.project || '')}">${esc(shortPath(a.project))}</td></tr>`).join('')
+      `<tr><td class="when">${fmtWhen(a.at)}</td><td class="mono">${esc(a.kind)}</td><td class="wrap">${esc(a.summary)}</td><td>${esc(a.outcome || '')}</td><td>${esc(a.userKey || '')}</td><td title="${esc(a.project || '')}">${esc(shortPath(a.project))}</td></tr>`).join('')
       || '<tr><td colspan="6" class="empty">пусто</td></tr>';
   }
 

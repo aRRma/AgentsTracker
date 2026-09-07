@@ -15,7 +15,7 @@ namespace AgentsTracker.Channels.Telegram;
 /// отказ разметки — наружу уходит <see cref="ChannelRequestException"/> или ничего.
 /// </summary>
 public sealed class TelegramChannel(
-    ITelegramBotClient bot,
+    Lazy<ITelegramBotClient> bot,
     IOptions<TelegramOptions> options,
     ILogger<TelegramChannel> logger) : IChatChannel
 {
@@ -31,6 +31,13 @@ public sealed class TelegramChannel(
     private static readonly TimeSpan EditRetryCeiling = TimeSpan.FromSeconds(5);
 
     private readonly TelegramOptions _options = options.Value;
+
+    /// <summary>
+    /// Клиент создаётся при первом обращении: его конструктор сам проверяет токен и на пустом
+    /// или неверном бросает <see cref="ArgumentException"/>, а канал хост создаёт раньше, чем
+    /// печатает ошибки настроек, — иначе вместо «BotToken не задан» пользователь видел бы стектрейс.
+    /// </summary>
+    private ITelegramBotClient Bot => bot.Value;
 
     public string Id => ChannelId;
 
@@ -52,7 +59,7 @@ public sealed class TelegramChannel(
     {
         try
         {
-            var me = await bot.GetMe(ct);
+            var me = await Bot.GetMe(ct);
             return "@" + me.Username;
         }
         catch (RequestException ex)
@@ -66,7 +73,7 @@ public sealed class TelegramChannel(
     {
         try
         {
-            await bot.SetMyCommands(
+            await Bot.SetMyCommands(
                 commands.Select(c => new BotCommand { Command = c.Name, Description = c.Description }),
                 cancellationToken: ct);
         }
@@ -84,7 +91,7 @@ public sealed class TelegramChannel(
             DropPendingUpdates = true,
         };
 
-        return bot.ReceiveAsync(
+        return Bot.ReceiveAsync(
             (_, update, token) => HandleUpdateAsync(sink, update, token),
             (_, exception, _) =>
             {
@@ -146,7 +153,7 @@ public sealed class TelegramChannel(
 
         try
         {
-            var sent = await bot.SendMessage(id, message.Text, ParseMode(message), replyMarkup: markup, cancellationToken: ct);
+            var sent = await Bot.SendMessage(id, message.Text, ParseMode(message), replyMarkup: markup, cancellationToken: ct);
             return new MessageRef(chat, MessageIdOf(sent.MessageId));
         }
         catch (ApiRequestException ex) when (message.Rich && IsMarkupRejected(ex))
@@ -163,7 +170,7 @@ public sealed class TelegramChannel(
 
         try
         {
-            var sent = await bot.SendMessage(id, ChatHtml.StripTags(message.Text), replyMarkup: markup, cancellationToken: ct);
+            var sent = await Bot.SendMessage(id, ChatHtml.StripTags(message.Text), replyMarkup: markup, cancellationToken: ct);
             return new MessageRef(chat, MessageIdOf(sent.MessageId));
         }
         catch (RequestException ex)
@@ -178,7 +185,7 @@ public sealed class TelegramChannel(
 
         try
         {
-            var sent = await bot.SendDocument(ChatIdOf(chat), InputFile.FromStream(stream, fileName), cancellationToken: ct);
+            var sent = await Bot.SendDocument(ChatIdOf(chat), InputFile.FromStream(stream, fileName), cancellationToken: ct);
             return new MessageRef(chat, MessageIdOf(sent.MessageId));
         }
         catch (RequestException ex)
@@ -217,7 +224,7 @@ public sealed class TelegramChannel(
     {
         try
         {
-            await bot.EditMessageText(
+            await Bot.EditMessageText(
                 ChatIdOf(message.Chat), MessageId(message), content.Text, ParseMode(content),
                 replyMarkup: Markup(content.Keyboard), cancellationToken: ct);
         }
@@ -231,7 +238,7 @@ public sealed class TelegramChannel(
     {
         try
         {
-            await bot.DeleteMessage(ChatIdOf(message.Chat), MessageId(message), ct);
+            await Bot.DeleteMessage(ChatIdOf(message.Chat), MessageId(message), ct);
         }
         catch (RequestException ex)
         {
@@ -243,7 +250,7 @@ public sealed class TelegramChannel(
     {
         try
         {
-            await bot.AnswerCallbackQuery(press.PressId, toast, cancellationToken: ct);
+            await Bot.AnswerCallbackQuery(press.PressId, toast, cancellationToken: ct);
         }
         catch (RequestException ex)
         {
@@ -255,7 +262,7 @@ public sealed class TelegramChannel(
     {
         try
         {
-            await bot.SendChatAction(ChatIdOf(chat), ChatAction.Typing, cancellationToken: ct);
+            await Bot.SendChatAction(ChatIdOf(chat), ChatAction.Typing, cancellationToken: ct);
         }
         catch (RequestException ex)
         {

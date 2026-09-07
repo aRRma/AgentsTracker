@@ -112,7 +112,7 @@ public static class GatewayInfrastructure
             }
 
             // Конфиг уже прочитан, а процесс агента наследует окружение шлюза целиком:
-            // переопределения вроде «Gateway__BotToken» ему видеть незачем. Убираем у себя —
+            // переопределения вроде «Gateway__Channel__Settings__BotToken» ему видеть незачем. Убираем у себя —
             // тогда ни один бэкенд не должен помнить об этом сам.
             HideGatewaySettingsFromChildren();
 

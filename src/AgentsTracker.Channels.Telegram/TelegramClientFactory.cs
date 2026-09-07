@@ -68,6 +68,11 @@ internal static class TelegramClientFactory
                 sp.GetRequiredService<IOptions<TelegramOptions>>().Value.BotToken,
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName)));
 
+        // Клиент канал берёт лениво: конструктор TelegramBotClient сам проверяет токен и на
+        // пустом или неверном бросает ArgumentException, а канал создаётся раньше проверки
+        // настроек — иначе вместо понятного «BotToken не задан» пользователь видел бы стектрейс.
+        services.AddSingleton(sp => new Lazy<ITelegramBotClient>(sp.GetRequiredService<ITelegramBotClient>));
+
         return services;
     }
 }

@@ -152,7 +152,11 @@ public sealed class ApprovalBroker(
 
         if (!pending.Completion.TrySetResult(new ChoiceResult(key, press.User))) return;
 
-        var label = pending.Buttons.FirstOrDefault(b => b.Key == key)?.Label ?? key;
+        // Режем так же, как подпись на кнопке: вариант ответа агента приходит целиком, и
+        // длинный увёл бы правку карточки за предел сообщения — карточка осталась бы
+        // с живыми кнопками.
+        var chosen = pending.Buttons.FirstOrDefault(b => b.Key == key)?.Label ?? key;
+        var label = Text.Clip(chosen, channel.Limits.ButtonLabelLength);
 
         await FinishCardAsync(pending.Message, pending.Html, $"➡️ {label}");
     }
