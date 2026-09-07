@@ -72,26 +72,31 @@ public static class InstallCommand
     private static void PrepareConfig(string directory, TextWriter output)
     {
         var beside = Path.Combine(directory, "appsettings.Local.json");
-        var hasData = File.Exists(AppPaths.LocalSettings);
 
-        if (hasData || File.Exists(beside))
+        if (File.Exists(AppPaths.LocalSettings))
         {
-            // Без пути — команда сама возьмёт файл из папки данных; с путём — перенесёт его туда.
-            string[] arguments = hasData
-                ? [ProtectSecretsCommand.Name]
-                : [ProtectSecretsCommand.Name, beside];
+            // Файл рядом с exe всё равно не применился бы — боевой лежит в папке данных, — но
+            // молча удалять его нельзя: там могли принести новые значения.
+            if (File.Exists(beside))
+            {
+                File.Delete(beside);
+                output.WriteLine(
+                    $"Боевой конфиг — {AppPaths.LocalSettings}. Файл рядом с exe удалён, его значения "
+                    + "не применены: чтобы поставить их, удалите конфиг в папке данных и повторите.");
+            }
 
-            ProtectSecretsCommand.Run(arguments, output);
+            if (ProtectSecretsCommand.Run([ProtectSecretsCommand.Name], output) != 0)
+                output.WriteLine($"Проверьте {AppPaths.LocalSettings}: секреты остались как есть.");
+        }
+        else if (File.Exists(beside))
+        {
+            // protect-secrets сам перенесёт файл в папку данных и зашифрует секреты. Своими
+            // руками копию рядом с exe тут не удаляем: на его ошибке останемся вообще без конфига.
+            ProtectSecretsCommand.Run([ProtectSecretsCommand.Name, beside], output);
         }
         else
         {
             output.WriteLine($"Конфига нет. Положите заполненный appsettings.Local.json в {AppPaths.DataDirectory}.");
-        }
-
-        if (File.Exists(beside))
-        {
-            File.Delete(beside);
-            output.WriteLine($"Удалён {beside}: секретам рядом с exe не место.");
         }
 
         DataDirectoryAcl.Restrict(AppPaths.DataDirectory);

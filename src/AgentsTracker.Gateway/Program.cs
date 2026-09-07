@@ -5,8 +5,13 @@ using AgentsTracker.Gateway.Features.Chat;
 using AgentsTracker.Gateway.Features.Help;
 using AgentsTracker.Gateway.Features.Monitor;
 using AgentsTracker.Gateway.Features.Settings;
+using AgentsTracker.Gateway.Infrastructure;
 using AgentsTracker.Gateway.Infrastructure.Cli;
 using AgentsTracker.Gateway.Infrastructure.Modules;
+
+// Раньше всего: в папке данных лежит сам appsettings.Local.json, поэтому её расположение
+// нельзя взять из конфига — только из appsettings.json рядом с exe или из окружения.
+AppPaths.UseConfiguredDirectory();
 
 // Служебные команды (protect-secrets, install, uninstall) отрабатывают до сборки хоста:
 // они работают с файлами и автозапуском, Telegram и агент им не нужны.

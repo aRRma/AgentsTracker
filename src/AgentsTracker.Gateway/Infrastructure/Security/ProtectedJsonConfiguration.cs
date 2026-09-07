@@ -35,9 +35,12 @@ public sealed class ProtectedJsonConfigurationProvider(ProtectedJsonConfiguratio
             {
                 // Значение зашифровано другим пользователем или на другой машине: оставить его
                 // как есть — значит подсунуть в BotToken мусор; лучше упасть на валидации с понятной причиной.
+                var hint = OperatingSystem.IsWindows()
+                    ? "Значение зашифровано DPAPI под другой учётной записью — перезапишите его открытым текстом и выполните protect-secrets."
+                    : "Значение зашифровано DPAPI, а он работает только на Windows — впишите значение открытым текстом или задайте переменной окружения.";
+
                 throw new InvalidOperationException(
-                    $"Не удалось расшифровать «{key}» из {Source.Path}: {ex.Message}. " +
-                    "Значение зашифровано DPAPI под другой учётной записью — перезапишите его открытым текстом и выполните protect-secrets.", ex);
+                    $"Не удалось расшифровать «{key}» из {Source.Path}: {ex.Message}. {hint}", ex);
             }
         }
     }

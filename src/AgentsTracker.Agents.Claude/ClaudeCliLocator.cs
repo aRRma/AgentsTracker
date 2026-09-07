@@ -103,17 +103,38 @@ public sealed class ClaudeCliLocator(IOptions<ClaudeOptions> options, ILogger<Cl
         return FindOnPath() ?? VsCodeExtensionBinaries().FirstOrDefault(File.Exists);
     }
 
+    /// <summary>
+    /// Имена исполняемого файла: на Windows у него расширение, на Linux и macOS его нет.
+    /// Порядок важен — первым идёт то, что ставит штатный инсталлятор.
+    /// </summary>
+    private static string[] ExecutableNames => OperatingSystem.IsWindows()
+        ? ["claude.exe", "claude.cmd", "claude.bat"]
+        : ["claude"];
+
     private static IEnumerable<string> Candidates()
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
         // Штатная установка native-инсталлятором.
-        yield return Path.Combine(home, ".local", "bin", "claude.exe");
-        yield return Path.Combine(home, ".claude", "local", "claude.exe");
+        foreach (var name in ExecutableNames)
+        {
+            yield return Path.Combine(home, ".local", "bin", name);
+            yield return Path.Combine(home, ".claude", "local", name);
+        }
 
-        // Глобальная установка через npm.
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        yield return Path.Combine(appData, "npm", "claude.cmd");
+        // Глобальная установка через npm: на Windows это обёртка .cmd в %APPDATA%\npm,
+        // на Linux и macOS — симлинк в общем bin.
+        if (OperatingSystem.IsWindows())
+        {
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            yield return Path.Combine(appData, "npm", "claude.cmd");
+        }
+        else
+        {
+            yield return "/usr/local/bin/claude";
+            yield return "/usr/bin/claude";
+            yield return Path.Combine(home, ".npm-global", "bin", "claude");
+        }
     }
 
     /// <summary>Запасной вариант: бинарник внутри расширения VS Code, самая свежая версия.</summary>
@@ -127,7 +148,10 @@ public sealed class ClaudeCliLocator(IOptions<ClaudeOptions> options, ILogger<Cl
             .OrderByDescending(d => d, StringComparer.OrdinalIgnoreCase);
 
         foreach (var dir in dirs)
-            yield return Path.Combine(dir, "resources", "native-binary", "claude.exe");
+        {
+            foreach (var name in ExecutableNames)
+                yield return Path.Combine(dir, "resources", "native-binary", name);
+        }
     }
 
     private static bool IsVsCodeExtensionBinary(string path) =>
@@ -139,7 +163,7 @@ public sealed class ClaudeCliLocator(IOptions<ClaudeOptions> options, ILogger<Cl
         var path = Environment.GetEnvironmentVariable("PATH");
         if (path is null) return null;
 
-        string[] names = ["claude.exe", "claude.cmd", "claude.bat"];
+        var names = ExecutableNames;
 
         foreach (var dir in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {

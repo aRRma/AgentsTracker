@@ -18,6 +18,17 @@ public static class ProtectSecretsCommand
 
     public static int Run(string[] args, TextWriter output)
     {
+        // DPAPI есть только на Windows. Промолчать нельзя: человек решит, что токен зашифрован,
+        // а он останется открытым.
+        if (!OperatingSystem.IsWindows())
+        {
+            output.WriteLine(
+                "Шифрование секретов работает только на Windows (DPAPI). На других системах "
+                + "держите BotToken в переменной окружения Gateway__BotToken или в файле, "
+                + "закрытом правами доступа.");
+            return 1;
+        }
+
         var source = args.Length > 1 ? args[1] : FindSource();
         if (source is null || !File.Exists(source))
         {
