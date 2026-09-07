@@ -32,7 +32,10 @@ public static class ApprovalCardRenderer
     /// не должен разрешать команду, хвост которой он не видел. Файл отправляется перед
     /// карточкой; в самой карточке об этом говорится.
     /// </summary>
-    public sealed record ApprovalCard(string Html, string? FullText);
+    public sealed record ApprovalCard(string Html, ApprovalAttachment? Attachment);
+
+    /// <summary>Файл с тем, что в карточку не влезло: имя с расширением и содержимое.</summary>
+    public sealed record ApprovalAttachment(string FileName, string Text);
 
     /// <summary>
     /// Фрагменты, которые обрезала карточка. Обрезанный «Bash» с опасным хвостом или
@@ -41,8 +44,9 @@ public static class ApprovalCardRenderer
     private sealed class Truncated
     {
         private readonly List<(string Title, string Text)> _items = [];
+        private ApprovalAttachment? _document;
 
-        public bool Any => _items.Count > 0;
+        public bool Any => _items.Count > 0 || _document is not null;
 
         /// <summary>Экранирует под бюджет и запоминает исходник, если он не влез целиком.</summary>
         public string Capped(string title, string text, int budget)
@@ -54,13 +58,32 @@ public static class ApprovalCardRenderer
         /// <summary>Запоминает то, что в карточке не показано вовсе (остальные правки, хвост файла).</summary>
         public void Add(string title, string text) => _items.Add((title, text));
 
-        public string Render()
+        /// <summary>
+        /// Целый документ вместо сводки «=== фрагмент ===»: план в .md Telegram открывает
+        /// с разметкой, а в .txt с заголовком-разделителем он читался как сырой текст.
+        /// </summary>
+        public void AddDocument(string fileName, string text) => _document = new(fileName, text);
+
+        public ApprovalAttachment? Render(string toolName)
         {
+            if (_document is { } document && _items.Count == 0) return document;
+            if (!Any) return null;
+
             var text = new StringBuilder();
             foreach (var (title, body) in _items)
                 text.Append("=== ").Append(title).Append(" ===\n").Append(body).Append("\n\n");
-            return text.ToString().TrimEnd() + "\n";
+            if (_document is { } extra)
+                text.Append("=== ").Append(extra.FileName).Append(" ===\n").Append(extra.Text).Append("\n\n");
+
+            return new ApprovalAttachment($"{SafeFileName(toolName)}-input.txt", text.ToString().TrimEnd() + "\n");
         }
+    }
+
+    /// <summary>Имя инструмента приходит от агента: в имени файла ему нечего делать с разделителями путей.</summary>
+    private static string SafeFileName(string toolName)
+    {
+        var safe = new string(toolName.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
+        return Text.Clip(safe.Length == 0 ? "tool" : safe, 40);
     }
 
     /// <param name="suggested">
@@ -101,7 +124,7 @@ public static class ApprovalCardRenderer
                 .Append("</i>");
         }
 
-        return new ApprovalCard(card.ToString(), truncated.Any ? truncated.Render() : null);
+        return new ApprovalCard(card.ToString(), truncated.Render(toolName));
     }
 
     /// <summary>Сколько предложенных агентом правил показывать: больше и не пришлёт, и не влезет.</summary>
@@ -123,6 +146,7 @@ public static class ApprovalCardRenderer
         "Agent" or "Task" => "запустить сабагента",
         "Skill" => "вызвать навык",
         "TodoWrite" => "обновить список задач",
+        "ExitPlanMode" => "утвердить план",
         _ when toolName.StartsWith("mcp__", StringComparison.Ordinal) => "MCP-инструмент",
         _ => null,
     };
@@ -225,6 +249,20 @@ public static class ApprovalCardRenderer
                 if (Str(input, "skill") is not { } skill) return false;
                 card.Append("Навык: <code>").Append(E(skill, ValueBudget)).Append("</code>\n");
                 if (Str(input, "args") is { } args) card.Append("<pre>").Append(E(args, ValueBudget)).Append("</pre>");
+                return true;
+
+            case "ExitPlanMode":
+                if (Str(input, "plan") is not { } plan) return false;
+                var planLines = plan.Split('\n');
+                card.Append("📋 Строк: ").Append(planLines.Length).Append('\n');
+                var planPreview = string.Join('\n', planLines.Take(PreviewLines));
+                card.Append("<pre>").Append(E(planPreview, ContentBudget));
+                if (planLines.Length > PreviewLines) card.Append("\n…");
+                card.Append("</pre>");
+                // План — это markdown: целиком он уходит файлом .md, который Telegram и
+                // редакторы показывают с заголовками и списками, а не сплошным текстом.
+                if (planLines.Length > PreviewLines || TelegramFormatter.Escape(planPreview).Length > ContentBudget)
+                    truncated.AddDocument("plan.md", PlanDocument(plan));
                 return true;
 
             default:
@@ -333,6 +371,17 @@ public static class ApprovalCardRenderer
     /// </summary>
     private static string Unescape(string signature) =>
         signature.Replace("\\r\\n", "\n").Replace("\\n", "\n").Replace("\\t", "\t");
+
+    /// <summary>
+    /// План агента как самостоятельный документ: без заголовка первого уровня файл в
+    /// просмотрщике начинается с середины — добавляем его, когда агент не поставил свой.
+    /// </summary>
+    private static string PlanDocument(string plan)
+    {
+        var body = plan.Replace("\r\n", "\n").Trim('\n');
+        var titled = body.StartsWith("# ", StringComparison.Ordinal);
+        return (titled ? body : "# План\n\n" + body) + "\n";
+    }
 
     private static string? Str(JsonElement obj, string name) =>
         obj.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;

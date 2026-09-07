@@ -78,8 +78,8 @@ public sealed class OperatorConsole(
         var card = ApprovalCardRenderer.Render(toolName, input, signature, suggested, store.ProjectPath);
 
         // Обрезанный вход — файлом до карточки: разрешать команду, хвост которой не виден, нельзя.
-        if (card.FullText is { } fullText)
-            await broker.SendAttachmentAsync($"{SafeFileName(toolName)}-input.txt", fullText, ct);
+        if (card.Attachment is { } attachment)
+            await broker.SendAttachmentAsync(attachment.FileName, attachment.Text, ct);
 
         var (key, userId) = await broker.AskChoiceAsync(card.Html, buttons, ct);
         Audit(AuditKinds.Approval, signature, key, userId);
@@ -172,13 +172,6 @@ public sealed class OperatorConsole(
             key == "free" ? "free" : "option", userId);
 
         return new QuestionAnswer(question.Text, answer);
-    }
-
-    /// <summary>Имя инструмента приходит от агента: в имени файла ему нечего делать с разделителями путей.</summary>
-    private static string SafeFileName(string toolName)
-    {
-        var safe = new string(toolName.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
-        return Text.Clip(safe.Length == 0 ? "tool" : safe, 40);
     }
 
     /// <summary>Самое важное поле инструмента — команда или путь к файлу.</summary>
