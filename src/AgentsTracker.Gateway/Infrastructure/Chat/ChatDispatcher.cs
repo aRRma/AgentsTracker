@@ -4,8 +4,8 @@ using AgentsTracker.Gateway.Infrastructure.Chat.Dispatch;
 namespace AgentsTracker.Gateway.Infrastructure.Chat;
 
 /// <summary>
-/// Единственная точка входа сообщений от пользователя. Сам ничего не делает — проверяет,
-/// кто пишет, и раздаёт входящее обработчикам фич. Канал доставки здесь не важен.
+/// Единственная точка входа сообщений. Сам ничего не делает: проверяет, кто пишет,
+/// и раздаёт входящее обработчикам фич. Какой это канал, здесь не важно.
 /// </summary>
 public sealed class ChatDispatcher(
     IChatChannel channel,
@@ -16,7 +16,7 @@ public sealed class ChatDispatcher(
     IAuditLog audit,
     ILogger<ChatDispatcher> logger) : IChatInbound
 {
-    /// <summary>Команда → обработчик. Дубликат команды у двух фич — ошибка конфигурации, падаем на старте.</summary>
+    /// <summary>Команда → обработчик. Дубликат у двух фич роняет старт — это ошибка сборки.</summary>
     private readonly Dictionary<string, IChatCommandHandler> _commands = commandHandlers
         .SelectMany(h => h.Commands.Select(c => (Command: c, Handler: h)))
         .ToDictionary(p => p.Command, p => p.Handler, StringComparer.Ordinal);
@@ -24,7 +24,7 @@ public sealed class ChatDispatcher(
     private readonly IChatButtonHandler[] _buttons = [.. buttonHandlers];
     private readonly IChatTextHandler[] _texts = [.. textHandlers];
 
-    /// <summary>Кому разрешено: сравниваем по адресу целиком, а не по числу — каналов может быть несколько.</summary>
+    /// <summary>Кому разрешено. Сравниваем адрес целиком, а не число: каналов может быть несколько.</summary>
     private readonly HashSet<UserId> _allowed = [.. channel.AllowedUsers];
 
     public async Task OnMessageAsync(IncomingMessage message, CancellationToken ct)
@@ -33,8 +33,8 @@ public sealed class ChatDispatcher(
 
         var (command, argument) = ParseCommand(message.Text);
 
-        // Команды шлюза разбираем до текстовых обработчиков: иначе /stop уйдёт в ожидающий
-        // свободный ответ и прервать зависший запуск будет нечем.
+        // Команды шлюза разбираем раньше текстовых обработчиков: иначе /stop уйдёт
+        // в ожидающий свободный ответ, и прервать зависший запуск будет нечем.
         if (command is not null && _commands.TryGetValue(command, out var handler))
         {
             audit.Write(AuditEvent.Now(
@@ -53,7 +53,7 @@ public sealed class ChatDispatcher(
     }
 
     /// <summary>
-    /// Меню и карточки подтверждений делят один поток нажатий: каждый обработчик узнаёт свои
+    /// Меню и карточки подтверждений делят один поток нажатий: свои обработчик узнаёт
     /// по префиксу данных кнопки.
     /// </summary>
     public async Task OnButtonAsync(ButtonPress press, CancellationToken ct)
@@ -89,7 +89,7 @@ public sealed class ChatDispatcher(
 
     /// <summary>
     /// Пускает только разрешённого пользователя и только из личного чата: в группе ответы
-    /// агента (код, содержимое файлов) и кнопки подтверждений увидели бы все участники.
+    /// агента и кнопки подтверждений увидели бы все участники.
     /// </summary>
     private bool IsAllowed(UserId user, ChatId chat, ChatKind kind)
     {
@@ -103,9 +103,8 @@ public sealed class ChatDispatcher(
             return false;
         }
 
-        // Неизвестный тип чата (у Telegram — нажатие на сообщение, которого канал не увидел)
-        // отклоняем вместе с групповыми: иначе кнопку из группы нажали бы в обход проверки,
-        // которую сообщения проходят.
+        // Неизвестный тип чата (в Telegram — нажатие на сообщение, которого канал не видел)
+        // отклоняем вместе с групповыми: иначе кнопка из группы прошла бы в обход проверки.
         if (kind is not ChatKind.Direct)
         {
             var reason = kind is ChatKind.Unknown ? "чат неизвестен" : "групповой чат";

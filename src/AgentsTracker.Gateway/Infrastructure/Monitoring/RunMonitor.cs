@@ -20,7 +20,7 @@ public sealed record PendingApproval(DateTimeOffset SinceUtc, string Tool, strin
 /// <summary>Всё живое состояние шлюза одним снимком — его получает страница монитора.</summary>
 /// <param name="Approvals">
 /// Все открытые карточки, а не одна: CLI зовёт инструмент параллельно на несколько tool_use
-/// одного хода, и одно поле после ответа на первую показывало бы «свободен» при висящей второй.
+/// одного хода, и одно поле после ответа на первую показало бы «свободен» при висящей второй.
 /// </param>
 public sealed record LiveState(
     DateTimeOffset GatewayStartedUtc,
@@ -30,13 +30,12 @@ public sealed record LiveState(
     IReadOnlyList<string> Queue);
 
 /// <summary>
-/// Единственный источник «что шлюз делает сейчас». Фичи сюда пишут (очередь, запуск, шаги,
-/// ожидание карточки), веб-монитор читает снимок и подписывается на изменения. Без него
-/// текущий запуск живёт только в приватном RunStatusMessage, и снаружи виден лишь IsBusy.
+/// Единственный источник «что шлюз делает сейчас»: фичи сюда пишут (очередь, запуск, шаги,
+/// ожидание карточки), веб-монитор читает снимок и подписывается на изменения.
 /// </summary>
 public sealed class RunMonitor
 {
-    /// <summary>Сколько шагов держать: полный ввод не хранится, но у долгого запуска их тысячи.</summary>
+    /// <summary>Сколько шагов держать: у долгого запуска их тысячи.</summary>
     private const int StepsKept = 300;
 
     private readonly Lock _gate = new();
@@ -52,7 +51,7 @@ public sealed class RunMonitor
 
     public DateTimeOffset StartedUtc { get; } = DateTimeOffset.UtcNow;
 
-    /// <summary>Версия CLI — ставит ValidateStartup, когда уже узнал её для лога.</summary>
+    /// <summary>Версия CLI: ставит ValidateStartup, когда узнаёт её для лога.</summary>
     public string? CliVersion { get; set; }
 
     public LiveState Current
@@ -83,7 +82,7 @@ public sealed class RunMonitor
         if (_steps.Count > StepsKept) _steps.RemoveAt(0);
     });
 
-    /// <summary>Снимает текущий запуск и возвращает его — ChatWorker кладёт число вызовов в историю.</summary>
+    /// <summary>Снимает текущий запуск и отдаёт его: ChatWorker кладёт число вызовов в историю.</summary>
     public CurrentRun? RunFinished()
     {
         CurrentRun? finished = null;
@@ -105,8 +104,8 @@ public sealed class RunMonitor
     }
 
     /// <summary>
-    /// Текущий снимок сразу, затем — по каждому изменению. Канал на одного подписчика с
-    /// вытеснением: медленный браузер получит последнее состояние, а не очередь устаревших.
+    /// Текущий снимок сразу, дальше — на каждое изменение. Канал с вытеснением: медленный
+    /// браузер получит последнее состояние, а не очередь устаревших.
     /// </summary>
     public async IAsyncEnumerable<LiveState> Changes([EnumeratorCancellation] CancellationToken ct)
     {
@@ -146,7 +145,7 @@ public sealed class RunMonitor
     private LiveState Build() => new(
         StartedUtc, CliVersion, BuildRun(), [.. _approvals.OrderBy(p => p.Key).Select(p => p.Value)], [.. _queue]);
 
-    // Отброшенные шаги не считаем отдельно: список обрезан до StepsKept, разница со счётчиком вызовов и есть они.
+    // Отброшенные шаги не считаем отдельно: это и есть разница между вызовами и StepsKept.
     private CurrentRun? BuildRun() =>
         _run is { } run
             ? new CurrentRun(run, _runStartedUtc, _toolCalls, [.. _steps], Math.Max(0, _toolCalls - StepsKept))

@@ -1,11 +1,10 @@
 namespace AgentsTracker.Channels;
 
 /// <summary>
-/// Канал чата глазами хоста: один мессенджер, один бот. Хост зовёт методы в таком порядке:
+/// Канал чата глазами хоста: один мессенджер, один бот. Порядок вызовов —
 /// <see cref="ConnectAsync"/> → <see cref="PublishCommandsAsync"/> → стартовые сообщения →
-/// <see cref="ListenAsync"/>, и параллельно с прослушиванием шлёт ответы.
-/// Все методы при отказе транспорта бросают <see cref="ChannelRequestException"/> — фичи
-/// не знают ни одного типа конкретного мессенджера.
+/// <see cref="ListenAsync"/>, ответы уходят параллельно с прослушиванием. Отказ транспорта
+/// всегда <see cref="ChannelRequestException"/>: типов конкретного мессенджера фичи не знают.
 /// </summary>
 public interface IChatChannel
 {
@@ -21,13 +20,13 @@ public interface IChatChannel
     IReadOnlyCollection<UserId> AllowedUsers { get; }
 
     /// <summary>
-    /// Личный чат с пользователем, если канал умеет вычислить его адрес без переписки
-    /// (Telegram — умеет: это тот же id). null — адреса нет, писать первым некуда. Ненулевой
-    /// адрес не обещает доставку: бот, которому ещё не писали, получит <see cref="ChannelFailure.CannotReach"/>.
+    /// Личный чат с пользователем, если канал умеет вычислить адрес без переписки (в Telegram
+    /// это тот же id). null — писать первым некуда. Адрес доставку не обещает: бот, которому
+    /// ещё не писали, получит <see cref="ChannelFailure.CannotReach"/>.
     /// </summary>
     ChatId? DirectChat(UserId user);
 
-    /// <summary>Обратно из <see cref="ChatId.Key"/>: адрес, сохранённый в state.json прошлым запуском. null — не этого канала.</summary>
+    /// <summary>Адрес из <see cref="ChatId.Key"/> в state.json. null — ключ не этого канала.</summary>
     ChatId? ParseChat(string key);
 
     /// <summary>Ошибки настроек канала — хост печатает их и не стартует.</summary>
@@ -36,7 +35,7 @@ public interface IChatChannel
     /// <summary>Проверка связи с мессенджером. Возвращает имя бота для лога.</summary>
     Task<string> ConnectAsync(CancellationToken ct);
 
-    /// <summary>Подсказка команд в интерфейсе канала. Ошибку канал глотает: шлюз работает и без неё.</summary>
+    /// <summary>Подсказка команд в интерфейсе канала. Ошибку канал глотает — шлюз работает и без неё.</summary>
     Task PublishCommandsAsync(IReadOnlyList<ChatCommand> commands, CancellationToken ct);
 
     /// <summary>Принимает входящее до отмены токена, отдавая его в <paramref name="sink"/>.</summary>

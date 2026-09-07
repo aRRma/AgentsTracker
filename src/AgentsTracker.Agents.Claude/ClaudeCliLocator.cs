@@ -3,9 +3,9 @@ using System.Diagnostics;
 namespace AgentsTracker.Agents.Claude;
 
 /// <summary>
-/// Ищет исполняемый файл Claude Code: явный путь из конфига → стандартная установка → PATH →
-/// бинарник, вложенный в расширение VS Code (последний вариант привязан к версии расширения
-/// и исчезает при её обновлении, поэтому используется только как запасной).
+/// Ищет claude: путь из конфига → штатная установка → PATH → бинарник внутри расширения
+/// VS Code. Последний только на крайний случай: он привязан к версии расширения
+/// и исчезает при обновлении.
 /// </summary>
 public sealed class ClaudeCliLocator(IOptions<ClaudeOptions> options, ILogger<ClaudeCliLocator> logger)
 {
@@ -17,9 +17,9 @@ public sealed class ClaudeCliLocator(IOptions<ClaudeOptions> options, ILogger<Cl
 
     public string Resolve()
     {
-        // Найденный путь кешируем, но проверяем перед каждой выдачей: бинарник расширения VS Code
-        // исчезает вместе со своей папкой при обновлении, и шлюз, живущий сутками, иначе до
-        // перезапуска звал бы удалённый файл.
+        // Путь кешируем, но проверяем перед каждой выдачей: бинарник расширения VS Code
+        // исчезает вместе со своей папкой, и шлюз, живущий сутками, звал бы удалённый файл
+        // до перезапуска.
         if (_resolved is not null && File.Exists(_resolved)) return _resolved;
 
         if (_resolved is not null)
@@ -42,9 +42,8 @@ public sealed class ClaudeCliLocator(IOptions<ClaudeOptions> options, ILogger<Cl
     }
 
     /// <summary>
-    /// Версия CLI для лога при старте. Контракт запуска (разбор JSON, форма ответа
-    /// PermissionTool) держится на недокументированном поведении конкретной версии, поэтому
-    /// при разборе жалоб первое, что нужно знать, — какой именно бинарник отвечал.
+    /// Версия CLI для лога при старте: контракт запуска держится на недокументированном
+    /// поведении конкретной версии, и при разборе жалоб знать её нужно первым делом.
     /// </summary>
     public string? TryGetVersion()
     {
@@ -63,8 +62,8 @@ public sealed class ClaudeCliLocator(IOptions<ClaudeOptions> options, ILogger<Cl
             using var process = Process.Start(psi);
             if (process is null) return null;
 
-            // Оба потока читаются параллельно: если бы stderr никто не вычитывал, CLI с
-            // многословным предупреждением упёрся бы в полный буфер, а мы — в ReadToEnd stdout.
+            // Оба потока читаем параллельно: с невычитанным stderr CLI упёрся бы в полный
+            // буфер на длинном предупреждении, а мы — в ReadToEnd stdout.
             var stdout = process.StandardOutput.ReadToEndAsync();
             var stderr = process.StandardError.ReadToEndAsync();
 
@@ -81,7 +80,7 @@ public sealed class ClaudeCliLocator(IOptions<ClaudeOptions> options, ILogger<Cl
         }
         catch (Exception ex)
         {
-            // Неизвестная версия — не повод не запускаться: сам запуск агента от неё не зависит.
+            // Неизвестная версия старту не мешает: запуск агента от неё не зависит.
             logger.LogDebug(ex, "Не удалось спросить версию у {Path}", _resolved);
             return null;
         }
@@ -104,8 +103,8 @@ public sealed class ClaudeCliLocator(IOptions<ClaudeOptions> options, ILogger<Cl
     }
 
     /// <summary>
-    /// Имена исполняемого файла: на Windows у него расширение, на Linux и macOS его нет.
-    /// Порядок важен — первым идёт то, что ставит штатный инсталлятор.
+    /// Имена файла: на Windows с расширением, на Linux и macOS без. Порядок важен — первым
+    /// то, что ставит штатный инсталлятор.
     /// </summary>
     private static string[] ExecutableNames => OperatingSystem.IsWindows()
         ? ["claude.exe", "claude.cmd", "claude.bat"]
@@ -122,8 +121,7 @@ public sealed class ClaudeCliLocator(IOptions<ClaudeOptions> options, ILogger<Cl
             yield return Path.Combine(home, ".claude", "local", name);
         }
 
-        // Глобальная установка через npm: на Windows это обёртка .cmd в %APPDATA%\npm,
-        // на Linux и macOS — симлинк в общем bin.
+        // Глобальный npm: на Windows обёртка .cmd в %APPDATA%\npm, иначе симлинк в общем bin.
         if (OperatingSystem.IsWindows())
         {
             var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);

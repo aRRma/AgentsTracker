@@ -10,8 +10,8 @@ public sealed record LimitWindow(string Key, double Used, DateTimeOffset? Resets
 public sealed record ExtraUsageState(bool IsEnabled, double? UsedCredits);
 
 /// <summary>
-/// Окно, действующее на следующий запуск, в виде для шкалы в чате: подпись, остаток 0..1
-/// и сброс — момент и готовая подпись («в 18:00», «9 сентября в 10:00») в формате агента.
+/// Окно для шкалы в чате: подпись, остаток 0..1 и сброс — момент плюс готовая подпись
+/// («в 18:00», «9 сентября в 10:00») в формате агента.
 /// </summary>
 public sealed record LimitGauge(string Title, double Remaining, DateTimeOffset? ResetsAt, string? ResetLabel);
 
@@ -26,8 +26,8 @@ public sealed record LimitsSnapshot(
     string? Error);
 
 /// <summary>
-/// Лимиты тарифа агента. Хост спрашивает их перед каждым запуском и показывает остаток в меню.
-/// Любая ошибка опроса должна <b>пропускать</b> запуск, а не блокировать: иначе отвалившийся
+/// Лимиты тарифа. Хост спрашивает их перед каждым запуском и показывает остаток в меню.
+/// Ошибка опроса должна запуск <b>пропускать</b>, а не блокировать: иначе отвалившийся
 /// эндпоинт заставил бы шлюз замолчать целиком.
 /// </summary>
 public interface IAgentLimits
@@ -41,8 +41,8 @@ public interface IAgentLimits
     Task<string> ShortSummaryAsync(string? model, CancellationToken ct);
 
     /// <summary>
-    /// Окна, действующие на следующий запуск, с остатком — для шкал в статусе и статистике.
-    /// Порядок — по времени сброса: ближайшее окно первым. model — модель следующего запуска.
+    /// Окна с остатком для шкал в статусе и статистике, ближайший сброс первым.
+    /// model — модель следующего запуска.
     /// </summary>
     Task<LimitsView> ViewAsync(string? model, CancellationToken ct);
 }

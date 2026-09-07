@@ -5,10 +5,9 @@ namespace AgentsTracker.Gateway.Infrastructure.Configuration;
 public sealed record ProjectGroup(string Name, IReadOnlyList<string> Projects);
 
 /// <summary>
-/// Папки, между которыми можно переключаться из чата. Список берётся из Gateway:Projects,
-/// иначе — обходом Gateway:ProjectsRoot вглубь, иначе — из соседей Gateway:ProjectPath.
-/// Список пересобирается на каждый показ меню: новый склонированный репозиторий появится в нём
-/// без перезапуска шлюза.
+/// Папки, между которыми можно переключаться из чата: Gateway:Projects, иначе обход
+/// Gateway:ProjectsRoot вглубь, иначе соседи Gateway:ProjectPath. Пересобирается на каждый
+/// показ меню — свежесклонированный репозиторий появится без перезапуска.
 /// </summary>
 public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<ProjectCatalog> logger)
 {
@@ -18,8 +17,8 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
     private static readonly string[] ProjectMarkers = [".git", "*.sln", "*.slnx", "package.json", "pyproject.toml"];
 
     /// <summary>
-    /// Нормализованный путь: он же ключ, по которому в state.json хранятся сессии проекта.
-    /// Без него «C:\proj» и «C:/proj/» разъехались бы в разные записи.
+    /// Нормализованный путь — он же ключ сессий в state.json. Без него «C:\proj»
+    /// и «C:/proj/» разъехались бы по разным записям.
     /// </summary>
     public static string Normalize(string path) =>
         Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
@@ -42,8 +41,8 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
 
         found.Sort(StringComparer.OrdinalIgnoreCase);
 
-        // Текущая папка могла быть выбрана до правки конфига — иначе она пропала бы из списка,
-        // и вернуться к ней было бы нечем.
+        // Текущую папку могли выбрать до правки конфига: без этого она пропала бы
+        // из списка, и вернуться к ней стало бы нечем.
         var currentNormalized = Normalize(current);
         found.RemoveAll(p => string.Equals(p, currentNormalized, StringComparison.OrdinalIgnoreCase));
         found.Insert(0, currentNormalized);
@@ -52,10 +51,10 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
     }
 
     /// <summary>
-    /// Тот же список, разложенный по папкам-владельцам: репозиториев больше, чем влезает в
-    /// клавиатуру, а лежат они группами (<c>repos\ME\…</c>, <c>repos\MF\…</c>) — по ним и выбирать.
-    /// Порядок <see cref="List"/> сохраняется: группа текущей папки первая, внутри группы текущая
-    /// папка первая — иначе на длинной странице её пришлось бы искать перелистыванием.
+    /// Тот же список по папкам-владельцам: репозиториев больше, чем влезает в клавиатуру,
+    /// а лежат они группами (<c>repos\ME\…</c>, <c>repos\MF\…</c>). Порядок из
+    /// <see cref="List"/> сохраняется, текущая папка и её группа идут первыми — иначе
+    /// её пришлось бы искать перелистыванием.
     /// </summary>
     public IReadOnlyList<ProjectGroup> Grouped(string current) =>
         [.. List(current)
@@ -65,9 +64,8 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
             .ThenBy(group => group.Name, StringComparer.OrdinalIgnoreCase)];
 
     /// <summary>
-    /// Папка, в которой лежит репозиторий. Под корнем поиска берётся путь относительно корня:
-    /// при вложенности глубже одного уровня имя одной папки склеило бы в группу разные ветки
-    /// дерева («work\api» и «pet\api»).
+    /// Папка, в которой лежит репозиторий. Под корнем поиска берём путь относительно корня:
+    /// глубже одного уровня имя папки склеило бы в одну группу «work\api» и «pet\api».
     /// </summary>
     private string GroupOf(string path)
     {
@@ -96,9 +94,9 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
     }
 
     /// <summary>
-    /// Обход дерева под корнем: спуск прекращается на папке, похожей на проект, — внутри
-    /// репозитория искать нечего, а `node_modules` и `bin` дали бы тысячи путей.
-    /// Текущая папка добавляется отдельно: она может лежать вне корня.
+    /// Обход дерева под корнем. Спуск останавливается на папке, похожей на проект: внутри
+    /// репозитория искать нечего, а node_modules и bin дали бы тысячи путей. Текущую папку
+    /// добавляем отдельно — она может лежать вне корня.
     /// </summary>
     private IEnumerable<string> Walk(string root)
     {
@@ -124,7 +122,7 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
 
             foreach (var child in children)
             {
-                // Скрытые папки — это .git, .vs и прочая служебная кухня, проектов там нет.
+                // Скрытые папки — .git, .vs и прочее служебное, проектов там нет.
                 if (Path.GetFileName(child).StartsWith('.')) continue;
 
                 if (LooksLikeProject(child))

@@ -7,9 +7,9 @@ using AgentsTracker.Gateway.Infrastructure.Chat;
 namespace AgentsTracker.Gateway.Features.Approvals;
 
 /// <summary>
-/// Человек в чате глазами бэкенда: карточка запроса разрешения с кнопками, правила
-/// «всегда», вопросы агента с вариантами — и аудит каждого решения. Бэкенд получает
-/// только решение; как оно добыто, в каком чате и кем, знает лишь хост.
+/// Человек в чате глазами бэкенда: карточки разрешений, правила «всегда», вопросы агента
+/// и аудит каждого решения. Бэкенду достаётся только решение — где и кем оно принято,
+/// знает лишь хост.
 /// </summary>
 public sealed class OperatorConsole(
     ApprovalBroker broker,
@@ -18,8 +18,8 @@ public sealed class OperatorConsole(
     RunMonitor monitor,
     ILogger<OperatorConsole> logger) : IOperatorConsole
 {
-    // Бюджеты в символах уже экранированного HTML: сумма с запасом влезает в лимит
-    // сообщения канала, даже если текст целиком состоит из «&».
+    // Бюджеты в символах уже экранированного HTML: сумма влезает в лимит сообщения
+    // даже если текст целиком состоит из «&».
     private const int HeaderBudget = 200;
     private const int QuestionBudget = 1000;
     private const int OptionLabelBudget = 120;
@@ -30,11 +30,11 @@ public sealed class OperatorConsole(
         var (toolName, input, suggested) = request;
         var signature = BuildSignature(toolName, input);
 
-        // Только начало: полная команда может нести токен в заголовке curl, ему в логе не место.
+        // Только начало: в полной команде может быть токен из заголовка curl.
         var brief = Text.Preview(Highlight(toolName, input) ?? "");
         logger.LogInformation("Запрос разрешения: {Tool} {Key}", toolName, brief);
 
-        // Монитору — та же короткая строка, что и логу: полный ввод Edit/Write — содержимое файлов.
+        // Монитору та же строка, что и логу: в полном вводе Edit/Write лежит содержимое файлов.
         using var pending = monitor.Approval(toolName, brief);
 
         if (store.IsAlwaysAllowed(signature))
@@ -74,7 +74,7 @@ public sealed class OperatorConsole(
 
         var card = ApprovalCardRenderer.Render(toolName, input, signature, suggested, store.ProjectPath);
 
-        // Обрезанный вход — файлом до карточки: разрешать команду, хвост которой не виден, нельзя.
+        // Обрезанный вход — файлом до карточки: команду без видимого хвоста разрешать нельзя.
         if (card.Attachment is { } attachment)
             await broker.SendAttachmentAsync(attachment.FileName, attachment.Text, ct);
 
@@ -87,7 +87,7 @@ public sealed class OperatorConsole(
                 return ApprovalDecision.Allow();
 
             case "always":
-                // Правило агента шире и живёт у него; своё запоминаем, только когда он ничего не предложил.
+                // Правило агента шире и живёт у него; своё пишем, только если он не предложил.
                 if (suggested is null) store.AddAlwaysAllow(signature);
                 Audit(AuditKinds.Rules, $"add {signature}", suggested is null ? "gateway" : "agent", user);
                 return ApprovalDecision.Allow(persistRules: suggested is not null);
@@ -104,8 +104,8 @@ public sealed class OperatorConsole(
 
     public async Task<QuestionResult> AskAsync(IReadOnlyList<AgentQuestion> questions, CancellationToken ct)
     {
-        // У вопроса сигнатуры нет — правил «всегда» для него не бывает, а полный текст вопроса
-        // в журнале лишний: хватает того же превью, что в логе.
+        // Сигнатуры у вопроса нет — правил «всегда» для него не бывает, а в журнал хватает
+        // того же превью, что и в лог.
         var brief = Text.Preview(questions.FirstOrDefault()?.Text ?? "");
         logger.LogInformation("Вопрос агента: {Key}", brief);
 
@@ -138,7 +138,7 @@ public sealed class OperatorConsole(
         card.Append(ChatHtml.EscapeCapped(question.Text, QuestionBudget));
 
         var buttons = new List<ChoiceOption>();
-        // На кнопке подпись урезана, а агенту нужен полный текст варианта.
+        // Подпись на кнопке урезана, а агенту нужен полный текст варианта.
         var fullLabels = new Dictionary<string, string>(StringComparer.Ordinal);
 
         for (var i = 0; i < question.Options.Count; i++)
@@ -150,7 +150,7 @@ public sealed class OperatorConsole(
                 card.Append(" — ").Append(ChatHtml.EscapeCapped(description, OptionDescriptionBudget));
 
             fullLabels[$"o{i}"] = label;
-            // Подпись под предел кнопки режет сам брокер: предел объявляет канал.
+            // Под предел кнопки подпись режет брокер: предел объявляет канал.
             buttons.Add(new ChoiceOption($"o{i}", label));
         }
 
@@ -189,30 +189,29 @@ public sealed class OperatorConsole(
     }
 
     /// <summary>
-    /// Ключ для кнопки «Всегда», когда агент не предложил своих правил. Запоминаем точное значение
-    /// ключевого аргумента, а не префикс: разрешённое «git status» не должно открывать дорогу
-    /// «git status &amp;&amp; rm -rf .», а один разрешённый Write — записи в любой файл.
+    /// Ключ для кнопки «Всегда», когда агент своих правил не предложил. Запоминаем точное
+    /// значение ключевого аргумента, а не префикс: разрешённое «git status» не должно
+    /// открывать «git status &amp;&amp; rm -rf .», а один Write — запись в любой файл.
     /// </summary>
     private static string BuildSignature(string toolName, JsonElement? input)
     {
         var key = Highlight(toolName, input)?.Trim();
         if (key is { Length: > 0 }) return $"{toolName}({key})";
 
-        // Ключевого поля нет (WebSearch с query, MCP-инструменты) — берём весь вход целиком.
-        // Голое имя инструмента открыло бы «Всегда» для любых его аргументов.
+        // Ключевого поля нет (WebSearch, MCP-инструменты) — берём вход целиком: голое имя
+        // инструмента открыло бы «Всегда» для любых аргументов.
         var raw = input is { ValueKind: not JsonValueKind.Undefined and not JsonValueKind.Null } element
             ? JsonSerializer.Serialize(element, SignatureJson)
             : "";
 
-        // Скобки обязательны даже при пустом входе: по ним отличаются сигнатуры этого формата
-        // от голого имени инструмента, которое писала старая версия (оно разрешало любые
-        // аргументы и вычищается при загрузке state.json).
+        // Скобки нужны даже при пустом входе: по ним сигнатура отличается от голого имени
+        // инструмента, которое писали старые версии и которое вычищается при загрузке.
         return raw is { Length: > 0 } && raw != "{}" ? $"{toolName}{raw}" : $"{toolName}()";
     }
 
     /// <summary>
-    /// Сигнатура показывается в карточке и в /rules: с экранированием по умолчанию кириллица
-    /// (план ExitPlanMode, query WebSearch) превращалась в «Пл…».
+    /// Сигнатура видна в карточке и в /rules, а с экранированием по умолчанию кириллица
+    /// превращается в \u-последовательности.
     /// </summary>
     private static readonly JsonSerializerOptions SignatureJson = new()
     {
