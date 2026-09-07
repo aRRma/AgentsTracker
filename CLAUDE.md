@@ -59,8 +59,8 @@ docker compose up -d --build                    # тот же шлюз в кон
 Страницы и ключи callback_data — `SettingsKeyboard.Page`/`Key12`; однобуквенный префикс
 аргумента экрана не должен быть hex-символом, иначе спутается с ключом.
 
-**Фичу.** Папка в `Features/` с `*Module` и строка в списке модулей в `Program.cs`;
-`ChatModule` остаётся последним.
+**Фичу.** Папка в `Features/` с `*Module : IFeatureModule` (`Infrastructure/Modules/`) и
+строка в списке модулей в `Program.cs`; `ChatModule` остаётся последним.
 
 **Агента (Codex, Cursor).** Проект `src/AgentsTracker.Agents.<Имя>` со ссылкой на
 `Agents.Abstractions`: `IAgentBackendModule` регистрирует `IAgentBackend`, `IAgentLimits` (или
@@ -83,7 +83,8 @@ docker compose up -d --build                    # тот же шлюз в кон
 **Эндпоинт монитора.** `api.MapGet` в `MonitorModule.MapEndpoints`, только чтение —
 `docs/monitor.md`.
 
-**Команду exe.** Класс в `Infrastructure/Cli/` с `public const string Name` и
+**Команду exe.** Класс в `Infrastructure/Cli/` (`protect-secrets` — в `Security/`, рядом с
+`SecretsProtector`) с `public const string Name` и
 `Run(string[] args, TextWriter output)`, строка в `switch` у `ConsoleCommands` и в её справке.
 Команды отрабатывают до сборки хоста: DI и Telegram им недоступны, ответ — только в
 `output`, код возврата 0 или 1. Заняты: `protect-secrets`, `install`, `uninstall`, `help`.
@@ -130,9 +131,11 @@ src/AgentsTracker.Gateway/
   Program.cs            папка данных, служебные команды, списки агентов (Gateway:Agent), каналов (Gateway:Channel:Type) и фич
   Domain/               чистые модели: GatewayState (state.json), AuditEvent
   Infrastructure/       Configuration (GatewayOptions, ProjectCatalog), State (SessionStore),
-                        Chat (ChatGatewayService, ChatDispatcher, MarkdownRenderer, Dispatch/),
-                        Audit, Monitoring (RunMonitor, RingBufferLog), Security,
-                        Cli/ (install, uninstall, protect-secrets), Autostart/ (задача Планировщика через schtasks)
+                        Chat (ChatGatewayService, ChatDispatcher, MarkdownRenderer, StartupNotice —
+                        «запущен»/«прерван» после перезапуска, Dispatch/ — контракты обработчиков),
+                        Container.Detected — в контейнере автозапуск не ставится, монитор слушает any,
+                        Audit, Monitoring (RunMonitor, RingBufferLog), Security (в т.ч. protect-secrets),
+                        Cli/ (install, uninstall), Autostart/ (задача Планировщика через schtasks)
   Features/             вертикальные слайсы, у каждого свой *Module:
     Approvals/          карточки подтверждений, ApprovalBroker, /rules
     Chat/               ChatWorker (очередь, запуск, сессии), RunStatusMessage, /new /stop
@@ -157,7 +160,9 @@ src/AgentsTracker.Gateway/
    (`ChatEnqueueTextHandler`, всегда `true`). Поэтому `ChatModule` последний. Неизвестные
    слэш-команды — это команды самого Claude Code, они уходят в CLI.
 
-Кнопки: префикс `cfg:` — меню, всё остальное (hex-id запроса) — `ApprovalBroker`.
+Кнопки: цепочка `IChatButtonHandler` (`Dispatch/`), каждый узнаёт свои по префиксу в
+`CanHandle`: `cfg:` — меню (`SettingsCallbackHandler`), всё остальное (hex-id запроса) —
+`ApprovalCallbackHandler` → `ApprovalBroker`.
 `ActiveChat` брокера ставит `ChatWorker` перед запуском, иначе карточки ушли бы в чат
 другого пользователя.
 
