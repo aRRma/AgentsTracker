@@ -3,15 +3,16 @@
 Подсказки для Claude Code при работе с этим репозиторием. Подробности — в `docs/`:
 
 - `docs/operations.md` — перезапуск шлюза, пробный экземпляр, worktree, инструменты.
-- `docs/deployment.md` — промышленный запуск: публикация, задача Планировщика, порты, секреты.
+- `docs/deployment.md` — промышленный запуск: публикация, install/uninstall, Docker, порты, секреты.
 - `docs/cli-contract.md` — контракт с CLI: подтверждения, stream-json, сессии, лимиты, скиллы.
 - `docs/monitor.md` — веб-монитор: эндпоинты, мок, стиль, доступность.
 
 ## Что это
 
-Мостик между Telegram и Claude Code. Одно приложение .NET 10 на всегда включённом Windows-ПК:
+Мостик между Telegram и Claude Code. Одно приложение .NET 10 на всегда включённом ПК:
 сообщение из чата → `claude -p` в папке проекта → вопросы «можно?» кнопками в Telegram → ответ
-агента обратно в чат.
+агента обратно в чат. Разрабатывается на Windows; в контейнере работает на Linux, отдельной
+установки для macOS и Linux пока нет.
 
 Код, комментарии, лог и тексты в чате — на русском.
 
@@ -21,7 +22,9 @@
 dotnet build                                    # TreatWarningsAsErrors включён
 dotnet run --project src\AgentsTracker.Gateway  # нужен appsettings.Local.json (рядом или в папке данных)
 dotnet run --project src\AgentsTracker.Gateway -- protect-secrets   # зашифровать BotToken/Proxy, перенести конфиг в %LOCALAPPDATA%
-pwsh -File scripts\install-autostart.ps1 -InstallDir C:\Apps\AgentsTracker   # publish + protect-secrets + ACL + задача Планировщика
+dotnet publish src\AgentsTracker.Gateway -c Release -o C:\Apps\AgentsTracker   # установка: публикация…
+C:\Apps\AgentsTracker\AgentsTracker.Gateway.exe install --start                # …и автозапуск; снять — uninstall
+docker compose up -d --build                    # тот же шлюз в контейнере, нужен .env
 ```
 
 Тестов нет. Всё, что трогает контракт с CLI, проверяется руками: запустить шлюз и смотреть лог.
@@ -65,9 +68,24 @@ pwsh -File scripts\install-autostart.ps1 -InstallDir C:\Apps\AgentsTracker   # p
 **Эндпоинт монитора.** `api.MapGet` в `MonitorModule.MapEndpoints`, только чтение —
 `docs/monitor.md`.
 
+**Команду exe.** Класс в `Infrastructure/Cli/` с `public const string Name` и
+`Run(string[] args, TextWriter output)`, строка в `switch` у `ConsoleCommands` и в её справке.
+Команды отрабатывают до сборки хоста: DI и Telegram им недоступны, ответ — только в
+`output`, код возврата 0 или 1. Заняты: `protect-secrets`, `install`, `uninstall`, `help`.
+Всё, что начинается с дефиса, командой не считается — это аргументы конфигурации.
+
+**Способ автозапуска (launchd, systemd).** Реализация `IAutostartInstaller` в
+`Infrastructure/Autostart/` и строка в `AutostartInstaller.ForCurrentOs`. Приём один на все
+ОС: положить файл-описание и позвать штатную утилиту через `ProcessAutostartInstaller.Run` —
+решение по коду возврата, вывод у них локализован. XML для `schtasks` пишется в UTF-16:
+в UTF-8 кириллица в описании задачи превращается в кракозябры.
+
 **Ключ конфига.** Свойство в `GatewayOptions` (+ `Validate`), дефолт в `appsettings.json`,
 пример `"//Ключ": "…"` в `appsettings.Local.example.json`, строка в README «Основные
-настройки». Ключ агента — в `ClaudeOptions` и `Gateway:Claude`.
+настройки». Ключ агента — в `ClaudeOptions` и `Gateway:Claude`. Исключение —
+`DataDirectory`: он нужен раньше конфига (в этой папке лежит сам `appsettings.Local.json`),
+поэтому читается в `AppPaths.UseConfiguredDirectory` из `appsettings.json` рядом с exe
+и окружения.
 
 ## Устройство
 
@@ -84,10 +102,11 @@ src/AgentsTracker.Agents.Claude/         Claude Code за этими контр�
   ClaudeLimits, ClaudeSkillCatalog, ClaudePluginRegistry, ClaudeCliLocator, ClaudeStreamEvent
   Mcp/                  McpConfigFile — mcp-gateway-<pid>.json с токеном; ClaudePermissionTool — payload CLI ↔ IOperatorConsole
 src/AgentsTracker.Gateway/
-  Program.cs            список агентов (выбор по Gateway:Agent) и фич
+  Program.cs            папка данных, служебные команды, список агентов (выбор по Gateway:Agent) и фич
   Domain/               чистые модели: GatewayState (state.json), AuditEvent
   Infrastructure/       Configuration (GatewayOptions, ProjectCatalog), State (SessionStore),
-                        Telegram (роутер, форматтер, Dispatch/), Audit, Monitoring (RunMonitor, RingBufferLog), Security
+                        Telegram (роутер, форматтер, Dispatch/), Audit, Monitoring (RunMonitor, RingBufferLog), Security,
+                        Cli/ (install, uninstall, protect-secrets), Autostart/ (задача Планировщика через schtasks)
   Features/             вертикальные слайсы, у каждого свой *Module:
     Approvals/          карточки подтверждений, ApprovalBroker, /rules
     Chat/               ChatWorker (очередь, запуск, сессии), RunStatusMessage, /new /stop
@@ -207,8 +226,9 @@ Telegram ──▶ TelegramBotService ──▶ ChatWorker ──▶ ClaudeBacke
 - Шлюз **не подключается** к сессии VS Code — это параллельная сессия на той же папке: общие
   `CLAUDE.md`, настройки, хуки и MCP, но своя история.
 - `--bare` нельзя: не читает `~/.claude`, ломает OAuth-логин по подписке.
-- Барьеры: `AllowedUserIds` + только личные чаты; Kestrel только `127.0.0.1`; MCP — токен в
-  заголовке; монитор без токена — поэтому только читает.
+- Барьеры: `AllowedUserIds` + только личные чаты; MCP — всегда `127.0.0.1` плюс токен в
+  заголовке; монитор без токена — поэтому только читает, а `MonitorBind: any` (нужен
+  в контейнере) публикуют лишь на `127.0.0.1` хоста.
 - Аргументы CLI — через `ProcessStartInfo.ArgumentList`, не склеивайте строку.
 - `HttpClient` — только через `IHttpClientFactory`. `ClaudeLimits.HttpClientName` — один таймаут,
   без ретраев. Telegram-клиент (`TelegramClientFactory`) — синглтон, DNS обновляет

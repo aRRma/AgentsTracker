@@ -1,0 +1,26 @@
+services:
+  gateway:
+    build: .
+    container_name: agentstracker
+    # Автозапуск в контейнере — это политика перезапуска, команда install тут не нужна.
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Папка проекта по умолчанию — путь внутри контейнера, а не хостовый.
+      Gateway__ProjectPath: /projects/${PROJECT:-}
+    volumes:
+      # Состояние шлюза: сессии, правила «Всегда», аудит.
+      - data:/data
+      # Логин агента и его настройки. Один раз войти:
+      #   docker compose exec gateway claude
+      - claude-home:/home/app/.claude
+      # Проекты, с которыми работает агент. Всё, что вне этого списка, ему недоступно —
+      # ради этой изоляции контейнер и берут.
+      - ${PROJECTS_DIR:-./projects}:/projects
+    ports:
+      # Только с этой машины: у монитора нет пароля.
+      - "127.0.0.1:${MONITOR_PORT:-5100}:5100"
+
+volumes:
+  data:
+  claude-home:

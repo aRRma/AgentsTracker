@@ -84,6 +84,7 @@ git worktree add ..\AgentsTracker-<задача> -b <ветка>   # main ост
   запускайте `pwsh -File`.
 - `modern-web-guidance` (`npx.cmd -y modern-web-guidance@latest search "…"`) — из инструмента
   PowerShell: из Git Bash `npx.cmd` молча отдаёт пустой вывод.
-- Промышленная установка (публикация, порты, секреты, обновление) — `deployment.md`.
-- `install-autostart.ps1` ставит задачу Планировщика от текущего пользователя, не службу:
-  OAuth-логин лежит в `%USERPROFILE%\.claude`, под SYSTEM он не найдётся. `-Uninstall` снимает.
+- Промышленная установка и Docker (публикация, порты, секреты, обновление) — `deployment.md`.
+  Автозапуск ставит сам exe: `install` заводит задачу Планировщика от текущего пользователя,
+  не службу (OAuth-логин лежит в `%USERPROFILE%\.claude`, под SYSTEM он не найдётся),
+  `uninstall` снимает её и добивает процессы, запущенные вручную из той же папки.
