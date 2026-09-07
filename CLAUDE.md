@@ -21,6 +21,7 @@ dotnet build                                    # TreatWarningsAsErrors вклю
 dotnet run --project src\AgentsTracker.Gateway  # нужен appsettings.Local.json (рядом или в папке данных)
 dotnet run --project src\AgentsTracker.Gateway -- protect-secrets   # зашифровать секреты канала и Proxy, перенести конфиг в %LOCALAPPDATA%
 pwsh -File scripts\install-autostart.ps1        # publish + protect-secrets + ACL + задача Планировщика
+pwsh -File scripts\migrate-channel-settings.ps1 # разовый перенос BotToken/AllowedUserIds в Gateway:Channel:Settings
 ```
 
 Тестов нет. Всё, что трогает контракт с CLI, проверяется руками: запустить шлюз и смотреть лог.

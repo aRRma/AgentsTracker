@@ -179,7 +179,7 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 | Симптом | Причина |
 |---|---|
 | Бот молчит | не заполнен `Channel:Settings:AllowedUserIds` или неверный токен |
-| `Gateway:BotToken больше не читается` | настройки канала переехали в `Gateway:Channel:Settings` — перенесите `BotToken` и `AllowedUserIds` туда |
+| `Gateway:BotToken больше не читается` | настройки канала переехали в `Gateway:Channel:Settings`; перенести — `pwsh -File scripts\migrate-channel-settings.ps1` (рядом останется `.backup`) |
 | Правка настроек не подействовала | нужен перезапуск — см. выше |
 | В меню не все репозитории | не задан `ProjectsRoot`; список листается `◀ ▶` |
 | `claude` не найден | не поставлен CLI (шаг 1) или не открыто новое окно PowerShell |
