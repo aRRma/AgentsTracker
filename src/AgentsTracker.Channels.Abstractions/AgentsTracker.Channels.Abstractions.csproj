@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>AgentsTracker.Channels</RootNamespace>
+  </PropertyGroup>
+
+  <!-- Ради IServiceCollection и IConfiguration в контракте модуля: канал сам регистрирует свои
+       сервисы и читает свои настройки. Конкретных мессенджеров здесь нет и не будет. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+</Project>
