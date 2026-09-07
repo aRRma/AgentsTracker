@@ -1,90 +1,121 @@
-# AgentsTracker
+<h1 align="center">AgentsTracker</h1>
 
-Телеграм-бот, через который вы ставите задачи Claude Code на своём компьютере.
+<p align="center">
+  Telegram-бот, через который вы ставите задачи Claude Code на своём компьютере.<br>
+  Пишете боту — на ПК запускается <code>claude</code> в папке проекта — ответ приходит в чат.
+</p>
 
-Пишете боту → на ПК запускается `claude` в папке проекта → ответ приходит в чат.
-Если агент хочет что-то изменить или выполнить, бот присылает карточку с кнопками
-«Разрешить / Отклонить / Всегда».
+<p align="center">
+  <img alt=".NET 10" src="https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white">
+  <img alt="Windows" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white">
+  <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-CLI-D97757">
+  <img alt="Telegram" src="https://img.shields.io/badge/Telegram-Bot%20API-26A5E4?logo=telegram&logoColor=white">
+</p>
 
-Компьютер должен быть включён. Белый IP и проброс портов не нужны.
+<!-- Скриншоты Telegram: положите в docs/images/ и раскомментируйте.
+     telegram-approval.png — карточка 🔐 с кнопками; telegram-answer.png — ответ агента.
+<p align="center">
+  <img src="docs/images/telegram-approval.png" width="320" alt="Карточка подтверждения в Telegram">
+  &nbsp;&nbsp;
+  <img src="docs/images/telegram-answer.png" width="320" alt="Ответ агента в чате">
+</p>
+-->
 
-## Что умеет
+Каждое опасное действие агент подтверждает у вас кнопкой. Разговор не теряется между
+сообщениями и перезапусками. Компьютер должен быть включён, белый IP не нужен.
 
-- Задача агенту — любым сообщением.
-- Каждое опасное действие подтверждается кнопкой.
-- Разговор не теряется между сообщениями и перезапусками.
-- Проект, модель и глубину размышлений можно менять из чата.
-- Показывает остаток тарифа. Платные кредиты агент потратить не может.
-- Ведёт журнал: кто, что и когда попросил.
-- Веб-монитор на этом же ПК: <http://127.0.0.1:5100/> — текущая задача, очередь,
-  ожидающие подтверждения, история, статистика, аудит и лог.
+## Как это выглядит
 
-## Что нужно перед запуском
+**Задача — обычным сообщением:**
 
-Пройдитесь по списку. Каждый пункт можно проверить командой в PowerShell.
+> **Вы:** поправь падение при пустом списке в `OrdersService` и прогони тесты
+>
+> **Бот:** 🕐 Работаю… 0:42 · 🧵 5e0b51f4
+> 🔧 3 вызова
+> ▸ Читаю OrdersService.cs
+> ▸ Правлю OrdersService.cs
+>
+> **Бот:** 🔐 **Bash** — прогнать тесты
+> `dotnet test --nologo`
+> `[ ✅ Разрешить ]  [ ♾ Всегда ]  [ ❌ Отклонить ]  [ ✋ Отклонить с причиной ]`
+>
+> **Бот:** Причина — `First()` на пустой коллекции. Заменил на `FirstOrDefault` с проверкой,
+> тесты зелёные: 42 passed.
 
-| Что | Как проверить | Если нет |
+**Переключение из чата:**
+
+> `/project` → выбрать репозиторий кнопками
+> `/model opus` · `/effort high` · `/mode plan`
+> `/status` → что делает агент сейчас и сколько осталось по тарифу
+
+**Веб-монитор** на этом же ПК (<http://127.0.0.1:5100/>): текущая задача, очередь,
+история, статистика, аудит и лог.
+
+<p align="center">
+  <img src="docs/images/monitor.png" width="800" alt="Веб-монитор AgentsTracker">
+</p>
+
+## Быстрый старт
+
+### Что нужно
+
+| | Проверка | Если нет |
 |---|---|---|
-| Windows 10 или 11 | — | Другие ОС не поддерживаются: используется DPAPI и Планировщик |
-| .NET 10 SDK | `dotnet --list-sdks` показывает строку `10.x` | <https://dotnet.microsoft.com/download/dotnet/10.0>, установите именно SDK, не Runtime |
-| PowerShell 7 | `pwsh --version` | `winget install Microsoft.PowerShell`. Нужен для скрипта автозапуска |
-| Claude Code | `claude --version` | `irm https://claude.ai/install.ps1 \| iex`, затем откройте новое окно |
-| Вход в Claude | `claude` запускается без просьбы войти | Запустите `claude` один раз и войдите по подписке. Бот использует этот же вход |
-| Telegram-аккаунт | — | Понадобится, чтобы создать бота и писать ему |
-| Доступ к Telegram с этого ПК | `curl.exe -sI https://api.telegram.org \| Select-Object -First 1` даёт `HTTP/1.1 ...` | Укажите прокси в настройке `Proxy` |
-| Git (по желанию) | `git --version` | Без него работает, но меню выбора проекта ищет папки с `.git` |
+| Windows 10/11 | — | другие ОС не поддерживаются |
+| .NET 10 SDK | `dotnet --list-sdks` → строка `10.x` | [скачать SDK](https://dotnet.microsoft.com/download/dotnet/10.0) (не Runtime) |
+| PowerShell 7 | `pwsh --version` | `winget install Microsoft.PowerShell` |
+| Claude Code | `claude --version` | `irm https://claude.ai/install.ps1 \| iex`, открыть новое окно |
+| Вход в Claude | `claude` стартует без просьбы войти | запустить `claude` и войти по подписке |
+| Telegram доступен | `curl.exe -sI https://api.telegram.org` | указать `Proxy` в настройках |
 
-Node.js не нужен: установщик Claude Code ставит готовый exe.
+Node.js не нужен. Git — по желанию: меню проектов ищет папки с `.git`.
 
-## Первый запуск за 5 шагов
+### Пять шагов
 
-**1. Создайте бота.** Напишите [@BotFather](https://t.me/BotFather) команду `/newbot`.
-Придёт токен вида `123456789:AA...` — скопируйте.
+1. **Бот.** У [@BotFather](https://t.me/BotFather) команда `/newbot`, скопируйте токен.
+2. **Настройки.** Скопируйте `src/AgentsTracker.Gateway/appsettings.Local.example.json`
+   рядом как `appsettings.Local.json`, впишите `BotToken` и `ProjectPath`.
+3. **Запуск:**
+   ```powershell
+   dotnet run --project src\AgentsTracker.Gateway
+   ```
+4. **Ваш id.** Напишите боту что угодно — в консоли появится
+   `Отклонено сообщение от постороннего пользователя. user id: 123456789`.
+   Впишите номер в `"AllowedUserIds": [ 123456789 ]`.
+5. **Перезапустите** той же командой. Бот напишет «🔌 Шлюз запущен».
 
-**2. Заполните настройки.** Скопируйте
-`src/AgentsTracker.Gateway/appsettings.Local.example.json` в ту же папку под именем
-`appsettings.Local.json` и впишите:
-
-```json
-"BotToken": "токен от BotFather",
-"ProjectPath": "C:/путь/к/вашему/проекту"
-```
-
-**3. Запустите:**
+### Автозапуск при входе в Windows
 
 ```powershell
-dotnet run --project src\AgentsTracker.Gateway
+pwsh -File scripts\install-autostart.ps1        # снять: -Uninstall
 ```
 
-**4. Узнайте свой id.** Напишите боту что угодно. В окне появится строка:
+Соберёт приложение, зашифрует токен, перенесёт настройки в `%LOCALAPPDATA%\AgentsTracker\`
+и создаст задачу Планировщика.
 
-```
-warn: Отклонено сообщение от постороннего пользователя. user id: 123456789
-```
+## Команды
 
-Впишите этот номер в настройки:
+| Команда | Что делает |
+|---|---|
+| любой текст | задача агенту |
+| `/menu` | все настройки кнопками |
+| `/status` · `/usage` | что происходит сейчас · остаток тарифа |
+| `/new` · `/stop` | начать разговор заново · прервать задачу |
+| `/sessions` | сессии проекта: переключить, новая, остановить |
+| `/agent` | модель, effort, режим разрешений (или `/model`, `/effort`, `/mode` текстом) |
+| `/project` | сменить папку проекта |
+| `/skills` | скиллы и плагины Claude Code |
+| `/rules` | правила «Всегда» этого репозитория; `/rules clear` — снять |
+| `/audit` · `/help` | последние действия · справка |
 
-```json
-"AllowedUserIds": [ 123456789 ]
-```
+## Подробнее
 
-**5. Запустите снова** той же командой. Бот напишет «🔌 Шлюз запущен». Готово.
-
-## Автозапуск при входе в Windows
-
-```powershell
-pwsh -File scripts\install-autostart.ps1
-```
-
-Скрипт соберёт приложение, зашифрует токен, перенесёт настройки в
-`%LOCALAPPDATA%\AgentsTracker\` и создаст задачу Планировщика. Снять — тот же скрипт
-с `-Uninstall`.
-
-## Перезапуск
+<details>
+<summary><b>Перезапуск</b></summary>
 
 Настройки читаются один раз при старте: поправили `appsettings.Local.json` — перезапустите.
 
-Если запускали вручную:
+Запускали вручную:
 
 ```powershell
 Get-Process AgentsTracker.Gateway | Stop-Process -Force
@@ -92,7 +123,7 @@ dotnet build src\AgentsTracker.Gateway
 Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.exe
 ```
 
-Если настроен автозапуск:
+Настроен автозапуск:
 
 ```powershell
 Stop-ScheduledTask -TaskName 'AgentsTracker Gateway'
@@ -102,28 +133,10 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 Если перезапуск пришёлся на работающую задачу, бот предупредит. Сделанное сохранено,
 напишите «продолжай».
 
-## Команды в чате
+</details>
 
-| Команда | Что делает |
-|---|---|
-| любой текст | задача агенту |
-| `/menu` | все настройки кнопками |
-| `/status` | что происходит сейчас и остаток тарифа |
-| `/sessions` | сессии проекта: переключить, начать новую, остановить запуск |
-| `/new` | начать разговор заново |
-| `/stop` | прервать текущую задачу |
-| `/agent` | модель, effort, режим разрешений |
-| `/model`, `/effort`, `/mode` | то же текстом: `/model sonnet`, `/effort high`, `/mode plan` |
-| `/skills` | скиллы Claude Code и плагины |
-| `/project` | сменить папку проекта |
-| `/usage` | остаток тарифа и расход |
-| `/rules` | выданные «Всегда» для этого репозитория; `/rules clear` — снять все |
-| `/audit` | последние действия |
-| `/help` | справка |
-
-Всё это есть и по кнопке «Меню» в поле ввода Telegram.
-
-## Основные настройки
+<details>
+<summary><b>Основные настройки</b></summary>
 
 Файл `appsettings.Local.json`, секция `Gateway`:
 
@@ -143,10 +156,12 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 | `McpPort` | порт, по которому `claude` спрашивает разрешения у бота (5099) |
 | `ApprovalTimeoutMinutes`, `RunTimeoutMinutes` | сколько ждать ответа на карточку (15) и всю задачу (60) |
 
-Полный список — в `appsettings.json`. Устройство проекта — [CLAUDE.md](CLAUDE.md),
-подробности — папка [docs/](docs/).
+Полный список — в `appsettings.json`.
 
-## Безопасность
+</details>
+
+<details>
+<summary><b>Безопасность</b></summary>
 
 Бот даёт доступ к командной строке вашего ПК. Поэтому:
 
@@ -171,16 +186,26 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 - если команда или правка не влезла в карточку, перед ней приходит файл с полным текстом —
   не разрешайте, не заглянув.
 
-## Если что-то не так
+</details>
+
+<details>
+<summary><b>Если что-то не так</b></summary>
 
 | Симптом | Причина |
 |---|---|
-| `dotnet` не найден или «SDK 10.0 не установлен» | нет .NET 10 SDK — см. чек-лист |
+| `dotnet` не найден или «SDK 10.0 не установлен» | нет .NET 10 SDK — см. «Что нужно» |
 | Бот молчит | не заполнен `AllowedUserIds`, неверный токен или Telegram недоступен без прокси |
-| Правка настроек не подействовала | нужен перезапуск — см. выше |
+| Правка настроек не подействовала | нужен перезапуск |
 | В меню не все репозитории | не задан `ProjectsRoot`; список листается `◀ ▶` |
 | `claude` не найден | не поставлен CLI или не открыто новое окно PowerShell; крайний случай — `Claude:Executable` |
 | Агент просит войти в аккаунт | запустите `claude` в PowerShell и войдите; бот использует этот вход |
-| Сборка падает с `MSB3021` | шлюз запущен — остановите: `Get-Process AgentsTracker.Gateway \| Stop-Process` |
+| Сборка падает с `MSB3021` | шлюз запущен — `Get-Process AgentsTracker.Gateway \| Stop-Process` |
 | Кнопки не приходят | `PermissionMode` стоит `auto` — поставьте `default` |
 | В логе кракозябры | консоль в cp866; смотрите лог в PowerShell |
+
+</details>
+
+---
+
+Устройство проекта — [CLAUDE.md](CLAUDE.md), детали эксплуатации, контракта с CLI и
+монитора — [docs/](docs/).
