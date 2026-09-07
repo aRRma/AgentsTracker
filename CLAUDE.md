@@ -65,7 +65,8 @@ docker compose up -d --build                    # тот же шлюз в кон
 **Агента (Codex, Cursor).** Проект `src/AgentsTracker.Agents.<Имя>` со ссылкой на
 `Agents.Abstractions`: `IAgentBackendModule` регистрирует `IAgentBackend`, `IAgentLimits` (или
 `NoAgentLimits`), `IAgentSkillCatalog` (или `NoAgentSkills`) и свой канал подтверждений через
-`IOperatorConsole`. Строка в списке `agents` в `Program.cs`, ссылка в `Gateway.csproj` и строка `COPY` в `Dockerfile`.
+`IOperatorConsole`. Строка в списке `agents` в `Program.cs`, ссылка в `Gateway.csproj`
+и строка `COPY` в `Dockerfile`.
 `grep -rn Claude src/AgentsTracker.Gateway --include=*.cs` должен находить только `Program.cs`
 и комментарии. Настройки агента — в `Gateway:<Id>`, хост их не читает.
 
