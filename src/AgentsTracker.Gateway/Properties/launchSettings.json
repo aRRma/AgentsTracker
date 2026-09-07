@@ -4,8 +4,8 @@
     "http": {
       "commandName": "Project",
       "dotnetRunMessages": true,
-      "launchBrowser": true,
-      "applicationUrl": "http://localhost:5203",
+      "//": "Ни applicationUrl, ни launchBrowser здесь не работают: Kestrel слушает порты явными Listen по ключам Gateway:McpPort и Gateway:MonitorPort. Монитор — http://127.0.0.1:5100.",
+      "launchBrowser": false,
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
