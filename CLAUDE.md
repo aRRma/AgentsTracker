@@ -45,10 +45,10 @@ docker compose up -d --build                    # тот же шлюз в кон
 Заняты: `/start /help` (Help), `/new /stop` (Chat), `/rules` (Approvals), `/audit` (Audit),
 `/menu /settings /status /sessions /agent /model /effort /mode /skills /project /usage`
 (Settings). Дубликат у двух фич роняет старт. В «Меню» только экраны — `/new /stop /model
-/effort /mode` работают текстом, но в списке их нет. Порядок везде один: статус и сессии,
-агент и скиллы, репозиторий, статистика, журналы. В `RootScreen` последних двух пунктов нет —
-`/rules` и `/audit` живут только в списке команд и справке. Прочие слэш-команды уходят в CLI
-как есть.
+/effort /mode` работают текстом, но в списке их нет. Порядок в списке команд и справке один:
+статус и сессии, агент и скиллы, репозиторий, статистика, правила, журналы. `RootScreen`
+повторяет его до статистики включительно: кнопок на `/rules` и `/audit` в меню нет. Прочие
+слэш-команды уходят в CLI как есть.
 
 **Экран настроек.** Класс с `ISettingsScreen` в `Features/Settings/Screens/`, регистрация в
 `SettingsModule`, кнопка в `RootScreen`. `RenderAsync` асинхронный ради лимитов;
