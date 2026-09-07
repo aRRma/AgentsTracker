@@ -235,7 +235,8 @@ Information для Edit/Write это содержимое файлов. `AskUser
 шлёт полный текст файлом (`ApprovalBroker.SendAttachmentAsync`), карточка предупреждает
 «показано не всё». Имя и содержимое файла решает `ApprovalCardRenderer` (`ApprovalAttachment`):
 обычно `<инструмент>-input.txt` со сводкой «=== фрагмент ===», а план `ExitPlanMode` уходит
-целиком как `plan.md` (`Truncated.AddDocument`) — markdown с разметкой, а не сырой текст. Карточки собираются через `EscapeCapped` с лимитом на каждый фрагмент:
+целиком как `plan.md` (`Truncated.AddDocument`) — markdown с разметкой, а не сырой текст.
+Карточки собираются через `EscapeCapped` с лимитом на каждый фрагмент:
 переполненное сообщение упало бы при отправке, а исключение стало бы отказом.
 
 Самовыдача прав проверена на CLI 2.1.x: `Write` в `.claude/settings.local.json` отклоняется

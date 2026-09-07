@@ -46,8 +46,6 @@ public static class ApprovalCardRenderer
         private readonly List<(string Title, string Text)> _items = [];
         private ApprovalAttachment? _document;
 
-        public bool Any => _items.Count > 0 || _document is not null;
-
         /// <summary>Экранирует под бюджет и запоминает исходник, если он не влез целиком.</summary>
         public string Capped(string title, string text, int budget)
         {
@@ -61,28 +59,30 @@ public static class ApprovalCardRenderer
         /// <summary>
         /// Целый документ вместо сводки «=== фрагмент ===»: план в .md Telegram открывает
         /// с разметкой, а в .txt с заголовком-разделителем он читался как сырой текст.
+        /// Заменяет сводку целиком — у инструмента с документом других обрезанных полей нет.
         /// </summary>
         public void AddDocument(string fileName, string text) => _document = new(fileName, text);
 
-        public ApprovalAttachment? Render(string toolName)
+        /// <param name="summaryName">Имя файла сводки, если документа нет.</param>
+        public ApprovalAttachment? Render(string summaryName)
         {
-            if (_document is { } document && _items.Count == 0) return document;
-            if (!Any) return null;
+            if (_document is { } document) return document;
+            if (_items.Count == 0) return null;
 
             var text = new StringBuilder();
             foreach (var (title, body) in _items)
                 text.Append("=== ").Append(title).Append(" ===\n").Append(body).Append("\n\n");
-            if (_document is { } extra)
-                text.Append("=== ").Append(extra.FileName).Append(" ===\n").Append(extra.Text).Append("\n\n");
 
-            return new ApprovalAttachment($"{SafeFileName(toolName)}-input.txt", text.ToString().TrimEnd() + "\n");
+            return new ApprovalAttachment(summaryName, text.ToString().TrimEnd() + "\n");
         }
     }
+
+    private static readonly HashSet<char> InvalidFileNameChars = [.. Path.GetInvalidFileNameChars()];
 
     /// <summary>Имя инструмента приходит от агента: в имени файла ему нечего делать с разделителями путей.</summary>
     private static string SafeFileName(string toolName)
     {
-        var safe = new string(toolName.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
+        var safe = new string([.. toolName.Select(c => InvalidFileNameChars.Contains(c) ? '_' : c)]);
         return Text.Clip(safe.Length == 0 ? "tool" : safe, 40);
     }
 
@@ -108,7 +108,10 @@ public static class ApprovalCardRenderer
         // Блоки <pre> не всегда заканчиваются переводом строки — выравниваем перед подписью.
         if (card[^1] != '\n') card.Append('\n');
 
-        if (truncated.Any)
+        // Предупреждение и файл — из одного решения: карточка без файла «не всё показано»
+        // или файл без предупреждения одинаково ведут к одобрению вслепую.
+        var attachment = truncated.Render($"{SafeFileName(toolName)}-input.txt");
+        if (attachment is not null)
             card.Append("\n⚠️ <b>Показано не всё</b> — полный текст в файле выше. Не разрешайте, не прочитав его.\n");
         var rules = suggested?.Take(MaxSuggestedRules).Select(rule => rule.Display).ToList() ?? [];
         if (rules.Count > 0)
@@ -124,7 +127,7 @@ public static class ApprovalCardRenderer
                 .Append("</i>");
         }
 
-        return new ApprovalCard(card.ToString(), truncated.Render(toolName));
+        return new ApprovalCard(card.ToString(), attachment);
     }
 
     /// <summary>Сколько предложенных агентом правил показывать: больше и не пришлёт, и не влезет.</summary>
@@ -195,18 +198,9 @@ public static class ApprovalCardRenderer
             case "Write":
                 if (Str(input, "file_path") is not { } writePath) return false;
                 AppendPath(card, writePath, projectPath);
-                if (Str(input, "content") is { } content)
-                {
-                    var lines = content.Split('\n');
-                    card.Append("Строк: ").Append(lines.Length).Append('\n');
-                    var preview = string.Join('\n', lines.Take(PreviewLines));
-                    card.Append("<pre>").Append(E(preview, ContentBudget));
-                    if (lines.Length > PreviewLines) card.Append("\n…");
-                    card.Append("</pre>");
-                    // Превью — это начало файла; в конец могли дописать что угодно.
-                    if (lines.Length > PreviewLines || TelegramFormatter.Escape(preview).Length > ContentBudget)
-                        truncated.Add("Содержимое файла", content);
-                }
+                // Превью — это начало файла; в конец могли дописать что угодно.
+                if (Str(input, "content") is { } content && !AppendPreview(card, "Строк: ", content))
+                    truncated.Add("Содержимое файла", content);
                 return true;
 
             case "Read":
@@ -252,16 +246,12 @@ public static class ApprovalCardRenderer
                 return true;
 
             case "ExitPlanMode":
-                if (Str(input, "plan") is not { } plan) return false;
-                var planLines = plan.Split('\n');
-                card.Append("📋 Строк: ").Append(planLines.Length).Append('\n');
-                var planPreview = string.Join('\n', planLines.Take(PreviewLines));
-                card.Append("<pre>").Append(E(planPreview, ContentBudget));
-                if (planLines.Length > PreviewLines) card.Append("\n…");
-                card.Append("</pre>");
+                // Пустой план — не план: пусть его покажет общий рендер, а не «Строк: 1» с пустым блоком.
+                if (Str(input, "plan") is not { Length: > 0 } rawPlan) return false;
+                var plan = rawPlan.Replace("\r\n", "\n").Trim('\n');
                 // План — это markdown: целиком он уходит файлом .md, который Telegram и
                 // редакторы показывают с заголовками и списками, а не сплошным текстом.
-                if (planLines.Length > PreviewLines || TelegramFormatter.Escape(planPreview).Length > ContentBudget)
+                if (!AppendPreview(card, "📋 Строк: ", plan))
                     truncated.AddDocument("plan.md", PlanDocument(plan));
                 return true;
 
@@ -373,14 +363,35 @@ public static class ApprovalCardRenderer
         signature.Replace("\\r\\n", "\n").Replace("\\n", "\n").Replace("\\t", "\t");
 
     /// <summary>
-    /// План агента как самостоятельный документ: без заголовка первого уровня файл в
-    /// просмотрщике начинается с середины — добавляем его, когда агент не поставил свой.
+    /// Счётчик строк и первые <see cref="PreviewLines"/> строк в блоке <pre>.
+    /// Возвращает false, если что-то осталось за кадром — хвост или обрезанные строки:
+    /// тогда полный текст должен уйти файлом.
+    /// </summary>
+    private static bool AppendPreview(StringBuilder card, string counter, string content)
+    {
+        var lines = content.Split('\n');
+        card.Append(counter).Append(lines.Length).Append('\n');
+
+        var preview = string.Join('\n', lines.Take(PreviewLines));
+        var shown = E(preview, ContentBudget);
+        var cut = TelegramFormatter.Escape(preview).Length > ContentBudget;
+
+        card.Append("<pre>").Append(shown);
+        // EscapeCapped уже поставил многоточие, если обрезал строки; второе на хвост не нужно.
+        if (lines.Length > PreviewLines && !cut) card.Append("\n…");
+        card.Append("</pre>");
+
+        return lines.Length <= PreviewLines && !cut;
+    }
+
+    /// <summary>
+    /// План агента как самостоятельный документ: без заголовка файл в просмотрщике начинается
+    /// с середины — добавляем его, когда агент не начал с заголовка любого уровня.
     /// </summary>
     private static string PlanDocument(string plan)
     {
-        var body = plan.Replace("\r\n", "\n").Trim('\n');
-        var titled = body.StartsWith("# ", StringComparison.Ordinal);
-        return (titled ? body : "# План\n\n" + body) + "\n";
+        var titled = plan.TrimStart().StartsWith('#');
+        return (titled ? plan : "# План\n\n" + plan) + "\n";
     }
 
     private static string? Str(JsonElement obj, string name) =>
