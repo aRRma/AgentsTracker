@@ -16,8 +16,8 @@ public sealed class ChatGatewayService(
     ILogger<ChatGatewayService> logger) : BackgroundService
 {
     /// <summary>
-    /// Сколько раз пробовать достучаться до канала при старте. При автозапуске на вход в
-    /// систему сеть часто поднимается позже шлюза, поэтому первая неудача — не приговор.
+    /// Сколько раз пробовать достучаться до канала при старте: при автозапуске на вход
+    /// в систему сеть часто поднимается позже шлюза.
     /// </summary>
     private const int ConnectAttempts = 6;
     private static readonly TimeSpan ConnectRetryDelay = TimeSpan.FromSeconds(10);
@@ -26,8 +26,8 @@ public sealed class ChatGatewayService(
     {
         if (!await ConnectAsync(stoppingToken))
         {
-            // Молча жить без чата нельзя: хост выглядел бы работающим, а чат — мёртвым.
-            // Ненулевой код выхода даёт Планировщику повод перезапустить задачу.
+            // Без чата жить нельзя: хост выглядел бы работающим, а чат мёртвым.
+            // Ненулевой код выхода — повод для Планировщика перезапустить задачу.
             Environment.ExitCode = 1;
             lifetime.StopApplication();
             return;

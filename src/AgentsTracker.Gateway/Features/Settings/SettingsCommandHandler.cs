@@ -4,8 +4,8 @@ using AgentsTracker.Gateway.Infrastructure.Chat.Dispatch;
 namespace AgentsTracker.Gateway.Features.Settings;
 
 /// <summary>
-/// Команды, открывающие меню, и их текстовые формы: <c>/mode plan</c>, <c>/model sonnet</c>,
-/// <c>/effort high</c> применяются через тот же экран «Агент», что и кнопки, — логика одна.
+/// Команды меню и их текстовые формы. <c>/mode plan</c>, <c>/model sonnet</c>,
+/// <c>/effort high</c> идут через тот же экран «Агент», что и кнопки — логика одна.
 /// </summary>
 public sealed class SettingsCommandHandler(
     IChatChannel channel,
@@ -48,8 +48,8 @@ public sealed class SettingsCommandHandler(
                 await menu.OpenAsync(chat, user, ct, "usage");
                 break;
 
-            // Команда без аргумента открывает тот же экран с кнопками, что и меню: набирать
-            // значение руками после подсказки текстом — лишний шаг с телефона.
+            // Без аргумента открываем тот же экран с кнопками: набирать значение руками
+            // после текстовой подсказки — лишний шаг с телефона.
             case "/agent":
             case "/model" or "/effort" or "/mode" when argument.Length == 0:
                 await menu.OpenAsync(chat, user, ct, "agent");
@@ -85,16 +85,16 @@ public sealed class SettingsCommandHandler(
 
         Agent().Apply("effort:" + argument, user, chat);
 
-        // Именно выбранный из чата уровень, а не действующий: после reset он null,
-        // и ответ должен говорить про конфиг, а не повторять его значение как выбранное.
+        // Берём выбранный из чата уровень, а не действующий: после reset он null, и ответ
+        // должен говорить про конфиг, а не выдавать его значение за выбор.
         return store.Effort is { } level
             ? $"🎚 {setting.Describe(level)}. Применится со следующего запуска."
             : $"🎚 Effort: {options.Value.Effort ?? "по умолчанию"} — как в конфиге.";
     }
 
     /// <summary>
-    /// Меняет режим работы агента. Новый режим ложится в state.json
-    /// и переживает перезапуск; текущий запуск доигрывает со старым.
+    /// Меняет режим работы. Новый ложится в state.json и переживает перезапуск,
+    /// а текущий запуск доигрывает со старым.
     /// </summary>
     private string ChangeMode(string argument, UserId user, ChatId chat)
     {
@@ -109,8 +109,8 @@ public sealed class SettingsCommandHandler(
 
         if (mode is null || !setting.IsSelectable(mode))
         {
-            // Режимы без подтверждений сюда не попадают намеренно: полное снятие
-            // подтверждений остаётся правкой конфига на самой машине.
+            // Режимов без подтверждений здесь нет намеренно: снять их можно только
+            // правкой конфига на самой машине.
             return $"""
                 Не знаю режим «{argument}». Доступно: {string.Join(", ", setting.Selectable)}, reset.
                 Снять подтверждения полностью можно только в appsettings.Local.json на самой машине.
@@ -121,7 +121,7 @@ public sealed class SettingsCommandHandler(
 
         Agent().Apply("mode:" + mode, user, chat);
 
-        // Занятость спрашиваем у воркера, а не угадываем по тексту тоста экрана.
+        // Занятость спрашиваем у воркера, а не угадываем по тосту экрана.
         var note = worker.IsBusy ? "\nТекущий запуск доигрывает со старым режимом." : "";
         return $"🔐 {setting.Describe(mode)}.\nПрименится со следующего запуска.{note}";
     }

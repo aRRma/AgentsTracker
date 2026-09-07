@@ -14,21 +14,21 @@ using AgentsTracker.Gateway.Infrastructure.Modules;
 // нельзя взять из конфига — только из appsettings.json рядом с exe или из окружения.
 AppPaths.UseConfiguredDirectory();
 
-// Единственное место, где хост знает конкретные каналы связи. Новый канал — свой проект
+// Единственное место, где хост знает конкретные каналы. Новый канал — свой проект
 // с IChatChannelModule и строка здесь. Список нужен уже служебным командам: какие ключи
-// в секции канала секретные, знает только его модуль.
+// в настройках канала секретные, знает только его модуль.
 IReadOnlyList<IChatChannelModule> channels = [new TelegramChannelModule()];
 
-// Служебные команды (protect-secrets, install, uninstall) отрабатывают до сборки хоста:
-// они работают с файлами и автозапуском, транспорт канала и агент им не нужны.
+// Служебные команды отрабатывают до сборки хоста: они трогают файлы и автозапуск,
+// транспорт канала и агент им не нужны.
 if (ConsoleCommands.TryRun(args, channels, Console.Out, out var commandExitCode)) return commandExitCode;
 
 // Единственное место, где хост знает конкретных агентов. Новый агент — свой проект
 // с IAgentBackendModule и строка здесь.
 IReadOnlyList<IAgentBackendModule> agents = [new ClaudeAgentModule()];
 
-// Порядок важен: текстовые обработчики опрашиваются в порядке регистрации, и ChatModule
-// с его «поймать всё» должен идти последним.
+// Порядок важен: текстовые обработчики опрашиваются в порядке регистрации, а ChatModule
+// ловит всё — ему место последним.
 IReadOnlyList<IFeatureModule> modules =
 [
     new ApprovalsModule(),
@@ -39,8 +39,8 @@ IReadOnlyList<IFeatureModule> modules =
     new ChatModule(),
 ];
 
-// Content root — папка exe, а не текущая папка процесса: иначе запуск из другой папки
-// (Start-Process из корня репозитория, ярлык) молча теряет appsettings.json.
+// Content root — папка exe, а не текущая папка процесса: запуск из другого места
+// (Start-Process, ярлык) иначе молча теряет appsettings.json.
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
     Args = args,
@@ -78,6 +78,6 @@ app.MapFeatures(agent, channel, modules);
 
 await app.RunAsync();
 
-// Ненулевой код ставит ChatGatewayService, когда не смог подключиться: по нему Планировщик
-// перезапускает задачу.
+// Ненулевой код ставит ChatGatewayService, если не смог подключиться: по нему Планировщик
+// перезапустит задачу.
 return Environment.ExitCode;

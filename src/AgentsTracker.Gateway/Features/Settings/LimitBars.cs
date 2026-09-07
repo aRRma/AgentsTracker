@@ -5,13 +5,13 @@ using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 namespace AgentsTracker.Gateway.Features.Settings;
 
 /// <summary>
-/// Шкалы остатка тарифных окон для чата. Графики в чате нет, поэтому шкала — строка из
-/// сегментов в <c>&lt;code&gt;</c> (моноширинный шрифт держит их одной ширины), а «анимация» —
-/// несколько правок сообщения, на каждой шкала заполнена на долю <c>progress</c> от остатка.
+/// Шкалы остатка тарифных окон. Графиков в чате нет, поэтому шкала — строка сегментов
+/// в <c>&lt;code&gt;</c> (моноширинный шрифт держит одну ширину), а «анимация» — несколько
+/// правок сообщения, на каждой шкала заполнена на долю <c>progress</c> от остатка.
 /// </summary>
 internal static class LimitBars
 {
-    /// <summary>Сколько правок делает заполнение: больше — красивее, но каналы режут частые правки.</summary>
+    /// <summary>Сколько правок на заполнение: больше красивее, но каналы режут частые правки.</summary>
     public const int Frames = 3;
 
     /// <summary>Пауза между кадрами; на трёх кадрах укладываемся в секунду.</summary>
@@ -19,12 +19,12 @@ internal static class LimitBars
 
     private const int Cells = 10;
 
-    /// <summary>Доля заполнения кадра 0..1: последний кадр — итог, первый — почти пустая шкала.</summary>
+    /// <summary>Доля заполнения кадра 0..1: первый почти пустой, последний — итог.</summary>
     public static double Progress(int frame) => (double)(frame + 1) / Frames;
 
     /// <summary>
-    /// Блок «Остаток тарифа» построчно, уже в HTML. Ошибка опроса — одной строкой курсивом;
-    /// нет окон — «окон нет»: пустой блок выглядел бы как сломанный экран.
+    /// Блок «Остаток тарифа» построчно, уже в HTML. Ошибку опроса пишем курсивом, а вместо
+    /// пустого блока — «окон нет»: пустота выглядела бы как сломанный экран.
     /// </summary>
     public static string Render(LimitsView view, double progress)
     {
@@ -44,14 +44,14 @@ internal static class LimitBars
             .Append('▱', Cells - filled)
             .ToString();
 
-        // Процент округляем вниз, как и в сводке: «1%» честнее обнадёживающих «2%».
+        // Округляем вниз, как и в сводке, — чтобы не обнадёживать.
         var percent = ((int)Math.Floor(shown * 100)).ToString(CultureInfo.InvariantCulture);
         var reset = gauge.ResetLabel is { } label ? $", сброс {E(label)}" : "";
 
         return $"{Lamp(gauge.Remaining)} <code>{bar}</code> {percent}% осталось · {E(gauge.Title)}{reset}";
     }
 
-    /// <summary>Цвет — по итоговому остатку, а не по кадру: лампочка не должна мигать во время заполнения.</summary>
+    /// <summary>Цвет по итоговому остатку, а не по кадру: лампочка не должна мигать при заполнении.</summary>
     private static string Lamp(double remaining) => remaining switch
     {
         <= 0.0 => "⛔",

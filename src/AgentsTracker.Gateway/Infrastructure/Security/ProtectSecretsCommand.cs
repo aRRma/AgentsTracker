@@ -5,9 +5,9 @@ using System.Text.Json.Nodes;
 namespace AgentsTracker.Gateway.Infrastructure.Security;
 
 /// <summary>
-/// <c>dotnet run -- protect-secrets [путь]</c>: шифрует чувствительные ключи локального конфига
-/// на месте. По умолчанию — файл в папке данных; если его там нет, берётся тот, что рядом
-/// с приложением, и результат переносится в папку данных.
+/// <c>protect-secrets [путь]</c>: шифрует секретные ключи локального конфига на месте.
+/// По умолчанию берёт файл из папки данных; если его там нет — тот, что рядом с exe,
+/// и переносит результат в папку данных.
 /// </summary>
 public static class ProtectSecretsCommand
 {
@@ -17,14 +17,14 @@ public static class ProtectSecretsCommand
     private static readonly string[] GatewaySecrets = ["Proxy"];
 
     /// <summary>
-    /// Шифрует секреты хоста и секреты выбранного канала: какие ключи в его настройках
-    /// секретные, знает только модуль канала (<see cref="IChatChannelModule.SecretKeys"/>).
-    /// Берём ключи всех известных каналов — шифруется всё равно только то, что есть в файле.
+    /// Шифрует секреты хоста и канала: какие ключи секретные, знает только модуль канала
+    /// (<see cref="IChatChannelModule.SecretKeys"/>). Берём ключи всех известных каналов —
+    /// зашифруется всё равно только то, что есть в файле.
     /// </summary>
     public static int Run(string[] args, IReadOnlyList<IChatChannelModule> channels, TextWriter output)
     {
-        // DPAPI есть только на Windows. Промолчать нельзя: человек решит, что токен зашифрован,
-        // а он останется открытым.
+        // DPAPI есть только на Windows, и промолчать нельзя: человек решит, что токен
+        // зашифрован, а тот останется открытым.
         if (!OperatingSystem.IsWindows())
         {
             output.WriteLine(
@@ -49,9 +49,9 @@ public static class ProtectSecretsCommand
             return 1;
         }
 
-        // Токен в корне секции Gateway новый шлюз не читает, а значит и не шифрует: молча
-        // перенести такой файл в папку данных значило бы положить туда токен открытым текстом
-        // и отчитаться «все секреты зашифрованы». Сначала миграция, потом шифрование.
+        // Токен в корне секции Gateway шлюз не читает и не шифрует: перенести такой файл
+        // в папку данных значило бы положить туда открытый токен и отчитаться об успехе.
+        // Сначала миграция, потом шифрование.
         var legacy = ChannelOptions.MovedKeys.Where(key => gateway[key] is not null).ToArray();
         if (legacy.Length > 0)
         {
@@ -71,8 +71,8 @@ public static class ProtectSecretsCommand
         var target = AppPaths.LocalSettings;
         var moving = !string.Equals(Path.GetFullPath(source), Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase);
 
-        // Боевой конфиг молча не затираем: устаревший файл рядом с проектом иначе снёс бы
-        // рабочий токен. Перенос — только когда в папке данных ещё ничего нет.
+        // Боевой конфиг не затираем: устаревший файл рядом с проектом снёс бы рабочий
+        // токен. Переносим, только если в папке данных ещё пусто.
         if (moving && File.Exists(target))
         {
             output.WriteLine($"В {target} уже есть конфиг — он и используется. Чтобы заменить его файлом {source}, удалите или переименуйте целевой.");
@@ -99,7 +99,7 @@ public static class ProtectSecretsCommand
         return 0;
     }
 
-    /// <summary>Зашифровывает перечисленные ключи объекта на месте. Возвращает, сколько значений тронуто.</summary>
+    /// <summary>Шифрует перечисленные ключи на месте; возвращает, сколько значений тронуто.</summary>
     private static int Protect(JsonObject section, IReadOnlyList<string> keys)
     {
         var changed = 0;

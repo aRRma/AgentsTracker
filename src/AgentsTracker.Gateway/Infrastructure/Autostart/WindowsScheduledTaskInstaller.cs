@@ -6,9 +6,9 @@ using System.Text;
 namespace AgentsTracker.Gateway.Infrastructure.Autostart;
 
 /// <summary>
-/// Автозапуск на Windows — задача Планировщика, создаётся через <c>schtasks</c> с XML.
-/// Задача от текущего пользователя и без повышения прав: агент читает OAuth-логин из
-/// <c>%USERPROFILE%\.claude</c>, под SYSTEM его там нет — поэтому не служба.
+/// Автозапуск на Windows — задача Планировщика через <c>schtasks</c> с XML. От текущего
+/// пользователя и без повышения прав: агент читает OAuth-логин из
+/// <c>%USERPROFILE%\.claude</c>, а под SYSTEM его там нет — поэтому не служба.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class WindowsScheduledTaskInstaller : ProcessAutostartInstaller, IAutostartInstaller
@@ -19,14 +19,14 @@ public sealed class WindowsScheduledTaskInstaller : ProcessAutostartInstaller, I
 
     public void Install(AutostartRequest request)
     {
-        // Файл именно в UTF-16: schtasks принимает и UTF-8, но кириллица в описании задачи
-        // превращается в кракозябры — проверено.
+        // Именно UTF-16: UTF-8 schtasks тоже примет, но кириллица в описании задачи
+        // превратится в кракозябры.
         var file = Path.Combine(Path.GetTempPath(), $"agentstracker-task-{Environment.ProcessId}.xml");
         File.WriteAllText(file, BuildXml(request), Encoding.Unicode);
 
         try
         {
-            // /F — перезаписать одноимённую: обновление версии это тот же install.
+            // /F перезаписывает одноимённую: обновление версии — тот же install.
             EnsureOk(Run(SchTasks, "/Create", "/XML", file, "/TN", request.Name, "/F"),
                 $"Не удалось создать задачу «{request.Name}»");
         }
@@ -51,8 +51,8 @@ public sealed class WindowsScheduledTaskInstaller : ProcessAutostartInstaller, I
         EnsureOk(Run(SchTasks, "/Run", "/TN", name), $"Не удалось запустить задачу «{name}»");
 
     /// <summary>
-    /// Останавливает запущенный экземпляр. Незапущенная задача — не ошибка: <c>/End</c> для неё
-    /// возвращает ненулевой код, а вызывающему важно лишь, что процесса больше нет.
+    /// Останавливает запущенный экземпляр. Незапущенная задача не ошибка: <c>/End</c> для
+    /// неё вернёт ненулевой код, а вызывающему важно лишь, что процесса больше нет.
     /// </summary>
     public void Stop(string name) => Run(SchTasks, "/End", "/TN", name);
 

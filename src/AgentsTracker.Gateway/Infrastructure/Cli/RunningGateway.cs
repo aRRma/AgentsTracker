@@ -4,10 +4,10 @@ using System.Diagnostics;
 namespace AgentsTracker.Gateway.Infrastructure.Cli;
 
 /// <summary>
-/// Процессы шлюза, запущенные из той же папки. Нужны обеим командам: <c>install</c> ждёт, пока
-/// процесс появится, <c>uninstall</c> — пока он исчезнет. Пока exe запущен, публикация новой
-/// версии поверх падает с MSB3021, поэтому снятие автозапуска обязано освобождать файл, даже
-/// если шлюз подняли руками, а не задачей.
+/// Процессы шлюза из той же папки. <c>install</c> ждёт, пока процесс появится,
+/// <c>uninstall</c> — пока исчезнет: пока exe запущен, публикация новой версии поверх падает
+/// с MSB3021, поэтому снятие автозапуска обязано освободить файл — даже если шлюз подняли
+/// руками, а не задачей.
 /// </summary>
 public static class RunningGateway
 {
@@ -66,7 +66,7 @@ public static class RunningGateway
                 }
                 catch (Exception ex) when (ex is InvalidOperationException or Win32Exception or NotSupportedException)
                 {
-                    // Процесс уже завершился сам или закрыт от нас — считать это ошибкой не за что.
+                    // Процесс завершился сам или закрыт от нас — не ошибка.
                 }
             }
         }
@@ -82,7 +82,7 @@ public static class RunningGateway
         }
         catch (Exception ex) when (ex is InvalidOperationException or Win32Exception or NotSupportedException)
         {
-            // Чужой процесс или уже завершившийся: путь недоступен — значит, не наш.
+            // Путь недоступен — процесс чужой или уже завершился, значит не наш.
             return false;
         }
     }

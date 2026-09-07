@@ -8,12 +8,12 @@ namespace AgentsTracker.Gateway.Features.Settings;
 internal static class SettingsKeyboard
 {
     /// <summary>
-    /// Префикс данных кнопок меню. Карточки подтверждений используют «id:ключ» с восьмизначным
-    /// hex-id, так что перепутать их нельзя — но разбирает их всё равно другой обработчик.
+    /// Префикс данных кнопок меню. У карточек подтверждений формат «id:ключ» с восьмизначным
+    /// hex-id, так что перепутать нельзя.
     /// </summary>
     public const string CallbackPrefix = "cfg:";
 
-    /// <summary>Сколько строк показывать на странице списка, чтобы сообщение и клавиатура остались читаемыми.</summary>
+    /// <summary>Строк на странице списка: больше — и сообщение с клавиатурой уже не прочитать.</summary>
     public const int PageSize = 12;
 
     public static KeyboardButton Button(string label, string data) => new(label, CallbackPrefix + data);
@@ -26,17 +26,17 @@ internal static class SettingsKeyboard
 
     /// <summary>
     /// Короткий ключ значения для данных кнопки: канал ограничивает их длину
-    /// (<see cref="ChannelLimits.ButtonDataBytes"/> — у Telegram 64 байта), и полный путь
-    /// или команда плагина туда не влезают. Регистр не учитывается — как и ProjectCatalog
-    /// при сравнении путей. Ключ всегда 12 hex-символов, поэтому однобуквенные префиксы
-    /// экранов должны быть не hex.
+    /// (<see cref="ChannelLimits.ButtonDataBytes"/>, у Telegram 64 байта), и полный путь
+    /// или команда плагина туда не влезут. Регистр не учитываем — как и ProjectCatalog
+    /// в путях. Ключ всегда 12 hex-символов, поэтому однобуквенные префиксы экранов
+    /// не должны быть hex.
     /// </summary>
     public static string Key12(string value) =>
         Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(value.ToLowerInvariant())))[..12];
 
     /// <summary>
-    /// Текущая страница списка, счётчик для текста и ряд кнопок перелистывания (нет — если
-    /// страница одна). Номер зажимается в границы: список мог укоротиться после отрисовки.
+    /// Текущая страница списка, счётчик для текста и ряд кнопок перелистывания (null, если
+    /// страница одна). Номер зажимаем в границы: список мог укоротиться после отрисовки.
     /// </summary>
     public static (T[] Items, int Page, string Counter, KeyboardButton[]? PageRow) Page<T>(
         IReadOnlyList<T> all, int page, string screen, string pagePrefix, string noun)

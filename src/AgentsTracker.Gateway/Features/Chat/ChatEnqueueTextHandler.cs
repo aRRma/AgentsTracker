@@ -15,16 +15,16 @@ public sealed class ChatEnqueueTextHandler(
         // Превью, а не весь промпт: в него могли вставить токен или содержимое файла.
         audit.Write(AuditEvent.Now(AuditKinds.Message, $"text: {Text.Preview(text)}", user, chat, store.ProjectPath, store.SessionId));
 
-        // Проверяем занятость до постановки в очередь, иначе первое же сообщение
-        // может увидеть уже начавшуюся собственную обработку.
+        // Занятость проверяем до постановки в очередь: иначе сообщение увидит уже
+        // начавшуюся собственную обработку.
         var wasBusy = worker.IsBusy;
 
-        // Слэш-команды шлюза сюда не доходят — остались команды и скиллы самого агента.
-        // Считаем их, чтобы экран скиллов знал, что запускают чаще всего.
+        // Команды шлюза сюда не доходят, значит это скилл агента. Считаем их, чтобы
+        // экран скиллов знал, что запускают чаще.
         if (text.StartsWith('/')) store.RecordSkillUse(CommandName(text));
 
-        // Активный чат выставляет ChatWorker перед самым запуском: сделать это здесь значило бы
-        // увести карточки уже идущего запуска в чат другого пользователя.
+        // Активный чат ставит ChatWorker перед запуском: сделай это здесь — и карточки
+        // идущего запуска уехали бы в чат другого пользователя.
         worker.Enqueue(chat, user, text);
 
         if (wasBusy)
@@ -33,7 +33,7 @@ public sealed class ChatEnqueueTextHandler(
         return true;
     }
 
-    /// <summary>Первое слово без суффикса «@имябота»: каналы подставляют его при выборе из подсказок.</summary>
+    /// <summary>Первое слово без «@имябота» — канал подставляет его при выборе из подсказок.</summary>
     private static string CommandName(string text)
     {
         var word = text.Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries)[0];

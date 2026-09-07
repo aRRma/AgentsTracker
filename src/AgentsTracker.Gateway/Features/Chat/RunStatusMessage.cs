@@ -4,15 +4,13 @@ using AgentsTracker.Gateway.Infrastructure.Chat;
 namespace AgentsTracker.Gateway.Features.Chat;
 
 /// <summary>
-/// Статусное сообщение идущего запуска. Раз в несколько секунд редактируется: часы
-/// на циферблате крутятся, время растёт, под ними — последние шаги агента. Без этого
-/// долгий запуск неотличим от зависшего шлюза, и пользователь шлёт /stop зря.
-/// Заодно держит индикатор «печатает» — каналы гасят его через несколько секунд.
+/// Статусное сообщение идущего запуска: раз в несколько секунд правится — крутятся часы,
+/// растёт время, под ними последние шаги агента. Без него долгий запуск не отличить
+/// от зависшего шлюза, и /stop летит зря. Заодно держит индикатор «печатает».
 /// </summary>
 internal sealed class RunStatusMessage : IAsyncDisposable
 {
-    // Четыре, а не пять секунд: индикатор «печатает» гаснет через пять, и на ровно пяти
-    // он мигал бы.
+    // Четыре секунды, а не пять: индикатор «печатает» гаснет через пять и на ровно пяти мигал бы.
     private static readonly TimeSpan Tick = TimeSpan.FromSeconds(4);
     private static readonly string[] Clock = ["🕐", "🕑", "🕒", "🕓", "🕔", "🕕", "🕖", "🕗", "🕘", "🕙", "🕚", "🕛"];
     private const int RecentSteps = 3;
@@ -39,7 +37,7 @@ internal sealed class RunStatusMessage : IAsyncDisposable
         _logger = logger;
     }
 
-    /// <summary>Отправленное сообщение статуса: по нему ChatWorker удаляет его после запуска.</summary>
+    /// <summary>Отправленное сообщение: по нему ChatWorker удаляет статус после запуска.</summary>
     public MessageRef Message => _message;
 
     public static async Task<RunStatusMessage> StartAsync(
@@ -92,7 +90,7 @@ internal sealed class RunStatusMessage : IAsyncDisposable
             }
             catch (OperationCanceledException) { return; }
 
-            // Два вызова — по отдельности: сбой индикатора не должен задерживать текст статуса.
+            // Порознь: сбой индикатора не должен задерживать текст статуса.
             await TryAsync(() => _channel.IndicateTypingAsync(_chat, _cts.Token));
 
             var text = Render();
@@ -105,7 +103,7 @@ internal sealed class RunStatusMessage : IAsyncDisposable
 
     /// <summary>
     /// Сетевой вызов с поглощением ошибок: сообщение удалили или канал просит подождать —
-    /// пропускаем такт, не выходим из цикла, иначе один сбой сети оставит статус замершим
+    /// пропускаем такт, но из цикла не выходим, иначе один сбой заморозит статус
     /// до конца запуска.
     /// </summary>
     private async Task<bool> TryAsync(Func<Task> call)
@@ -124,8 +122,8 @@ internal sealed class RunStatusMessage : IAsyncDisposable
     }
 
     /// <summary>
-    /// Останавливает обновления и дожидается их: иначе правка догнала бы удаление сообщения.
-    /// Ждём ограниченно — зависший сетевой вызов не должен держать очередь чата.
+    /// Останавливает обновления и дожидается их, иначе правка догнала бы удаление
+    /// сообщения. Ждём с потолком: зависший вызов не должен держать очередь чата.
     /// </summary>
     public async ValueTask DisposeAsync()
     {

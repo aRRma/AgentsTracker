@@ -17,10 +17,9 @@ public static class AuditKinds
 }
 
 /// <summary>
-/// Одна короткая запись журнала действий: кто пришёл (UserKey/ChatKey), куда (Project/Session)
-/// и что сделал (Kind/Summary/Outcome). Никаких секретов и полных текстов — только суть.
-/// Адреса — строками «канал:значение»: номера разных каналов совпадают, и число из одного
-/// читалось бы в журнале как чужой пользователь.
+/// Одна запись журнала: кто (UserKey/ChatKey), куда (Project/Session) и что сделал
+/// (Kind/Summary/Outcome). Без секретов и полных текстов. Адреса строками «канал:значение»:
+/// номера разных каналов совпадают, и число из одного читалось бы как чужой пользователь.
 /// </summary>
 public sealed record AuditEvent(
     DateTimeOffset At,
@@ -32,7 +31,7 @@ public sealed record AuditEvent(
     string? Session = null,
     string? Outcome = null)
 {
-    /// <summary>Сколько символов Summary держать: строка должна читаться в чате одной строкой.</summary>
+    /// <summary>Предел Summary: запись должна укладываться в одну строку в чате.</summary>
     public const int SummaryLimit = 200;
 
     public static AuditEvent Now(
@@ -41,8 +40,8 @@ public sealed record AuditEvent(
         NowByKeys(kind, summary, user?.Key, chat?.Key, project, session, outcome);
 
     /// <summary>
-    /// То же, но адреса уже строками: запись по данным из state.json, где живут готовые Key
-    /// (прерванный запуск прошлого экземпляра).
+    /// То же, но адреса уже строками — для записи по данным из state.json, где лежат
+    /// готовые Key (прерванный запуск прошлого экземпляра).
     /// </summary>
     public static AuditEvent NowByKeys(
         string kind, string summary, string? userKey = null, string? chatKey = null,

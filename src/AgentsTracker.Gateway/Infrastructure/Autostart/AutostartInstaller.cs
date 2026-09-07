@@ -12,8 +12,8 @@ public static class AutostartInstaller
 }
 
 /// <summary>
-/// Заглушка для систем, где автозапуск ещё не сделан. Не бросает при чтении состояния,
-/// чтобы <c>uninstall</c> на чужой ОС отвечал «нечего снимать», а не стектрейсом.
+/// Заглушка для систем, где автозапуск ещё не сделан. Чтение состояния не бросает —
+/// <c>uninstall</c> на такой ОС должен ответить «нечего снимать», а не стектрейсом.
 /// </summary>
 public sealed class UnsupportedAutostartInstaller : IAutostartInstaller
 {
@@ -36,8 +36,8 @@ public sealed class UnsupportedAutostartInstaller : IAutostartInstaller
 }
 
 /// <summary>
-/// Общая часть реализаций: вызов штатной утилиты ОС. Вывод у таких утилит локализован,
-/// поэтому решение принимается по коду возврата, а текст идёт человеку как есть.
+/// Общая часть реализаций — вызов штатной утилиты ОС. Вывод у них локализован, поэтому
+/// решаем по коду возврата, а текст отдаём человеку как есть.
 /// </summary>
 public abstract class ProcessAutostartInstaller
 {
@@ -51,20 +51,20 @@ public abstract class ProcessAutostartInstaller
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
-            // Утилита отвечает на языке системы: читаем в кодировке консоли, иначе в
-            // сообщении об ошибке будут кракозябры вместо причины.
+            // Утилита отвечает на языке системы: читаем в кодировке консоли, иначе вместо
+            // причины ошибки будут кракозябры.
             StandardOutputEncoding = Console.OutputEncoding,
             StandardErrorEncoding = Console.OutputEncoding,
         };
 
-        // Аргументы по одному: путь с пробелами не должен зависеть от правил склейки строки.
+        // Аргументы по одному: путь с пробелами не должен зависеть от правил склейки.
         foreach (var argument in arguments) info.ArgumentList.Add(argument);
 
         using var process = Process.Start(info)
             ?? throw new InvalidOperationException($"Не удалось запустить {fileName}.");
 
-        // Оба потока читаются разом: длинное локализованное сообщение утилиты переполнило бы
-        // буфер stderr, и утилита ждала бы места, пока мы ждём конца stdout — install завис бы.
+        // Оба потока читаем разом: длинное сообщение переполнило бы буфер stderr, утилита
+        // ждала бы места, мы — конца stdout, и install завис бы.
         var output = process.StandardOutput.ReadToEndAsync();
         var error = process.StandardError.ReadToEndAsync();
         process.WaitForExit();

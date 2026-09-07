@@ -1,6 +1,6 @@
 namespace AgentsTracker.Agents.Claude;
 
-/// <summary>Настройки, которые принимает Claude Code, — в виде, по которому хост строит меню и проверяет конфиг.</summary>
+/// <summary>Что принимает Claude Code — по этому хост строит меню и проверяет конфиг.</summary>
 public static class ClaudeCapabilities
 {
     /// <summary>Алиасы семейств для кнопок; полное имя (<c>claude-sonnet-5</c>) вводится текстом.</summary>
@@ -18,8 +18,8 @@ public static class ClaudeCapabilities
 }
 
 /// <summary>
-/// Режимы работы агента (насколько свободно он действует на машине) — то, что уходит
-/// в <c>--permission-mode</c>, плюс человеческие названия для команды /mode.
+/// Режимы работы — насколько свободно агент действует на машине. То, что уходит
+/// в <c>--permission-mode</c>, плюс понятные названия для /mode.
 /// </summary>
 internal static class PermissionModes
 {
@@ -28,9 +28,9 @@ internal static class PermissionModes
         ["default", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions"];
 
     /// <summary>
-    /// Что можно переключать из чата. dontAsk и bypassPermissions сюда не входят намеренно:
-    /// снять подтверждения полностью можно только правкой конфига на самой машине,
-    /// иначе доступ к боту означал бы доступ к машине без единой кнопки.
+    /// Что переключается из чата. dontAsk и bypassPermissions исключены намеренно: снять
+    /// подтверждения полностью можно только правкой конфига на машине, иначе доступ к боту
+    /// означал бы доступ к машине без единой кнопки.
     /// </summary>
     public static readonly string[] Selectable = ["plan", "default", "acceptEdits", "auto"];
 
@@ -65,8 +65,8 @@ internal static class PermissionModes
 }
 
 /// <summary>
-/// Сколько модели думать над задачей — то, что уходит в <c>--effort</c>.
-/// Порядок в <see cref="All"/> — от дешёвого к дорогому, на нём строится клавиатура меню.
+/// Сколько модели думать над задачей — уходит в <c>--effort</c>. Порядок в <see cref="All"/>
+/// от дешёвого к дорогому: по нему строится клавиатура меню.
 /// </summary>
 internal static class EffortLevels
 {

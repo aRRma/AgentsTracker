@@ -16,7 +16,7 @@ public static class ChannelConfiguration
     /// <summary>Ключ модуля: <c>Gateway:Channel:Type</c>.</summary>
     public const string TypeKey = "Gateway:Channel:Type";
 
-    /// <summary>Секция настроек канала: <c>Gateway:Channel:Settings</c>. Что в ней — знает только модуль.</summary>
+    /// <summary>Секция настроек канала: <c>Gateway:Channel:Settings</c>. Её состав знает только модуль.</summary>
     public const string SettingsSection = "Gateway:Channel:Settings";
 }
 
@@ -35,6 +35,6 @@ public interface IChatChannelModule
 
     void AddServices(IServiceCollection services, IConfiguration configuration);
 
-    /// <summary>Свои эндпоинты, если канал получает обновления webhook-ом, а не опросом. Telegram — опросом, у него пусто.</summary>
+    /// <summary>Эндпоинты для канала на webhook-ах. Telegram работает опросом, у него пусто.</summary>
     void MapEndpoints(IEndpointRouteBuilder endpoints);
 }

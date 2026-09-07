@@ -1,7 +1,7 @@
 namespace AgentsTracker.Gateway.Features.Settings;
 
 /// <summary>
-/// Меню настроек: одно сообщение, которое перерисовывается кнопками. Экраны — отдельные
+/// Меню настроек: одно сообщение, которое перерисовывают кнопки. Экраны — это
 /// <see cref="ISettingsScreen"/>, координатор только открывает, применяет и перерисовывает.
 /// </summary>
 public sealed class SettingsMenuCoordinator(
@@ -49,15 +49,15 @@ public sealed class SettingsMenuCoordinator(
 
         var target = Screen(screen);
 
-        // Применяем выбор до отрисовки: экран должен показать уже новое состояние.
-        // Нажатие без аргумента — переход на экран из корня: он открывается с начала.
+        // Применяем выбор до отрисовки: экран должен показать новое состояние. Нажатие
+        // без аргумента — переход из корня, экран открывается с начала.
         string? toast = null;
         if (argument.Length > 0) toast = target.Apply(argument, press.User, press.Chat);
         else target.Open(press.User);
 
         await AnswerAsync(press, toast, ct);
 
-        // Сообщения с кнопками канал мог не отдать (оно старое или недоступно) — перерисовывать
+        // Сообщение с кнопками канал мог не отдать (старое или недоступное): перерисовывать
         // нечего, но выбор уже применён.
         if (press.Message is not { } message) return;
 
@@ -66,8 +66,8 @@ public sealed class SettingsMenuCoordinator(
     }
 
     /// <summary>
-    /// Перерисовка «в никуда»: неудача правки не должна ронять обработку нажатия. Ожидание
-    /// по просьбе канала и «текст не изменился» канал разбирает сам — здесь остаётся лог.
+    /// Перерисовка «в никуда»: неудачная правка не должна ронять обработку нажатия. Ожидание
+    /// по просьбе канала и «текст не изменился» канал разбирает сам, здесь только лог.
     /// </summary>
     private async Task EditQuietlyAsync(MessageRef message, string html, Keyboard keyboard, CancellationToken ct)
     {

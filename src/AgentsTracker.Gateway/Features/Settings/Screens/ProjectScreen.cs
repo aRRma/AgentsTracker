@@ -36,8 +36,8 @@ public sealed class ProjectScreen(
             return null;
         }
 
-        // Папка проверяется при отрисовке: исчезнувшая молча вернёт к списку папок.
-        // Проверять здесь — лишний обход диска на каждое нажатие.
+        // Папку проверяет отрисовка: исчезнувшая просто вернёт к списку. Проверять здесь —
+        // лишний обход диска на каждое нажатие.
         if (argument.StartsWith(GroupPrefix, StringComparison.Ordinal))
         {
             _nav.Set(user, new ScreenPosition(Group: argument[GroupPrefix.Length..]));
@@ -51,8 +51,8 @@ public sealed class ProjectScreen(
             return null;
         }
 
-        // Ищем по ключу, а не по номеру в списке: между отрисовкой и нажатием список мог
-        // измениться (появился склонированный репозиторий), и номер указал бы на другой путь.
+        // По ключу, а не по номеру: между отрисовкой и нажатием список мог измениться,
+        // и номер указал бы на другой путь.
         var project = catalog.List(store.ProjectPath).FirstOrDefault(p => Key12(ProjectCatalog.Normalize(p)) == argument);
         if (project is null) return "Репозитория уже нет в списке";
 
@@ -61,14 +61,14 @@ public sealed class ProjectScreen(
 
         store.SetProjectPath(project);
 
-        // Выбранная папка становится первой в списке — показывать при этом пятую страницу незачем.
+        // Выбранная папка становится первой в списке, показывать пятую страницу незачем.
         _nav.Update(user, p => p with { Page = 0 });
 
         logger.LogInformation("Рабочая папка переключена на {Project}", project);
         audit.Changed(store, user, "project", Path.GetFileName(previous), Path.GetFileName(project));
 
-        // Сессии живут в папке, где созданы: у нового проекта своя активная сессия
-        // или ни одной — предупреждаем, чтобы смена контекста не выглядела потерей истории.
+        // Сессии живут в папке, где созданы: у нового проекта своя или ни одной.
+        // Предупреждаем, чтобы смена контекста не выглядела потерей истории.
         return store.SessionId is null
             ? $"{Path.GetFileName(project)} — сессия начнётся заново"
             : $"{Path.GetFileName(project)} — вернулись к её сессии";
@@ -82,10 +82,10 @@ public sealed class ProjectScreen(
         var current = store.ProjectPath;
         var position = _nav.Of(user);
 
-        // Список пересобирается на каждый показ: папка могла исчезнуть вместе с репозиториями.
+        // Пересобираем на каждый показ: папка могла исчезнуть вместе с репозиториями.
         var groups = catalog.Grouped(current);
 
-        // Одна папка — промежуточный экран только добавил бы лишнее нажатие.
+        // Папка одна — промежуточный экран только добавит нажатие.
         if (groups.Count <= 1)
             return RenderProjects(user, groups.Count == 0 ? [] : groups[0].Projects, group: null, current, position.Page);
 

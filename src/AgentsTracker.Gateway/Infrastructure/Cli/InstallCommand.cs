@@ -5,10 +5,9 @@ using AgentsTracker.Gateway.Infrastructure.Security;
 namespace AgentsTracker.Gateway.Infrastructure.Cli;
 
 /// <summary>
-/// <c>install</c>: регистрирует автозапуск для уже опубликованного exe и приводит в порядок
-/// конфиг. Ничего никуда не копирует — где лежит файл, оттуда и будет запускаться, поэтому
-/// команда одинаково работает и после публикации из исходников, и для папки, принесённой
-/// с другой машины.
+/// <c>install</c>: регистрирует автозапуск опубликованного exe и приводит в порядок конфиг.
+/// Ничего не копирует — запускаться будет оттуда, где лежит, поэтому команда одинаково
+/// работает и после публикации из исходников, и для папки с другой машины.
 /// </summary>
 public static class InstallCommand
 {
@@ -39,9 +38,9 @@ public static class InstallCommand
             output.WriteLine("  dotnet publish src/AgentsTracker.Gateway -c Release -o <папка установки>");
         }
 
-        // Конфиг, который шлюз откажется читать (ключи канала в старом месте), — это не
-        // «секреты остались как есть»: задача Планировщика трижды перезапустила бы падающий
-        // exe и сдалась, а install отчитался бы об успехе. Лучше не регистрировать.
+        // С конфигом, который шлюз читать откажется (ключи канала в старом месте), задача
+        // Планировщика трижды перезапустит падающий exe и сдастся, а install отчитается
+        // об успехе. Лучше не регистрировать.
         if (!PrepareConfig(directory, channels, output))
         {
             output.WriteLine("Автозапуск не зарегистрирован: сначала приведите конфиг в порядок и повторите install.");
@@ -72,10 +71,10 @@ public static class InstallCommand
     }
 
     /// <summary>
-    /// Приводит конфиг к боевому виду: единственный файл — в папке данных, секреты в нём
-    /// зашифрованы. Рядом с exe его быть не должно: <c>dotnet publish</c> копирует туда
-    /// appsettings.Local.json из папки проекта вместе с открытым токеном. Возвращает false,
-    /// если protect-secrets отказался: с таким конфигом шлюз не стартует.
+    /// Приводит конфиг к боевому виду: один файл в папке данных, секреты зашифрованы.
+    /// Рядом с exe его быть не должно — <c>dotnet publish</c> копирует туда
+    /// appsettings.Local.json проекта вместе с открытым токеном. false — protect-secrets
+    /// отказался, и с таким конфигом шлюз не стартует.
     /// </summary>
     private static bool PrepareConfig(string directory, IReadOnlyList<IChatChannelModule> channels, TextWriter output)
     {
@@ -84,8 +83,8 @@ public static class InstallCommand
 
         if (File.Exists(AppPaths.LocalSettings))
         {
-            // Файл рядом с exe всё равно не применился бы — боевой лежит в папке данных, — но
-            // молча удалять его нельзя: там могли принести новые значения.
+            // Файл рядом с exe всё равно не применится — боевой лежит в папке данных, —
+            // но молча удалять его нельзя: там могли принести новые значения.
             if (File.Exists(beside))
             {
                 File.Delete(beside);
@@ -99,8 +98,8 @@ public static class InstallCommand
         }
         else if (File.Exists(beside))
         {
-            // protect-secrets сам перенесёт файл в папку данных и зашифрует секреты. Своими
-            // руками копию рядом с exe тут не удаляем: на его ошибке останемся вообще без конфига.
+            // protect-secrets сам перенесёт файл и зашифрует секреты. Копию рядом с exe
+            // не удаляем сами: на его ошибке остались бы вообще без конфига.
             ok = ProtectSecretsCommand.Run([ProtectSecretsCommand.Name, beside], channels, output) == 0;
         }
         else

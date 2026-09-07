@@ -9,9 +9,9 @@ namespace AgentsTracker.Gateway.Features.Settings;
 internal sealed record ScreenPosition(string? Group = null, int Page = 0, string? Card = null);
 
 /// <summary>
-/// Позиция в списке на каждого пользователя. Экраны — синглтоны, а разрешённых пользователей
-/// у канала бывает несколько: общее поле означало бы, что страница, открытая одним,
-/// подменяет список под пальцем у другого.
+/// Позиция в списке на каждого пользователя. Экраны — синглтоны, а разрешённых у канала
+/// бывает несколько: с общим полем страница, открытая одним, подменила бы список
+/// под пальцем у другого.
 /// </summary>
 internal sealed class ScreenNavigation
 {
@@ -23,6 +23,6 @@ internal sealed class ScreenNavigation
 
     public void Update(UserId user, Func<ScreenPosition, ScreenPosition> change) => Set(user, change(Of(user)));
 
-    /// <summary>К началу: вызывается при открытии экрана из корня или командой, иначе показалась бы прошлая карточка.</summary>
+    /// <summary>К началу — при открытии экрана из корня или командой: иначе показалась бы прошлая карточка.</summary>
     public void Reset(UserId user) => _byUser.TryRemove(user, out _);
 }

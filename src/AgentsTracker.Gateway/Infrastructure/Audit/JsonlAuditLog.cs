@@ -6,16 +6,16 @@ using System.Text.Json.Serialization;
 namespace AgentsTracker.Gateway.Infrastructure.Audit;
 
 /// <summary>
-/// Аудит в <c>%LOCALAPPDATA%\AgentsTracker\audit\audit-ГГГГ-ММ.jsonl</c>: одна запись в строке,
-/// файл на месяц. Запись синхронная с flush на каждую строку — журнал должен пережить
-/// падение процесса; объём в десятки килобайт в месяц ротации по размеру не требует.
+/// Аудит в <c>%LOCALAPPDATA%\AgentsTracker\audit\audit-ГГГГ-ММ.jsonl</c>: запись на строку,
+/// файл на месяц. Пишем синхронно с flush на каждую строку — журнал должен пережить падение
+/// процесса. Десятки килобайт в месяц ротации по размеру не требуют.
 /// </summary>
 public sealed class JsonlAuditLog(ILogger<JsonlAuditLog> logger) : IAuditLog
 {
     private static readonly JsonSerializerOptions Json = new()
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        // Кириллица в Summary должна читаться в файле как есть, а не как \u-последовательности.
+        // Иначе кириллица в Summary ляжет в файл \u-последовательностями.
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
@@ -39,7 +39,7 @@ public sealed class JsonlAuditLog(ILogger<JsonlAuditLog> logger) : IAuditLog
             }
             catch (Exception ex)
             {
-                // Аудит не должен ронять обработку сообщения; о сбое узнаем из обычного лога.
+                // Аудит не должен ронять обработку сообщения: о сбое скажет обычный лог.
                 logger.LogError(ex, "Не удалось записать аудит: {Line}", line);
             }
         }
@@ -57,8 +57,8 @@ public sealed class JsonlAuditLog(ILogger<JsonlAuditLog> logger) : IAuditLog
             foreach (var file in Files().OrderDescending(StringComparer.Ordinal))
             {
                 string[] lines;
-                // Любая беда с одним файлом (занят, нет прав, исчез) не должна лишать ответа
-                // целиком: пропускаем его и читаем остальные.
+                // Беда с одним файлом (занят, нет прав, исчез) не должна лишать ответа
+                // целиком: пропускаем и читаем остальные.
                 try { lines = File.ReadAllLines(file); }
                 catch (Exception ex)
                 {

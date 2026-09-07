@@ -3,16 +3,15 @@ using AgentsTracker.Gateway.Infrastructure.Security;
 namespace AgentsTracker.Gateway.Infrastructure.Cli;
 
 /// <summary>
-/// Служебные команды exe: разбираются до сборки хоста, потому что работают с файлами и
-/// автозапуском, а не с Telegram. Всё, что начинается с дефиса, командой не считается —
-/// это аргументы конфигурации хоста (<c>--Gateway:McpPort=…</c>).
+/// Служебные команды exe. Разбираются до сборки хоста: работают с файлами и автозапуском,
+/// а не с каналом. Всё, что начинается с дефиса, командой не считается — это аргументы
+/// конфигурации (<c>--Gateway:McpPort=…</c>).
 /// </summary>
 public static class ConsoleCommands
 {
     /// <summary>
-    /// Выполняет команду, если она указана. Возвращает false, когда запускать надо сам шлюз.
-    /// Список каналов нужен protect-secrets: какие ключи в секции канала секретные, знает
-    /// только его модуль.
+    /// Выполняет команду, если она указана; false — запускать надо сам шлюз. Список каналов
+    /// нужен protect-secrets: какие ключи секретные, знает только модуль канала.
     /// </summary>
     public static bool TryRun(string[] args, IReadOnlyList<IChatChannelModule> channels, TextWriter output, out int exitCode)
     {
@@ -27,7 +26,7 @@ public static class ConsoleCommands
             return true;
         }
 
-        // Аргументы хоста, а не команда: пусть их разбирает конфигурация.
+        // Это аргументы хоста, а не команда — их разберёт конфигурация.
         if (name.StartsWith('-') || name.StartsWith('/')) return false;
 
         exitCode = name.ToLowerInvariant() switch

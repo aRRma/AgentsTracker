@@ -3,13 +3,13 @@ using System.Text.Json;
 namespace AgentsTracker.Agents.Claude;
 
 /// <summary>
-/// Разбор строк <c>claude -p --output-format stream-json</c>. Поток нужен ради одного:
-/// показывать в чате, что агент делает прямо сейчас. Итог запуска — последняя строка
-/// с <c>"type":"result"</c>, той же формы, что ответ <c>--output-format json</c>.
+/// Разбор строк <c>claude -p --output-format stream-json</c>. Поток нужен только затем,
+/// чтобы показывать в чате, чем агент занят. Итог — последняя строка с <c>"type":"result"</c>,
+/// той же формы, что ответ <c>--output-format json</c>.
 /// </summary>
 public static class ClaudeStreamEvent
 {
-    /// <summary>Что в строке потока: итог, вызовы инструментов, прочее событие или не JSON вовсе.</summary>
+    /// <summary>Что в строке: итог, вызовы инструментов, другое событие или вообще не JSON.</summary>
     public sealed record Line(bool IsJson, bool IsResult, IReadOnlyList<RunActivity> ToolCalls)
     {
         public static readonly Line Text = new(false, false, []);
@@ -18,8 +18,8 @@ public static class ClaudeStreamEvent
     }
 
     /// <summary>
-    /// Разбирает строку один раз: на долгом запуске их тысячи, и в <c>user</c>-событиях
-    /// лежит содержимое прочитанных файлов — парсить такое дважды накладно.
+    /// Разбирает строку один раз: на долгом запуске их тысячи, а в <c>user</c>-событиях
+    /// лежит содержимое прочитанных файлов.
     /// </summary>
     public static Line Classify(string line)
     {
@@ -34,8 +34,8 @@ public static class ClaudeStreamEvent
     }
 
     /// <summary>
-    /// Вызовы инструментов из события — то, что стоит показать пользователю. Текст
-    /// и «размышления» агента не показываем: они приходят кусками и в статусе смысла не имеют.
+    /// Вызовы инструментов из события — единственное, что стоит показывать. Текст
+    /// и размышления агента приходят кусками, в статусе от них толку нет.
     /// </summary>
     private static List<RunActivity> ToolCalls(JsonElement root)
     {
@@ -44,8 +44,8 @@ public static class ClaudeStreamEvent
             || content.ValueKind != JsonValueKind.Array)
             return [];
 
-        // parent_tool_use_id стоит в корне события (проверено на CLI 2.1.261): у шагов
-        // сабагента это id вызова Agent, у основного хода — null.
+        // parent_tool_use_id лежит в корне события (проверено на CLI 2.1.261): у шага
+        // сабагента там id вызова Agent, у основного хода — null.
         var nested = root.TryGetProperty("parent_tool_use_id", out var parent)
                      && parent.ValueKind == JsonValueKind.String;
 

@@ -7,10 +7,10 @@ using ModelContextProtocol.Server;
 namespace AgentsTracker.Agents.Claude.Mcp;
 
 /// <summary>
-/// MCP-инструмент, который Claude Code вызывает вместо интерактивного запроса разрешения
-/// (передаётся через --permission-prompt-tool). Здесь только перевод: payload CLI →
-/// <see cref="IOperatorConsole"/> → JSON-строка вида {"behavior":"allow","updatedInput":{…}}
-/// либо {"behavior":"deny","message":"…"}. Карточки, правила «всегда» и аудит — у хоста.
+/// Инструмент, который CLI зовёт вместо интерактивного запроса разрешения (через
+/// --permission-prompt-tool). Здесь только перевод: payload CLI →
+/// <see cref="IOperatorConsole"/> → JSON вида {"behavior":"allow","updatedInput":{…}} или
+/// {"behavior":"deny","message":"…"}. Карточки, правила «всегда» и аудит — у хоста.
 /// </summary>
 [McpServerToolType]
 public sealed class ClaudePermissionTool(IOperatorConsole console, ILogger<ClaudePermissionTool> logger)
@@ -27,9 +27,9 @@ public sealed class ClaudePermissionTool(IOperatorConsole console, ILogger<Claud
     {
         var arguments = context.Params?.Arguments;
 
-        // Точная схема вызова публично не задокументирована — на Debug пишем всё, что пришло,
-        // чтобы имена полей можно было сверить по логу. На Information полный payload не нужен:
-        // для Edit/Write это содержимое файлов, которому в логе не место.
+        // Схема вызова не задокументирована, поэтому на Debug пишем всё как пришло — имена
+        // полей потом можно сверить по логу. Выше Debug нельзя: у Edit/Write в payload
+        // лежит содержимое файлов.
         logger.LogDebug("Запрос разрешения: {Payload}",
             arguments is null ? "(нет аргументов)" : JsonSerializer.Serialize(arguments));
 
@@ -62,9 +62,9 @@ public sealed class ClaudePermissionTool(IOperatorConsole console, ILogger<Claud
     // ---- permission_suggestions ----
 
     /// <summary>
-    /// Подсказки правил, которые CLI может записать в .claude/settings.local.json проекта.
-    /// Форма элемента: {type:"addRules", rules:[{toolName, ruleContent}], behavior, destination}.
-    /// Берём только с destination localSettings: остальные CLI сам не применит.
+    /// Правила, которые CLI может записать в .claude/settings.local.json проекта. Форма
+    /// элемента: {type:"addRules", rules:[{toolName, ruleContent}], behavior, destination}.
+    /// Берём только localSettings — остальные CLI сам не применит.
     /// </summary>
     private static IReadOnlyList<PersistentRule>? PersistableRules(JsonElement? suggestions)
     {
@@ -84,7 +84,7 @@ public sealed class ClaudePermissionTool(IOperatorConsole console, ILogger<Claud
         return result.Count > 0 ? result : null;
     }
 
-    /// <summary>Правила элемента в виде «Tool(содержимое)» через запятую — так их видит человек на карточке.</summary>
+    /// <summary>Правила как «Tool(содержимое)» через запятую — так их видно на карточке.</summary>
     private static string DescribeRules(JsonElement suggestion)
     {
         if (!suggestion.TryGetProperty("rules", out var rules) || rules.ValueKind != JsonValueKind.Array)
@@ -118,7 +118,7 @@ public sealed class ClaudePermissionTool(IOperatorConsole console, ILogger<Claud
         var result = await console.AskAsync(parsed, ct);
         if (result.Answers is null) return Deny(result.Refusal ?? "Ответы не получены.");
 
-        // CLI ждёт исходные questions и answers, где ключ — текст вопроса.
+        // CLI ждёт исходные questions и answers с текстом вопроса в ключе.
         var answers = new JsonObject();
         foreach (var answer in result.Answers) answers[answer.Question] = answer.Answer;
 
@@ -155,7 +155,7 @@ public sealed class ClaudePermissionTool(IOperatorConsole console, ILogger<Claud
         var result = new JsonObject
         {
             ["behavior"] = "allow",
-            // updatedInput обязателен: без него CLI считает результат невалидным и отклоняет вызов.
+            // Без updatedInput CLI считает результат невалидным и отклоняет вызов.
             ["updatedInput"] = input is { } value ? JsonNode.Parse(value.GetRawText()) : new JsonObject(),
         };
 

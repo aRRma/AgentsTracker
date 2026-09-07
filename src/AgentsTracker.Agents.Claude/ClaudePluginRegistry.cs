@@ -6,17 +6,17 @@ using System.Text.Json.Nodes;
 namespace AgentsTracker.Agents.Claude;
 
 /// <summary>
-/// Плагины Claude Code на диске: список из <c>installed_plugins.json</c> и состояние из
-/// <c>enabledPlugins</c>, наслоённое как у CLI — личные настройки → проекта → локальные проекта.
-/// Переключение пишет только в личный <c>~/.claude/settings.json</c>: туда же пишет
-/// <c>/plugin</c> самого CLI, и следующий <c>claude -p</c> прочитает его без перезапуска.
+/// Плагины на диске: список из <c>installed_plugins.json</c>, состояние из
+/// <c>enabledPlugins</c> слоями как у CLI — личные → проекта → локальные проекта.
+/// Переключение пишет только в личный <c>~/.claude/settings.json</c>, туда же пишет
+/// <c>/plugin</c> самого CLI, и следующий <c>claude -p</c> прочитает файл без перезапуска.
 /// </summary>
 internal sealed class ClaudePluginRegistry(ILogger logger)
 {
     /// <summary>Установленный плагин: ключ «имя@маркетплейс», имя и папка с содержимым.</summary>
     public sealed record Installed(string Key, string Name, string Path);
 
-    /// <summary>Из какого файла пришло значение: показывается, когда переключить из чата нельзя.</summary>
+    /// <summary>Из какого файла значение: показываем, когда переключить из чата нельзя.</summary>
     public sealed record Setting(bool Enabled, string Layer);
 
     private const string UserLayer = "личные настройки";
@@ -40,7 +40,7 @@ internal sealed class ClaudePluginRegistry(ILogger logger)
         AllowTrailingCommas = true,
     };
 
-    /// <summary>Установленные плагины без учёта состояния; папка обязана существовать — иначе читать нечего.</summary>
+    /// <summary>Установленные плагины без учёта состояния.</summary>
     public List<Installed> List()
     {
         var result = new List<Installed>();
@@ -66,7 +66,7 @@ internal sealed class ClaudePluginRegistry(ILogger logger)
 
             foreach (var plugin in plugins.EnumerateObject())
             {
-                // Ключ — «имя@маркетплейс»; в команде используется только имя.
+                // Ключ — «имя@маркетплейс», в команде участвует только имя.
                 var key = plugin.Name;
                 var at = key.IndexOf('@');
                 var name = at < 0 ? key : key[..at];
@@ -88,8 +88,8 @@ internal sealed class ClaudePluginRegistry(ILogger logger)
     }
 
     /// <summary>
-    /// Действующее состояние по ключу: верхний слой перекрывает нижние. Плагина без записи
-    /// здесь нет — установленный без записи считается включённым, как и у самого CLI.
+    /// Действующее состояние по ключу, верхний слой перекрывает нижние. Плагина без записи
+    /// здесь не будет: такой считается включённым, как и у самого CLI.
     /// </summary>
     public Dictionary<string, Setting> Settings(string projectPath)
     {
@@ -99,9 +99,9 @@ internal sealed class ClaudePluginRegistry(ILogger logger)
     }
 
     /// <summary>
-    /// Пишет <c>enabledPlugins[key]</c> в личный settings.json. Возвращает текст ошибки; null — записано.
-    /// Остальное содержимое файла сохраняется как есть, комментарии (если были) — нет:
-    /// System.Text.Json их не переносит, а CLI сам пишет файл без них.
+    /// Пишет <c>enabledPlugins[key]</c> в личный settings.json; возвращает текст ошибки,
+    /// null — записано. Остальное содержимое сохраняется, а комментарии теряются:
+    /// System.Text.Json их не переносит, но CLI и сам пишет файл без них.
     /// </summary>
     public string? SetEnabled(string key, bool enabled)
     {
@@ -126,8 +126,8 @@ internal sealed class ClaudePluginRegistry(ILogger logger)
 
         section[key] = enabled;
 
-        // Через временный файл: CLI в соседней сессии может читать settings.json в этот момент,
-        // и полузаписанный JSON сломал бы ему старт.
+        // Через временный файл: CLI в соседней сессии может читать settings.json прямо
+        // сейчас, и полузаписанный JSON сломал бы ему старт.
         var temp = UserSettings + ".tmp";
         try
         {

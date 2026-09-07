@@ -10,8 +10,8 @@ namespace AgentsTracker.Gateway.Infrastructure;
 public static class AppPaths
 {
     /// <summary>
-    /// Ключ, которым папку данных переносят: <c>Gateway:DataDirectory</c> (в окружении —
-    /// <c>Gateway__DataDirectory</c>). Читается в обход обычной конфигурации — от этой папки
+    /// Ключ переноса папки данных: <c>Gateway:DataDirectory</c>, в окружении
+    /// <c>Gateway__DataDirectory</c>. Читается в обход обычного конфига — от этой папки
     /// зависит путь к самому файлу настроек.
     /// </summary>
     public const string SettingKey = "Gateway:DataDirectory";
@@ -32,13 +32,13 @@ public static class AppPaths
         }
     }
 
-    /// <summary>Локальный конфиг с токеном бота и списком пользователей — вне папки проекта.</summary>
+    /// <summary>Локальный конфиг с секретами — лежит вне папки проекта.</summary>
     public static string LocalSettings => Path.Combine(DataDirectory, "appsettings.Local.json");
 
     /// <summary>
-    /// Переносит папку данных. Нужно в контейнере, где том монтируют в предсказуемое место
-    /// (<c>/data</c>), и когда на одной машине живут два шлюза с разными ботами.
-    /// Вызывается один раз до первого обращения к путям.
+    /// Переносит папку данных: в контейнере том монтируют в предсказуемое место
+    /// (<c>/data</c>), а на одной машине могут жить два шлюза с разными ботами.
+    /// Зовётся один раз до первого обращения к путям.
     /// </summary>
     public static void UseDirectory(string directory)
     {
@@ -48,8 +48,8 @@ public static class AppPaths
     }
 
     /// <summary>
-    /// Забирает путь из appsettings.json рядом с exe и из переменных окружения. Локальный
-    /// конфиг тут не читается намеренно: он сам лежит в искомой папке, и получился бы круг.
+    /// Берёт путь из appsettings.json рядом с exe и из окружения. Локальный конфиг здесь
+    /// не читаем намеренно: он лежит в искомой папке, получился бы круг.
     /// </summary>
     public static void UseConfiguredDirectory()
     {

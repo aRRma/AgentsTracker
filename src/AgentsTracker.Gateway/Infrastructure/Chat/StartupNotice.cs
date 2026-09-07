@@ -3,10 +3,9 @@ using AgentsTracker.Gateway.Infrastructure.Audit;
 namespace AgentsTracker.Gateway.Infrastructure.Chat;
 
 /// <summary>
-/// Сообщение в чат при старте шлюза: «запущен» всем разрешённым пользователям, а тому, чей
-/// запуск прошлый экземпляр не довёл до конца, — ещё и «прерван». Без этого перезапуск посреди
-/// работы (Stop-Process из другой сессии, падение) выглядит как молчание: статус «Работаю…»
-/// висит, ответа нет, и человек узнаёт о проблеме, только переспросив.
+/// Сообщение при старте: «запущен» всем разрешённым, а тому, чей запуск прошлый экземпляр
+/// не довёл до конца, — ещё и «прервано». Без этого перезапуск посреди работы выглядит
+/// молчанием: статус висит, ответа нет, и человек узнаёт о проблеме, только переспросив.
 /// </summary>
 public sealed class StartupNotice(
     IChatChannel channel,
@@ -35,8 +34,8 @@ public sealed class StartupNotice(
             await SendQuietlyAsync(chat, mine ? started + "\n\n" + Interrupted(interrupted!) : started, ct);
         }
 
-        // Прерванный запуск шёл в чате, которого в списке разрешённых уже нет (список правили)
-        // или который канал не смог вычислить, — сказать всё равно надо, ответ там так и не пришёл.
+        // Прерванный запуск шёл в чате, которого в списке разрешённых уже нет или который
+        // канал не смог вычислить. Сказать всё равно надо: ответа там так и не было.
         if (!told && interruptedChat is not null)
             await SendQuietlyAsync(interruptedChat, started + "\n\n" + Interrupted(interrupted!), ct);
     }
@@ -54,7 +53,7 @@ public sealed class StartupNotice(
             """;
     }
 
-    /// <summary>Итог в историю и аудит: иначе в мониторе запуск просто исчезает, а в аудите остаётся run.start без run.end.</summary>
+    /// <summary>Итог в историю и аудит: иначе в мониторе запуск исчезает, а в аудите остаётся run.start без run.end.</summary>
     private void RecordInterrupted(ActiveRun run)
     {
         logger.LogWarning("Прошлый экземпляр шлюза умер посреди запуска «{Prompt}» (начат {StartedUtc})", run.Prompt, run.StartedUtc);
@@ -82,7 +81,7 @@ public sealed class StartupNotice(
         }
         catch (ChannelRequestException ex)
         {
-            // Пользователь из списка ещё не писал боту: каналы не дают начать разговор первым.
+            // Пользователь из списка ещё не писал боту — начать разговор первым канал не даёт.
             logger.LogDebug(ex, "Сообщение о старте не доставлено в чат {Chat}", chat.Key);
         }
     }

@@ -28,8 +28,8 @@ public sealed class ClaudeAgentModule : IAgentBackendModule
         services.AddSingleton<IAgentLimits, ClaudeLimits>();
         services.AddSingleton<IAgentSkillCatalog, ClaudeSkillCatalog>();
 
-        // Клиент лимитов — через фабрику: обработчик ротируется, DNS не залипает на весь срок
-        // жизни процесса. BaseAddress не задаём намеренно — полный URL в запросе.
+        // Клиент лимитов через фабрику: обработчик ротируется, и DNS не залипает на всю
+        // жизнь процесса. BaseAddress не задаём — полный URL в самом запросе.
         services.AddHttpClient(ClaudeLimits.HttpClientName, http =>
             {
                 http.DefaultRequestHeaders.UserAgent.ParseAdd(ClaudeLimits.UserAgent);
@@ -44,9 +44,9 @@ public sealed class ClaudeAgentModule : IAgentBackendModule
                 }
                 return handler;
             })
-            // Только таймаут, без ретраев и предохранителя: эндпоинт отвечает 429 на частый
-            // опрос, и повтор внутри одного вызова — четыре запроса вместо одного. Ответ
-            // кэшируется на 3 минуты, а любая ошибка пропускает проверку, не блокирует запуск.
+            // Только таймаут, без ретраев и предохранителя: на частый опрос эндпоинт
+            // отвечает 429, и повтор внутри вызова дал бы четыре запроса вместо одного.
+            // Ответ кэшируется, а ошибка проверку пропускает, а не блокирует запуск.
             .AddResilienceHandler("claude-limits", pipeline => pipeline.AddTimeout(ClaudeLimits.RequestTimeout));
 
         services
@@ -62,7 +62,7 @@ public sealed class ClaudeAgentModule : IAgentBackendModule
         // Файл с секретом не должен пережить процесс.
         endpoints.ServiceProvider.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping.Register(mcp.Dispose);
 
-        // Секрет — в заголовке, а не в пути: путь попадает в логи запросов, заголовок нет.
+        // Секрет в заголовке, а не в пути: путь попадает в логи запросов, заголовок — нет.
         endpoints.MapMcp(McpConfigFile.RoutePattern)
             .AddEndpointFilter(async (context, next) =>
                 mcp.Authorizes(context.HttpContext.Request) ? await next(context) : Results.Unauthorized());
