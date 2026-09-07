@@ -5,12 +5,12 @@ using AgentsTracker.Gateway.Features.Chat;
 using AgentsTracker.Gateway.Features.Help;
 using AgentsTracker.Gateway.Features.Monitor;
 using AgentsTracker.Gateway.Features.Settings;
+using AgentsTracker.Gateway.Infrastructure.Cli;
 using AgentsTracker.Gateway.Infrastructure.Modules;
-using AgentsTracker.Gateway.Infrastructure.Security;
 
-// Служебная команда: зашифровать секреты локального конфига и перенести его в папку данных.
-if (args is [ProtectSecretsCommand.Name, ..])
-    return ProtectSecretsCommand.Run(args, Console.Out);
+// Служебные команды (protect-secrets, install, uninstall) отрабатывают до сборки хоста:
+// они работают с файлами и автозапуском, Telegram и агент им не нужны.
+if (ConsoleCommands.TryRun(args, Console.Out, out var commandExitCode)) return commandExitCode;
 
 // Единственное место, где хост знает конкретных агентов. Новый агент — свой проект
 // с IAgentBackendModule и строка здесь.
