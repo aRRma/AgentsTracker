@@ -9,7 +9,8 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Сначала только csproj: слой с restore переживает правку кода. Новый проект в src/ надо
-# добавить и сюда — без его csproj restore падает на ссылке из Gateway.csproj.
+# добавить и сюда: без его csproj restore молча пропустит проект, а publish --no-restore
+# упадёт на NETSDK1004 «файл ресурсов project.assets.json не найден».
 COPY AgentsTracker.slnx ./
 COPY src/AgentsTracker.Agents.Abstractions/*.csproj src/AgentsTracker.Agents.Abstractions/
 COPY src/AgentsTracker.Agents.Claude/*.csproj src/AgentsTracker.Agents.Claude/

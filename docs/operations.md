@@ -45,6 +45,8 @@ Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.
 - `Gateway__Channel__Settings__BotToken` — поддельный, но формата `<число>:<строка>`, иначе
   канал не создастся;
 - `Gateway__McpPort` и `Gateway__MonitorPort` — свои, рабочие заняты;
+- `Gateway__ProjectPath` и `Gateway__Channel__Settings__AllowedUserIds__0` — если пробе нужно
+  отвечать в чат; элемент массива задаётся индексом в конце имени;
 - `Gateway__DataDirectory` — папка в scratchpad. Тогда у пробы свой `state.json` и она не
   читает боевой `appsettings.Local.json`: не мешает рабочему шлюзу и не зависит от формы его
   конфига. Без этого `state.json` общий — не запускайте пробу, пока идёт задача.
