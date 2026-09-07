@@ -5,9 +5,6 @@ public enum ChannelFailure
 {
     Unknown,
 
-    /// <summary>Правка не изменила сообщение — штатный исход, когда нажали ту же кнопку.</summary>
-    NotModified,
-
     /// <summary>Канал просит подождать; срок — в <see cref="ChannelRequestException.RetryAfter"/>.</summary>
     RateLimited,
 
@@ -20,7 +17,8 @@ public enum ChannelFailure
 
 /// <summary>
 /// Единственное исключение, которое канал показывает хосту: свои ошибки транспорта он
-/// переводит сюда, чтобы фичи не знали ни одного типа конкретного мессенджера.
+/// переводит сюда, чтобы фичи не знали ни одного типа конкретного мессенджера. Штатные
+/// исходы («правка ничего не изменила») канал глотает сам и сюда не доводит.
 /// </summary>
 public sealed class ChannelRequestException(
     string message,

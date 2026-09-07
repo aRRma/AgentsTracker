@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -57,8 +58,7 @@ public static partial class ChatHtml
     /// &lt;code class="language-x"&gt; уезжают пользователю как есть. Сущности разворачиваем
     /// после удаления тегов, иначе экранированный текст сам стал бы разметкой.
     /// </summary>
-    public static string StripTags(string html) => TagRegex().Replace(html, "")
-        .Replace("&lt;", "<").Replace("&gt;", ">").Replace("&quot;", "\"").Replace("&amp;", "&");
+    public static string StripTags(string html) => WebUtility.HtmlDecode(TagRegex().Replace(html, ""));
 
     [GeneratedRegex("<[^>]*>")]
     private static partial Regex TagRegex();

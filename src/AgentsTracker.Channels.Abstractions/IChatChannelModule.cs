@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -33,4 +34,7 @@ public interface IChatChannelModule
     IReadOnlyList<string> SecretKeys { get; }
 
     void AddServices(IServiceCollection services, IConfiguration configuration);
+
+    /// <summary>Свои эндпоинты, если канал получает обновления webhook-ом, а не опросом. Telegram — опросом, у него пусто.</summary>
+    void MapEndpoints(IEndpointRouteBuilder endpoints);
 }

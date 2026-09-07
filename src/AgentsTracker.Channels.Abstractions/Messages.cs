@@ -3,12 +3,8 @@ namespace AgentsTracker.Channels;
 /// <summary>Кнопка под сообщением: подпись и данные, которые вернутся в <see cref="ButtonPress.Data"/>.</summary>
 public sealed record KeyboardButton(string Label, string Data);
 
-/// <summary>Кнопки рядами. Пустая клавиатура — сообщение без кнопок.</summary>
-public sealed record Keyboard(IReadOnlyList<IReadOnlyList<KeyboardButton>> Rows)
-{
-    public static Keyboard Of(IEnumerable<IEnumerable<KeyboardButton>> rows) =>
-        new([.. rows.Select(row => (IReadOnlyList<KeyboardButton>)[.. row])]);
-}
+/// <summary>Кнопки рядами: <c>new Keyboard([[a, b], [c]])</c>. Пустая клавиатура — сообщение без кнопок.</summary>
+public sealed record Keyboard(IReadOnlyList<IReadOnlyList<KeyboardButton>> Rows);
 
 /// <summary>
 /// Что отправить или чем заменить сообщение. <paramref name="Rich"/> — текст в каноническом

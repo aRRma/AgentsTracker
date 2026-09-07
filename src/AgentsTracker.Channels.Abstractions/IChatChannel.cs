@@ -23,8 +23,8 @@ public interface IChatChannel
     /// <summary>Личный чат с пользователем, если канал умеет его вычислить; null — писать первым нельзя.</summary>
     ChatId? DirectChat(UserId user);
 
-    /// <summary>Обратно из <see cref="ChatId.Key"/>: адрес, сохранённый в state.json прошлым запуском.</summary>
-    bool TryParseChat(string key, out ChatId? chat);
+    /// <summary>Обратно из <see cref="ChatId.Key"/>: адрес, сохранённый в state.json прошлым запуском. null — не этого канала.</summary>
+    ChatId? ParseChat(string key);
 
     /// <summary>Ошибки настроек канала — хост печатает их и не стартует.</summary>
     IReadOnlyList<string> Validate();
