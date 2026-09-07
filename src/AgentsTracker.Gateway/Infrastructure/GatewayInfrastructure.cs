@@ -142,11 +142,9 @@ public static class GatewayInfrastructure
     /// </summary>
     private static IReadOnlyList<string> MovedChannelKeys(IConfiguration configuration)
     {
-        string[] moved = ["BotToken", "AllowedUserIds"];
-
         return
         [
-            .. moved
+            .. ChannelOptions.MovedKeys
                 .Where(key => configuration.GetSection($"{GatewayOptions.SectionName}:{key}").Exists())
                 .Select(key => $"{GatewayOptions.SectionName}:{key} больше не читается — перенесите его "
                              + $"в {ChannelConfiguration.SettingsSection}:{key}."),

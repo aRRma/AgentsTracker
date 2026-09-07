@@ -39,9 +39,11 @@ internal static class TelegramClientFactory
             {
                 var handler = new SocketsHttpHandler { PooledConnectionLifetime = ConnectionLifetime };
 
-                // Свой прокси канала важнее общего прокси хоста.
-                var proxy = sp.GetRequiredService<IOptions<TelegramOptions>>().Value.Proxy
-                    ?? sp.GetRequiredService<ChannelHost>().Proxy;
+                // Свой прокси канала важнее общего прокси хоста. Пустая строка — не «свой»:
+                // шаблон конфига оставляет "" вместо null, и канал молча пошёл бы напрямую.
+                var proxy = sp.GetRequiredService<IOptions<TelegramOptions>>().Value.Proxy is { Length: > 0 } own
+                    ? own
+                    : sp.GetRequiredService<ChannelHost>().Proxy;
                 if (proxy is { Length: > 0 })
                 {
                     handler.Proxy = new WebProxy(proxy);

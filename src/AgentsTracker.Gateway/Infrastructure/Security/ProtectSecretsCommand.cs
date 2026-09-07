@@ -16,9 +16,6 @@ public static class ProtectSecretsCommand
     /// <summary>Ключи самой секции Gateway, которые не должны лежать открытым текстом.</summary>
     private static readonly string[] GatewaySecrets = ["Proxy"];
 
-    /// <summary>Ключи канала, переехавшие в его секцию: в корне Gateway их больше не ищут и не шифруют.</summary>
-    private static readonly string[] MovedChannelKeys = ["BotToken", "AllowedUserIds"];
-
     /// <summary>
     /// Шифрует секреты хоста и секреты выбранного канала: какие ключи в его настройках
     /// секретные, знает только модуль канала (<see cref="IChatChannelModule.SecretKeys"/>).
@@ -43,7 +40,7 @@ public static class ProtectSecretsCommand
         // Токен в корне секции Gateway новый шлюз не читает, а значит и не шифрует: молча
         // перенести такой файл в папку данных значило бы положить туда токен открытым текстом
         // и отчитаться «все секреты зашифрованы». Сначала миграция, потом шифрование.
-        var legacy = MovedChannelKeys.Where(key => gateway[key] is not null).ToArray();
+        var legacy = ChannelOptions.MovedKeys.Where(key => gateway[key] is not null).ToArray();
         if (legacy.Length > 0)
         {
             output.WriteLine(

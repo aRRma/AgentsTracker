@@ -27,6 +27,11 @@ public sealed class ChatWorker(
     // Читатель и так один — ExecuteAsync; выигрыш от оптимизации на десятке сообщений нулевой.
     private readonly Channel<QueuedPrompt> _queue = Channel.CreateUnbounded<QueuedPrompt>();
 
+    /// <summary>
+    /// Дольше этого «подождите» от канала не ждём: ответ и так задерживается, а очередь стоит.
+    /// </summary>
+    private static readonly TimeSpan RateLimitWaitCeiling = TimeSpan.FromSeconds(30);
+
     private CancellationTokenSource? _runCts;
 
     private sealed record QueuedPrompt(ChatId Chat, UserId User, string Text);
@@ -307,10 +312,7 @@ public sealed class ChatWorker(
         {
             try
             {
-                if (part.DocumentText is { } document)
-                    await channel.SendFileAsync(chat, part.DocumentName ?? "fragment.txt", document, ct);
-                else if (part.Html is { Length: > 0 } html)
-                    await channel.SendAsync(chat, new OutgoingMessage(html), ct);
+                await SendPartAsync(chat, part, ct);
             }
             catch (ChannelRequestException ex)
             {
@@ -320,6 +322,33 @@ public sealed class ChatWorker(
                 logger.LogError(ex, "Не удалось отправить часть ответа в чат {Chat}", chat.Key);
             }
         }
+    }
+
+    /// <summary>
+    /// Длинный ответ — это серия сообщений подряд, и канал вправе притормозить посреди неё.
+    /// Срок ожидания он называет сам; ждём его один раз и повторяем ту же часть — иначе она
+    /// выпала бы из ответа, а следующие уткнулись бы в тот же лимит.
+    /// </summary>
+    private async Task SendPartAsync(ChatId chat, OutgoingPart part, CancellationToken ct)
+    {
+        try
+        {
+            await SendOnceAsync(chat, part, ct);
+        }
+        catch (ChannelRequestException ex) when (ex is { Kind: ChannelFailure.RateLimited, RetryAfter: { } wait } && wait <= RateLimitWaitCeiling)
+        {
+            logger.LogWarning("Канал просит подождать {Wait}, часть ответа будет отправлена повторно", ex.RetryAfter);
+            await Task.Delay(ex.RetryAfter.Value, ct);
+            await SendOnceAsync(chat, part, ct);
+        }
+    }
+
+    private async Task SendOnceAsync(ChatId chat, OutgoingPart part, CancellationToken ct)
+    {
+        if (part.DocumentText is { } document)
+            await channel.SendFileAsync(chat, part.DocumentName ?? "fragment.txt", document, ct);
+        else if (part.Html is { Length: > 0 } html)
+            await channel.SendAsync(chat, new OutgoingMessage(html), ct);
     }
 
     private async Task SendPlainAsync(ChatId chat, string text, CancellationToken ct)

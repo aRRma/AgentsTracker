@@ -54,7 +54,7 @@ if (agent is null)
 }
 
 // Канал — тоже до сборки контейнера и по тому же образцу.
-var channelId = builder.Configuration[ChannelConfiguration.TypeKey] ?? new ChannelOptions().Type;
+var channelId = builder.Configuration[ChannelConfiguration.TypeKey] ?? ChannelOptions.DefaultType;
 var channel = channels.FirstOrDefault(c => c.Id.Equals(channelId, StringComparison.OrdinalIgnoreCase));
 if (channel is null)
 {

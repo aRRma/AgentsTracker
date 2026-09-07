@@ -7,7 +7,16 @@ namespace AgentsTracker.Gateway.Infrastructure.Configuration;
 /// </summary>
 public sealed class ChannelOptions
 {
-    public string Type { get; set; } = "telegram";
+    public const string DefaultType = "telegram";
+
+    /// <summary>
+    /// Ключи, которые раньше лежали в корне секции Gateway, а теперь — в <c>Channel:Settings</c>.
+    /// Один список на проверку при старте и на protect-secrets: разойдись они, шлюз отказывал
+    /// бы стартовать из-за ключа, который protect-secrets только что «успешно» обработал.
+    /// </summary>
+    public static readonly IReadOnlyList<string> MovedKeys = ["BotToken", "AllowedUserIds"];
+
+    public string Type { get; set; } = DefaultType;
 }
 
 public sealed class GatewayOptions

@@ -42,7 +42,13 @@ if (-not $gateway.Channel.Settings) {
 foreach ($key in 'BotToken', 'AllowedUserIds') {
     if ($null -eq $gateway.$key) { continue }
 
-    $gateway.Channel.Settings | Add-Member -NotePropertyName $key -NotePropertyValue $gateway.$key -Force
+    # Значение в новой секции уже могли вписать руками (свежий токен): старое из корня его не
+    # перекрывает — иначе миграция молча подменила бы рабочий токен устаревшим.
+    if ($null -ne $gateway.Channel.Settings.$key) {
+        Write-Warning "Gateway:Channel:Settings:$key уже задан — оставлен как есть, старый Gateway:$key удалён."
+    } else {
+        $gateway.Channel.Settings | Add-Member -NotePropertyName $key -NotePropertyValue $gateway.$key -Force
+    }
     $gateway.PSObject.Properties.Remove($key)
     $moved += $key
 }
