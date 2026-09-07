@@ -135,7 +135,7 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 | `McpPort` | порт, по которому `claude` спрашивает разрешения у бота (5099) |
 | `ApprovalTimeoutMinutes`, `RunTimeoutMinutes` | сколько ждать ответа на карточку (15) и всю задачу (60) |
 
-Полный список — в `appsettings.json`, устройство проекта — в [CLAUDE.md](CLAUDE.md).
+Полный список — в `appsettings.json`. Устройство проекта — [CLAUDE.md](CLAUDE.md), подробности — папка [docs/](docs/).
 
 ## Безопасность
 
