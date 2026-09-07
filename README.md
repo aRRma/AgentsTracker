@@ -1,6 +1,10 @@
 <h1 align="center">AgentsTracker</h1>
 
 <p align="center">
+  <img src="docs/images/banner.png" alt="Баннер AgentsTracker">
+</p>
+
+<p align="center">
   Telegram-бот, через который вы ставите задачи Claude Code на своём компьютере.<br>
   Пишете боту — на ПК запускается <code>claude</code> в папке проекта — ответ приходит в чат.
 </p>
@@ -11,15 +15,6 @@
   <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-CLI-D97757">
   <img alt="Telegram" src="https://img.shields.io/badge/Telegram-Bot%20API-26A5E4?logo=telegram&logoColor=white">
 </p>
-
-<!-- Скриншоты Telegram: положите в docs/images/ и раскомментируйте.
-     telegram-approval.png — карточка 🔐 с кнопками; telegram-answer.png — ответ агента.
-<p align="center">
-  <img src="docs/images/telegram-approval.png" width="320" alt="Карточка подтверждения в Telegram">
-  &nbsp;&nbsp;
-  <img src="docs/images/telegram-answer.png" width="320" alt="Ответ агента в чате">
-</p>
--->
 
 Каждое опасное действие агент подтверждает у вас кнопкой. Разговор не теряется между
 сообщениями и перезапусками. Компьютер должен быть включён, белый IP не нужен.
@@ -41,6 +36,10 @@
 >
 > **Бот:** Причина — `First()` на пустой коллекции. Заменил на `FirstOrDefault` с проверкой,
 > тесты зелёные: 42 passed.
+
+<p align="center">
+  <img src="docs/images/architecture.png" alt="Архитектура AgentsTracker">
+</p>
 
 **Переключение из чата:**
 
