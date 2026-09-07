@@ -31,6 +31,8 @@ public static class ConsoleCommands
         exitCode = name.ToLowerInvariant() switch
         {
             ProtectSecretsCommand.Name => ProtectSecretsCommand.Run(args, output),
+            InstallCommand.Name => InstallCommand.Run(args, output),
+            UninstallCommand.Name => UninstallCommand.Run(args, output),
             _ => Unknown(name, output),
         };
 
@@ -57,8 +59,18 @@ public static class ConsoleCommands
             Запуск без аргументов поднимает шлюз.
 
             Команды:
-              {ProtectSecretsCommand.Name} [файл]   зашифровать BotToken и Proxy, перенести конфиг в папку данных
-              help                          эта справка
+              {InstallCommand.Name}                   зарегистрировать автозапуск для этого exe
+              {UninstallCommand.Name}                 остановить шлюз и снять автозапуск
+              {ProtectSecretsCommand.Name} [файл]     зашифровать BotToken и Proxy, перенести конфиг в папку данных
+              help                      эта справка
+
+            Ключи install и uninstall:
+              --name <имя>              имя записи автозапуска, по умолчанию «{InstallCommand.DefaultTaskName}»
+              --start                   запустить сразу после регистрации
+
+            Установка на новом месте:
+              dotnet publish src/AgentsTracker.Gateway -c Release -o <папка установки>
+              <папка установки>/{exe} {InstallCommand.Name} --start
             """);
     }
 }
