@@ -56,14 +56,16 @@ claude -p "…" --permission-mode acceptEdits --output-format json
 `ChoiceResult` (ключ + кто нажал). `WaitAsync` различает таймаут и отмену: `/stop` должен
 бросать `OperationCanceledException`, а не выглядеть как «не ответил вовремя».
 
-Таймауты: `ApprovalTimeoutMinutes` (15) — карточка, `RunTimeoutMinutes` (60) — весь
-`claude -p`; оба 1..1440. У CLI свой предел на вызов MCP-инструмента: по умолчанию он обрывает
-вызов, если сервер молчит 5 минут (`CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT`, ошибка «sent no
-response or progress for 300s»), — карточка в чате ещё висела, а агент уже получил отказ.
-Поэтому `McpConfigFile` пишет серверу `timeout` = `ApprovalTimeoutMinutes` + 1 мин: это и
-предел вызова, и (с CLI 2.1.203) нижняя граница порога простоя. Progress-уведомления от
-сервера его не продлевают, слать их незачем. На CLI старше 2.1.203 порог простоя остаётся
-5 минут, и карточка дольше не живёт.
+Таймауты шлюза: `ApprovalTimeoutMinutes` (15) — карточка, `RunTimeoutMinutes` (60) — весь
+`claude -p`; оба 1..1440.
+
+У CLI поверх этого свой предел на вызов MCP-инструмента: по умолчанию он обрывает вызов, если
+сервер молчит 5 минут (`CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT`, ошибка «sent no response or
+progress for 300s»). Карточка в чате при этом ещё висит, а агент уже получил отказ. Поэтому
+`McpConfigFile` пишет серверу `timeout` = `ApprovalTimeoutMinutes` + 1 мин: это и предел
+вызова, и (с CLI 2.1.203) нижняя граница порога простоя. Progress-уведомления его не
+продлевают — слать их незачем. На CLI старше 2.1.203 порог остаётся 5 минут, дольше карточка
+не живёт.
 
 ## Запуск и поток событий
 

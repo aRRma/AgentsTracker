@@ -131,7 +131,7 @@ docker compose exec gateway claude      # один раз войти в акка
 | `/agent` | модель, effort, режим разрешений (или `/model`, `/effort`, `/mode` текстом) |
 | `/project` | сменить папку проекта |
 | `/skills` | скиллы и плагины Claude Code |
-| `/rules` | правила «Всегда» этого репозитория; `/rules clear` — снять |
+| `/rules` | правила «Всегда» этого репозитория; `/rules del <n>` и `/rules clear` — снять |
 | `/audit` · `/help` | последние действия · справка |
 
 ## Подробнее
@@ -180,13 +180,13 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 | `Claude:Executable` | путь к `claude.exe`, если автопоиск не нашёл |
 | `Claude:BuiltInSkills` | встроенные скиллы для `/skills`, строки `"/команда \| описание \| подсказка аргументов"` |
 | `Model`, `Effort` | модель и глубина размышлений по умолчанию |
-| `PermissionMode` | что можно без спроса: `default`, `acceptEdits`, `auto`, `plan` |
+| `PermissionMode` | что можно без спроса. Из чата переключаются `plan`, `default`, `acceptEdits`, `auto`; полное снятие подтверждений (`dontAsk`, `bypassPermissions`) — только здесь, в файле |
 | `Proxy` | общий прокси машины: агент и канал, у которого нет своего |
 | `MonitorPort` | порт веб-монитора (5100), `0` — выключить |
 | `MonitorBind` | где слушать монитор: `loopback` (по умолчанию) или `any` для контейнера |
 | `McpPort` | порт, по которому `claude` спрашивает разрешения у бота (5099) |
 | `DataDirectory` | где хранить состояние и аудит; задаётся до остального конфига — в `appsettings.json` рядом с exe или переменной `Gateway__DataDirectory` |
-| `ApprovalTimeoutMinutes`, `RunTimeoutMinutes` | сколько ждать ответа на карточку (15) и всю задачу (60); первый шлюз передаёт и агенту, иначе тот бросит ждать через 5 минут |
+| `ApprovalTimeoutMinutes`, `RunTimeoutMinutes` | сколько минут ждать ответа на карточку (15) и всю задачу (60). Первое шлюз передаёт и самому агенту — иначе тот бросит ждать через 5 минут |
 
 Полный список — в `appsettings.json`.
 

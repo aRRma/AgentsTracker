@@ -39,15 +39,19 @@ Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.
 
 ## Пробный экземпляр
 
-Конфиг перекрывается переменными окружения (`$env:Gateway__ProjectPath`,
-`Gateway__Channel__Settings__AllowedUserIds__0`), поэтому можно запустить второй exe
-с поддельным `Gateway__Channel__Settings__BotToken` (формат `<число>:<строка>` — иначе канал
-не создастся) и своими `Gateway__McpPort`/`Gateway__MonitorPort`. Живёт ~минуту (бот
-один, `getUpdates` отдаёт 409) — хватает дёрнуть монитор. MCP-конфиг у каждого экземпляра
-свой (`mcp-gateway-<pid>.json`). Задайте пробе `Gateway__DataDirectory=<папка в scratchpad>`:
-тогда и `state.json` свой, и боевой `appsettings.Local.json` не читается — проба не мешает
-рабочему шлюзу и не зависит от формы его конфига. Без этого `state.json` общий: не запускайте
-пробу, пока рабочий шлюз выполняет задачу.
+Любой ключ конфига перекрывается переменной окружения, поэтому второй exe можно поднять рядом
+с рабочим. Что задать пробе:
+
+- `Gateway__Channel__Settings__BotToken` — поддельный, но формата `<число>:<строка>`, иначе
+  канал не создастся;
+- `Gateway__McpPort` и `Gateway__MonitorPort` — свои, рабочие заняты;
+- `Gateway__DataDirectory` — папка в scratchpad. Тогда у пробы свой `state.json` и она не
+  читает боевой `appsettings.Local.json`: не мешает рабочему шлюзу и не зависит от формы его
+  конфига. Без этого `state.json` общий — не запускайте пробу, пока идёт задача.
+
+Живёт проба около минуты: бот один, и `getUpdates` второму процессу отдаёт 409. Этого хватает,
+чтобы дёрнуть монитор. MCP-конфиг конфликта не создаёт — он у каждого свой,
+`mcp-gateway-<pid>.json`.
 
 Смоук-тест после правок инфраструктуры: скрипт в scratchpad, `pwsh -File`; через ~8 с
 проверить:
