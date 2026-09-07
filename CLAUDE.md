@@ -45,9 +45,10 @@ docker compose up -d --build                    # тот же шлюз в кон
 Заняты: `/start /help` (Help), `/new /stop` (Chat), `/rules` (Approvals), `/audit` (Audit),
 `/menu /settings /status /sessions /agent /model /effort /mode /skills /project /usage`
 (Settings). Дубликат у двух фич роняет старт. В «Меню» только экраны — `/new /stop /model
-/effort /mode` работают текстом, но в списке их нет. Порядок в списке, справке и `RootScreen`
-один: статус и сессии, агент и скиллы, репозиторий, статистика и журналы. Прочие слэш-команды
-уходят в CLI как есть.
+/effort /mode` работают текстом, но в списке их нет. Порядок везде один: статус и сессии,
+агент и скиллы, репозиторий, статистика, журналы. В `RootScreen` последних двух пунктов нет —
+`/rules` и `/audit` живут только в списке команд и справке. Прочие слэш-команды уходят в CLI
+как есть.
 
 **Экран настроек.** Класс с `ISettingsScreen` в `Features/Settings/Screens/`, регистрация в
 `SettingsModule`, кнопка в `RootScreen`. `RenderAsync` асинхронный ради лимитов;
@@ -86,8 +87,9 @@ docker compose up -d --build                    # тот же шлюз в кон
 `docs/monitor.md`.
 
 **Команду exe.** Класс в `Infrastructure/Cli/` (`protect-secrets` — в `Security/`, рядом с
-`SecretsProtector`) с `public const string Name` и
-`Run(string[] args, TextWriter output)`, строка в `switch` у `ConsoleCommands` и в её справке.
+`SecretsProtector`) с `public const string Name` и `Run(string[] args, TextWriter output)` —
+плюс `IReadOnlyList<IChatChannelModule> channels`, если команде нужны ключи каналов (так у
+`install` и `protect-secrets`). Строка в `switch` у `ConsoleCommands` и в её справке.
 Команды отрабатывают до сборки хоста: DI и Telegram им недоступны, ответ — только в
 `output`, код возврата 0 или 1. Заняты: `protect-secrets`, `install`, `uninstall`, `help`.
 Всё, что начинается с дефиса, командой не считается — это аргументы конфигурации.
@@ -117,12 +119,14 @@ src/AgentsTracker.Agents.Abstractions/   контракты агента, без
   IAgentBackendModule   AddServices + MapEndpoints; AgentHost — папка данных, порт, прокси, таймаут карточки от хоста
 src/AgentsTracker.Agents.Claude/         Claude Code за этими контрактами:
   ClaudeBackend         процесс claude -p: аргументы, stream-json, «сессия не найдена», лимит
+  ClaudeCapabilities    какие модели, effort и режимы принимает CLI; Selectable — что даётся из чата
   ClaudeLimits, ClaudeSkillCatalog, ClaudePluginRegistry, ClaudeCliLocator, ClaudeStreamEvent
   Mcp/                  McpConfigFile — mcp-gateway-<pid>.json с токеном; ClaudePermissionTool — payload CLI ↔ IOperatorConsole
 src/AgentsTracker.Channels.Abstractions/ контракты канала, без конкретного мессенджера:
   IChatChannel          адреса и лимиты канала, ConnectAsync/ListenAsync, Send/Edit/Delete/Acknowledge
   ChatId, UserId        адрес как значение; Key — «канал:значение» для state.json, аудита и лога
   Messages.cs           OutgoingMessage, Keyboard, MessageRef, IncomingMessage, ButtonPress, ChatCommand
+  IChatInbound          куда канал отдаёт входящее; реализует хост (ChatDispatcher)
   ChatHtml              канонический формат текста (b, i, s, code, pre, a, blockquote) и экранирование
   ChannelRequestException  единственное исключение канала наружу: RateLimited (retry_after), MarkupRejected, CannotReach
   IChatChannelModule    AddServices + MapEndpoints, SecretKeys; ChannelHost — общий прокси от хоста
