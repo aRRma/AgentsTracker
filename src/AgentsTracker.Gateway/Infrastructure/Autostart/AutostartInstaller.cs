@@ -63,12 +63,14 @@ public abstract class ProcessAutostartInstaller
         using var process = Process.Start(info)
             ?? throw new InvalidOperationException($"Не удалось запустить {fileName}.");
 
-        var output = process.StandardOutput.ReadToEnd();
-        var error = process.StandardError.ReadToEnd();
+        // Оба потока читаются разом: длинное локализованное сообщение утилиты переполнило бы
+        // буфер stderr, и утилита ждала бы места, пока мы ждём конца stdout — install завис бы.
+        var output = process.StandardOutput.ReadToEndAsync();
+        var error = process.StandardError.ReadToEndAsync();
         process.WaitForExit();
 
-        var text = new StringBuilder(output.Trim());
-        if (error.Trim() is { Length: > 0 } errorText)
+        var text = new StringBuilder(output.GetAwaiter().GetResult().Trim());
+        if (error.GetAwaiter().GetResult().Trim() is { Length: > 0 } errorText)
         {
             if (text.Length > 0) text.Append('\n');
             text.Append(errorText);

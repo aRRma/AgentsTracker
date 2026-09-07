@@ -10,12 +10,11 @@ namespace AgentsTracker.Gateway.Infrastructure;
 public static class AppPaths
 {
     /// <summary>
-    /// Ключ, которым папку данных переносят: <c>Gateway:DataDirectory</c> и его вид для
-    /// переменной окружения. Читается в обход обычной конфигурации — от этой папки зависит
-    /// путь к самому файлу настроек.
+    /// Ключ, которым папку данных переносят: <c>Gateway:DataDirectory</c> (в окружении —
+    /// <c>Gateway__DataDirectory</c>). Читается в обход обычной конфигурации — от этой папки
+    /// зависит путь к самому файлу настроек.
     /// </summary>
     public const string SettingKey = "Gateway:DataDirectory";
-    public const string EnvironmentKey = "Gateway__DataDirectory";
 
     private static string? _override;
 
