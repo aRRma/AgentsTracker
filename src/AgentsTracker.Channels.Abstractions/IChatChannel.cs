@@ -20,7 +20,11 @@ public interface IChatChannel
     /// <summary>Кому разрешено управлять агентом — из настроек канала. Политику применяет хост.</summary>
     IReadOnlyCollection<UserId> AllowedUsers { get; }
 
-    /// <summary>Личный чат с пользователем, если канал умеет его вычислить; null — писать первым нельзя.</summary>
+    /// <summary>
+    /// Личный чат с пользователем, если канал умеет вычислить его адрес без переписки
+    /// (Telegram — умеет: это тот же id). null — адреса нет, писать первым некуда. Ненулевой
+    /// адрес не обещает доставку: бот, которому ещё не писали, получит <see cref="ChannelFailure.CannotReach"/>.
+    /// </summary>
     ChatId? DirectChat(UserId user);
 
     /// <summary>Обратно из <see cref="ChatId.Key"/>: адрес, сохранённый в state.json прошлым запуском. null — не этого канала.</summary>
