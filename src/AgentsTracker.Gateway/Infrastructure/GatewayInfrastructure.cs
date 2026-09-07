@@ -44,7 +44,7 @@ public static class GatewayInfrastructure
             services.AddSingleton<StartupNotice>();
             services.AddHostedService<ChatGatewayService>();
 
-            // Монитор на своём порту: у него нет токена, и выключать его надо отдельно
+            // Монитор на своём порту: у него нет токена, и выключить его можно отдельно
             // от подтверждений. Порт подтверждений всегда loopback — его зовёт дочерний
             // процесс агента, дальше машины ему незачем.
             var defaults = new GatewayOptions();

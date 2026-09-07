@@ -169,7 +169,7 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
     /// <c>skills/*/SKILL.md</c> — ровно один уровень, вложенный SKILL.md в examples не скилл —
     /// и <c>commands/**/*.md</c>. Команда из подпапки зовётся через двоеточие, как у CLI:
     /// <c>commands/db/query.md</c> → <c>/db:query</c>. Одноимённые скилл и команда
-    /// не дублируются.
+    /// не дублируются — CLI тоже показывает их один раз.
     /// </summary>
     private List<SkillInfo> ScanFolder(string root, string? prefix, string group)
     {

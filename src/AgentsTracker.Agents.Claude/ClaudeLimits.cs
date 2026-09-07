@@ -10,7 +10,7 @@ namespace AgentsTracker.Agents.Claude;
 /// Окна тарифа (5 часов, неделя, неделя на модель) с <c>api.anthropic.com/api/oauth/usage</c>:
 /// не даёт запустить агента на исчерпанном окне, иначе тариф молча уедет на платные кредиты.
 /// Эндпоинт недокументирован — его же зовёт CLI для <c>/usage</c>. Токен берём готовый из
-/// <c>~/.claude/.credentials.json</c> или CLAUDE_CODE_OAUTH_TOKEN, свой вход не заводим.
+/// <c>~/.claude/.credentials.json</c> или CLAUDE_CODE_OAUTH_TOKEN, заново не логинимся.
 /// </summary>
 public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<ClaudeLimits> logger) : IAgentLimits
 {
@@ -358,7 +358,8 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
 
     /// <summary>
     /// Числовое поле или <c>null</c>. Вид проверяем сами: <c>TryGetDouble</c> на JSON-null
-    /// не возвращает false, а бросает <see cref="InvalidOperationException"/>.
+    /// не возвращает false, а бросает <see cref="InvalidOperationException"/>, и одно пустое
+    /// поле сорвало бы разбор всего ответа.
     /// </summary>
     private static double? Number(JsonElement owner, string name) =>
         owner.TryGetProperty(name, out var field)

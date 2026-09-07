@@ -174,7 +174,7 @@ public sealed class SkillsScreen(
             _nav.Update(user, p => p with { Card = null });
         }
 
-        // Источник один — выбирать не из чего, экран выбора лишний.
+        // Источник один — выбирать не из чего, экран выбора лишний даже с группой «Частые».
         if (sources.Count == 1) return RenderSkills(user, sources[0], single: true, position.Page, usage);
 
         var groups = WithTop(sources, usage);

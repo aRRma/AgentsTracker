@@ -126,7 +126,7 @@ public sealed class ClaudeBackend(
         return Parse(output, stderr, process.ExitCode, started.Elapsed, resumedSessionId, sessionId);
     }
 
-    /// <summary>Что осталось от stdout для разбора итога.</summary>
+    /// <summary>Из stdout только нужное разбору итога: строка <c>result</c> и всё, что ею не было.</summary>
     /// <param name="ResultLine">Последняя строка <c>"type":"result"</c>; null — CLI до итога не дошёл.</param>
     /// <param name="Noise">
     /// Не-JSON строки (баннер обновления, текст ошибки) плюс, если итога не было, последнее

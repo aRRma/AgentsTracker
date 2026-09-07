@@ -25,7 +25,8 @@ public sealed record AgentSetting(
 /// <summary>Что агент умеет и какие настройки принимает. Хост прячет кнопки того, чего нет.</summary>
 /// <param name="Model">
 /// Модель. В <see cref="AgentSetting.Values"/> — алиасы для кнопок, полное имя
-/// (<c>claude-sonnet-5</c>) вводится текстом и проходит через <see cref="AgentSetting.Resolve"/>.
+/// (<c>claude-sonnet-5</c>) вводится текстом: <see cref="AgentSetting.Resolve"/> у модели
+/// принимает любую непустую строку.
 /// </param>
 /// <param name="Effort">Уровень усилий; null — агент такого не умеет, экран и команда скрыты.</param>
 /// <param name="PermissionMode">Обязателен: без него хост не знает, что писать в конфиг по умолчанию.</param>
