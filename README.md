@@ -132,6 +132,8 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 | `PermissionMode` | что можно без спроса: `default`, `acceptEdits`, `auto`, `plan` |
 | `Proxy` | прокси, если Telegram недоступен напрямую |
 | `MonitorPort` | порт веб-монитора (5100), `0` — выключить |
+| `McpPort` | порт, по которому `claude` спрашивает разрешения у бота (5099) |
+| `ApprovalTimeoutMinutes`, `RunTimeoutMinutes` | сколько ждать ответа на карточку (15) и всю задачу (60) |
 
 Полный список — в `appsettings.json`, устройство проекта — в [CLAUDE.md](CLAUDE.md).
 
