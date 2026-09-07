@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Polly;
 
 namespace AgentsTracker.Agents.Claude;
 
@@ -29,7 +30,6 @@ public sealed class ClaudeAgentModule : IAgentBackendModule
 
         // Клиент лимитов — через фабрику: обработчик ротируется, DNS не залипает на весь срок
         // жизни процесса. BaseAddress не задаём намеренно — полный URL в запросе.
-        // Стандартный конвейер устойчивости: ретраи с backoff, таймауты, предохранитель.
         services.AddHttpClient(ClaudeLimits.HttpClientName, http =>
             {
                 http.DefaultRequestHeaders.UserAgent.ParseAdd(ClaudeLimits.UserAgent);
@@ -44,7 +44,10 @@ public sealed class ClaudeAgentModule : IAgentBackendModule
                 }
                 return handler;
             })
-            .AddStandardResilienceHandler();
+            // Только таймаут, без ретраев и предохранителя: эндпоинт отвечает 429 на частый
+            // опрос, и повтор внутри одного вызова — четыре запроса вместо одного. Ответ
+            // кэшируется на 3 минуты, а любая ошибка пропускает проверку, не блокирует запуск.
+            .AddResilienceHandler("claude-limits", pipeline => pipeline.AddTimeout(ClaudeLimits.RequestTimeout));
 
         services
             .AddMcpServer()

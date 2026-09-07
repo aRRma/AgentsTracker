@@ -461,13 +461,16 @@ Id новой сессии выдаёт **шлюз** (`NewSessionId` → `--sess
 - Барьеры: `AllowedUserIds` + только личные чаты; Kestrel только `127.0.0.1`; MCP — токен в
   заголовке; монитор без токена — поэтому только читает.
 - Аргументы CLI — через `ProcessStartInfo.ArgumentList`, не склеивайте строку руками.
-- `HttpClient` — только через `IHttpClientFactory` с `AddStandardResilienceHandler`
-  (Microsoft.Extensions.Http.Resilience): `ClaudeLimits.HttpClientName` регистрирует
-  `ClaudeAgentModule` (клиент на каждый запрос), `TelegramClientFactory.AddTelegramBotClient` —
-  клиент Bot API (живёт в синглтонах, поэтому DNS обновляет `PooledConnectionLifetime`, а
-  таймауты подняты под long polling ~100 с). `BaseAddress` не задавать — полный URL в запросе.
-  У Telegram-клиента `RemoveAllLoggers()`: токен — часть пути. Логи `System.Net.Http.HttpClient`
-  и `Polly` в `appsettings.json` на Warning, иначе каждый запрос — четыре строки в мониторе.
+- `HttpClient` — только через `IHttpClientFactory` (Microsoft.Extensions.Http.Resilience).
+  `ClaudeLimits.HttpClientName` регистрирует `ClaudeAgentModule`: клиент на каждый запрос,
+  конвейер — один таймаут `ClaudeLimits.RequestTimeout`, без ретраев (эндпоинт отвечает 429 на
+  частый опрос, ответ и так кэшируется). `TelegramClientFactory.AddTelegramBotClient` — клиент
+  Bot API в синглтонах, DNS обновляет `PooledConnectionLifetime`; `AddStandardResilienceHandler`
+  с таймаутами под long polling ~100 с и ретраем только на `HttpRequestException`: все методы
+  Bot API — POST без идемпотентности (повтор после 5xx — дубль в чате), а 429 несёт
+  `retry_after` в теле, его ждёт вызывающий (`SettingsMenuCoordinator`). `BaseAddress` не
+  задавать — полный URL в запросе. У Telegram-клиента `RemoveAllLoggers()`: токен — часть пути.
+  Логи `System.Net.Http.HttpClient` и `Polly` в `appsettings.json` на Warning.
 - `Channel.CreateUnbounded` в `ChatWorker` без `SingleReader`: с ним `Reader.Count` бросает
   `NotSupportedException`, и `/status` падает.
 - `McpConfigFile` и `SessionStore` — единственные с классическим конструктором: побочный эффект

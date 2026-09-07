@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
-using Polly.CircuitBreaker;
 using Polly.Timeout;
 
 namespace AgentsTracker.Agents.Claude;
@@ -35,6 +34,12 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
 
     /// <summary>Кэш: у эндпоинта жёсткий rate limit, частый опрос упирается в 429.</summary>
     private static readonly TimeSpan CacheFor = TimeSpan.FromMinutes(3);
+
+    /// <summary>
+    /// Одна попытка и не дольше этого: проверка стоит перед каждым запуском, и зависший
+    /// эндпоинт задержал бы ответ пользователю на всё это время.
+    /// </summary>
+    public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
 
     private static readonly CultureInfo Russian = CultureInfo.GetCultureInfo("ru-RU");
 
@@ -220,7 +225,7 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
         try
         {
             // Клиент на каждый запрос: фабрика меняет обработчик по расписанию, и смена DNS
-            // у api.anthropic.com не требует перезапуска шлюза. Ретраи и таймауты — в конвейере.
+            // у api.anthropic.com не требует перезапуска шлюза.
             using var http = httpClientFactory.CreateClient(HttpClientName);
             using var response = await http.SendAsync(request, ct);
             var body = await response.Content.ReadAsStringAsync(ct);
@@ -248,16 +253,12 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
             return new LimitsSnapshot(
                 [], null, DateTimeOffset.UtcNow, $"не достучаться до api.anthropic.com: {ex.Message}");
         }
-        // Таймаут конвейера — TimeoutRejectedException, разомкнутый предохранитель —
-        // BrokenCircuitException; своя отмена сюда не попадает.
-        catch (Exception ex) when (ex is TimeoutRejectedException or BrokenCircuitException)
+        // Таймаут конвейера — TimeoutRejectedException, не TaskCanceledException: своя отмена
+        // (ct) сюда не попадает и уходит вызывающему.
+        catch (TimeoutRejectedException)
         {
-            logger.LogWarning(ex, "Эндпоинт лимитов недоступен");
-            return new LimitsSnapshot([], null, DateTimeOffset.UtcNow, "api.anthropic.com не отвечает");
-        }
-        catch (TaskCanceledException) when (!ct.IsCancellationRequested)
-        {
-            return new LimitsSnapshot([], null, DateTimeOffset.UtcNow, "api.anthropic.com не ответил вовремя");
+            return new LimitsSnapshot(
+                [], null, DateTimeOffset.UtcNow, $"api.anthropic.com не ответил за {RequestTimeout.TotalSeconds:0} секунд");
         }
     }
 
