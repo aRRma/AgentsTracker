@@ -48,7 +48,7 @@ $dataLocal = Join-Path $dataDir 'appsettings.Local.json'
 $projectLocal = Join-Path $project 'appsettings.Local.json'
 
 if (-not (Test-Path $dataLocal) -and (Test-Path $projectLocal)) {
-    # protect-secrets сам перенесёт файл в папку данных и зашифрует BotToken/Proxy.
+    # protect-secrets сам перенесёт файл в папку данных и зашифрует секреты канала и Proxy.
     & $exe protect-secrets $projectLocal
     if ($LASTEXITCODE -ne 0) { throw 'protect-secrets завершился с ошибкой' }
 } elseif (Test-Path $dataLocal) {

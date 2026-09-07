@@ -19,7 +19,7 @@
 ```powershell
 dotnet build                                    # TreatWarningsAsErrors включён
 dotnet run --project src\AgentsTracker.Gateway  # нужен appsettings.Local.json (рядом или в папке данных)
-dotnet run --project src\AgentsTracker.Gateway -- protect-secrets   # зашифровать BotToken/Proxy, перенести конфиг в %LOCALAPPDATA%
+dotnet run --project src\AgentsTracker.Gateway -- protect-secrets   # зашифровать секреты канала и Proxy, перенести конфиг в %LOCALAPPDATA%
 pwsh -File scripts\install-autostart.ps1        # publish + protect-secrets + ACL + задача Планировщика
 ```
 
@@ -32,8 +32,8 @@ pwsh -File scripts\install-autostart.ps1        # publish + protect-secrets + AC
 
 ## Как добавить
 
-**Команду чата.** Класс с `ITelegramCommandHandler` в папке фичи, `AddSingleton` в её
-`*Module`, запись в `BotCommandsCatalog` (кнопка «Меню») и в текст `HelpCommandHandler`.
+**Команду чата.** Класс с `IChatCommandHandler` в папке фичи, `AddSingleton` в её
+`*Module`, запись в `ChatCommandCatalog` (подсказка команд канала) и в текст `HelpCommandHandler`.
 Заняты: `/start /help` (Help), `/new /stop` (Chat), `/rules` (Approvals), `/audit` (Audit),
 `/menu /settings /status /sessions /agent /model /effort /mode /skills /project /usage`
 (Settings). Дубликат у двух фич роняет старт. В «Меню» только экраны — `/new /stop /model
@@ -45,7 +45,7 @@ pwsh -File scripts\install-autostart.ps1        # publish + protect-secrets + AC
 `SettingsModule`, кнопка в `RootScreen`. `RenderAsync` асинхронный ради лимитов;
 `RenderFramesAsync` — необязательные кадры (`StatusScreen` «заполняет» шкалы `LimitBars`: три
 кадра по 350 мс, чаще — 429 от Telegram). Модель, effort и режим — один `AgentScreen` с
-аргументами `model:…`/`effort:…`/`mode:…`. `Apply` получает `chatId`: экран может ставить
+аргументами `model:…`/`effort:…`/`mode:…`. `Apply` получает `ChatId`: экран может ставить
 задачу в очередь `ChatWorker` (`SkillsScreen`), ответ уходит нажавшему. Позиция списка — в
 `ScreenNavigation` на пользователя: экраны синглтоны, пользователей может быть несколько.
 Страницы и ключи callback_data — `SettingsKeyboard.Page`/`Key12`; однобуквенный префикс
@@ -61,12 +61,24 @@ pwsh -File scripts\install-autostart.ps1        # publish + protect-secrets + AC
 `grep -rn Claude src/AgentsTracker.Gateway --include=*.cs` должен находить только `Program.cs`
 и комментарии. Настройки агента — в `Gateway:<Id>`, хост их не читает.
 
+**Канал чата (Slack, Discord).** Проект `src/AgentsTracker.Channels.<Имя>` со ссылкой на
+`Channels.Abstractions`: `IChatChannelModule` регистрирует `IChatChannel` и всё своё, читает
+настройки из `Gateway:Channel:Settings` и объявляет в `SecretKeys` то, что шифрует
+`protect-secrets`. Свои типы `ChatId`/`UserId` (в `Key` — «канал:значение»), свои
+`ChannelLimits`, отказы транспорта — только `ChannelRequestException`. Строка в списке
+`channels` в `Program.cs` (выбор по `Gateway:Channel:Type`), ссылка в `Gateway.csproj`.
+`grep -rn Telegram src/AgentsTracker.Gateway --include=*.cs` должен находить только
+`Program.cs` и комментарии. Транспортный клиент канал берёт **лениво**: хост создаёт канал
+раньше, чем печатает ошибки настроек, и падение конструктора на пустом токене подменило бы
+понятную ошибку стектрейсом.
+
 **Эндпоинт монитора.** `api.MapGet` в `MonitorModule.MapEndpoints`, только чтение —
 `docs/monitor.md`.
 
 **Ключ конфига.** Свойство в `GatewayOptions` (+ `Validate`), дефолт в `appsettings.json`,
 пример `"//Ключ": "…"` в `appsettings.Local.example.json`, строка в README «Основные
-настройки». Ключ агента — в `ClaudeOptions` и `Gateway:Claude`.
+настройки». Ключ агента — в `ClaudeOptions` и `Gateway:Claude`, ключ канала — в его
+`*Options` и `Gateway:Channel:Settings`.
 
 ## Устройство
 
@@ -82,11 +94,22 @@ src/AgentsTracker.Agents.Claude/         Claude Code за этими контр�
   ClaudeBackend         процесс claude -p: аргументы, stream-json, «сессия не найдена», лимит
   ClaudeLimits, ClaudeSkillCatalog, ClaudePluginRegistry, ClaudeCliLocator, ClaudeStreamEvent
   Mcp/                  McpConfigFile — mcp-gateway-<pid>.json с токеном; ClaudePermissionTool — payload CLI ↔ IOperatorConsole
+src/AgentsTracker.Channels.Abstractions/ контракты канала, без конкретного мессенджера:
+  IChatChannel          адреса и лимиты канала, ConnectAsync/ListenAsync, Send/Edit/Delete/Acknowledge
+  ChatId, UserId        адрес как значение; Key — «канал:значение» для state.json, аудита и лога
+  Messages.cs           OutgoingMessage, Keyboard, MessageRef, IncomingMessage, ButtonPress, ChatCommand
+  ChatHtml              канонический формат текста (b, i, s, code, pre, a, blockquote) и экранирование
+  ChannelRequestException  единственное исключение канала наружу: RateLimited (retry_after), MarkupRejected, CannotReach
+  IChatChannelModule    AddServices + MapEndpoints, SecretKeys; ChannelHost — общий прокси от хоста
+src/AgentsTracker.Channels.Telegram/     Telegram за этими контрактами:
+  TelegramChannel       long polling, инлайн-кнопки, HTML; «message is not modified» и retry_after — здесь
+  TelegramOptions, TelegramIds, TelegramClientFactory (клиент лениво: конструктор проверяет токен)
 src/AgentsTracker.Gateway/
-  Program.cs            список агентов (выбор по Gateway:Agent) и фич
+  Program.cs            списки агентов (Gateway:Agent) и каналов (Gateway:Channel:Type), список фич
   Domain/               чистые модели: GatewayState (state.json), AuditEvent
   Infrastructure/       Configuration (GatewayOptions, ProjectCatalog), State (SessionStore),
-                        Telegram (роутер, форматтер, Dispatch/), Audit, Monitoring (RunMonitor, RingBufferLog), Security
+                        Chat (ChatGatewayService, ChatDispatcher, MarkdownRenderer, Dispatch/),
+                        Audit, Monitoring (RunMonitor, RingBufferLog), Security
   Features/             вертикальные слайсы, у каждого свой *Module:
     Approvals/          карточки подтверждений, ApprovalBroker, /rules
     Chat/               ChatWorker (очередь, запуск, сессии), RunStatusMessage, /new /stop
@@ -95,24 +118,24 @@ src/AgentsTracker.Gateway/
 ```
 
 Правила слоёв: `Domain` и `Abstractions` не открывают файлы и не ходят по сети; `Gateway` знает
-о конкретном агенте только в `Program.cs`; бэкенд не знает о Telegram и `GatewayOptions`;
-`Infrastructure` не знает о фичах (кроме контрактов `Dispatch`); фича зависит от фичи только
-через публичный сервис (`Settings` → `ChatWorker.IsBusy`).
+о конкретном агенте и канале только в `Program.cs`; бэкенд и канал не знают друг о друге и о
+`GatewayOptions`; `Infrastructure` не знает о фичах (кроме контрактов `Dispatch`); фича зависит
+от фичи только через публичный сервис (`Settings` → `ChatWorker.IsBusy`).
 
 ### Как ходит сообщение
 
-`TelegramBotService` пускает только `AllowedUserIds` и личные чаты. Текст обрабатывается по
-порядку:
+`ChatDispatcher` пускает только `IChatChannel.AllowedUsers` и личные чаты (`ChatKind.Unknown`
+— тоже отказ). Текст обрабатывается по порядку:
 
-1. слэш-команда из `ITelegramCommandHandler.Commands` — **раньше всего**, иначе `/stop` уйдёт
+1. слэш-команда из `IChatCommandHandler.Commands` — **раньше всего**, иначе `/stop` уйдёт
    в ожидающий свободный ответ и прервать зависший запуск будет нечем;
-2. цепочка `ITelegramTextHandler` в порядке модулей: ответ на карточку (`ApprovalTextHandler`)
+2. цепочка `IChatTextHandler` в порядке модулей: ответ на карточку (`ApprovalTextHandler`)
    → аргументы скилла (`SkillArgumentsTextHandler`) → в очередь агенту
    (`ChatEnqueueTextHandler`, всегда `true`). Поэтому `ChatModule` последний. Неизвестные
    слэш-команды — это команды самого Claude Code, они уходят в CLI.
 
 Кнопки: префикс `cfg:` — меню, всё остальное (hex-id запроса) — `ApprovalBroker`.
-`ActiveChatId` брокера ставит `ChatWorker` перед запуском, иначе карточки ушли бы в чат
+`ActiveChat` брокера ставит `ChatWorker` перед запуском, иначе карточки ушли бы в чат
 другого пользователя.
 
 ### Кольцо «шлюз → CLI → шлюз»
@@ -120,7 +143,7 @@ src/AgentsTracker.Gateway/
 Шлюз и запускает агента, и обслуживает его:
 
 ```
-Telegram ──▶ TelegramBotService ──▶ ChatWorker ──▶ ClaudeBackend ──▶ claude.exe -p
+канал ──▶ ChatDispatcher ──▶ ChatWorker ──▶ ClaudeBackend ──▶ claude.exe -p
                     ▲                                                     │ нужно разрешение
                     └── ApprovalBroker ◀── OperatorConsole ◀── ClaudePermissionTool ◀── MCP http://127.0.0.1:<McpPort>/mcp
                                                                               Authorization: Bearer <токен>
@@ -170,14 +193,17 @@ Telegram ──▶ TelegramBotService ──▶ ChatWorker ──▶ ClaudeBacke
 
 Конфиг слоями: `appsettings.json` → `appsettings.Local.json` рядом с exe (IDE) → тот же файл в
 папке данных (боевой) → переменные окружения. `dpapi:…` расшифровывается при загрузке
-(`ProtectedJsonConfigurationProvider`); `protect-secrets` шифрует `BotToken` и `Proxy`.
+(`ProtectedJsonConfigurationProvider`); `protect-secrets` шифрует `Gateway:Proxy` и ключи
+`IChatChannelModule.SecretKeys` в `Gateway:Channel:Settings` (у Telegram — `BotToken`, `Proxy`).
 `publish\` секретов не содержит. Переменные `Gateway__*` дочерний `claude` не видит — хост
 удаляет их из окружения в `ValidateStartup`.
 
 ### Аудит
 
-`IAuditLog.Write(AuditEvent.Now(kind, summary, userId, chatId, project, session, outcome))` —
-«кто, куда, что», без секретов и полных текстов (≤200 символов; текст пользователя — превью
+`IAuditLog.Write(AuditEvent.Now(kind, summary, user, chat, project, session, outcome))` —
+«кто, куда, что»; адреса ложатся строками `UserKey`/`ChatKey` («канал:значение»), а не числами:
+номера разных каналов совпадают. Есть и `NowByKeys` — для записи по готовым ключам из
+`state.json`. Без секретов и полных текстов (≤200 символов; текст пользователя — превью
 `Text.Preview`, 80 символов: туда могли вставить токен). Виды — `AuditKinds`:
 `access.rejected`, `message`, `run.start`/`run.end`, `approval`, `question`, `settings`,
 `rules`, `session.reset`, `limit.refused`, `gateway`. Экраны меню пишут через
@@ -192,21 +218,23 @@ Telegram ──▶ TelegramBotService ──▶ ChatWorker ──▶ ClaudeBacke
 только ходы, токены и время. Не возвращайте долларовые оценки. Кредиты («extra usage») агенту
 запрещены. Детали — `docs/cli-contract.md`.
 
-### Вывод в Telegram
+### Вывод в чат
 
-`TelegramFormatter` переводит markdown в подмножество HTML и режет под 4096 — резать
-**исходный markdown до конвертации**, иначе рвутся теги. Списки — `•`/`◦`, таблица —
-выровненный `<pre>`. Курсив только у `*` вплотную к содержимому на границе слова (иначе `*.cs`
-и `2 * 3` курсивились); `_` не разбирается (`snake_case`). Блок кода длиннее лимита уходит
-файлом. Если Telegram отверг разметку — тот же текст без `ParseMode`. Суммы, токены и время —
-`DisplayFormat`.
+`MarkdownRenderer` переводит markdown в `ChatHtml` и режет под `IChatChannel.Limits`
+(`MessageLength`, у Telegram 3800) — резать **исходный markdown до конвертации**, иначе рвутся
+теги. Списки — `•`/`◦`, таблица — выровненный `<pre>`. Курсив только у `*` вплотную к
+содержимому на границе слова (иначе `*.cs` и `2 * 3` курсивились); `_` не разбирается
+(`snake_case`). Блок кода длиннее лимита уходит файлом. Экранирование под бюджет —
+`ChatHtml.EscapeCapped` (текст, уложившийся целиком, символ под многоточие не тратит). Если
+канал отверг разметку, он сам повторяет отправку без неё (`ChatHtml.StripTags`). Суммы, токены
+и время — `DisplayFormat`.
 
 ## Помнить
 
 - Шлюз **не подключается** к сессии VS Code — это параллельная сессия на той же папке: общие
   `CLAUDE.md`, настройки, хуки и MCP, но своя история.
 - `--bare` нельзя: не читает `~/.claude`, ломает OAuth-логин по подписке.
-- Барьеры: `AllowedUserIds` + только личные чаты; Kestrel только `127.0.0.1`; MCP — токен в
+- Барьеры: `AllowedUsers` канала + только личные чаты; Kestrel только `127.0.0.1`; MCP — токен в
   заголовке; монитор без токена — поэтому только читает.
 - Аргументы CLI — через `ProcessStartInfo.ArgumentList`, не склеивайте строку.
 - `HttpClient` — только через `IHttpClientFactory`. `ClaudeLimits.HttpClientName` — один таймаут,

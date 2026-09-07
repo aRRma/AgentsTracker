@@ -40,8 +40,9 @@ Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.
 ## Пробный экземпляр
 
 Конфиг перекрывается переменными окружения (`$env:Gateway__ProjectPath`,
-`Gateway__AllowedUserIds__0`), поэтому можно запустить второй exe с поддельным
-`Gateway__BotToken` и своими `Gateway__McpPort`/`Gateway__MonitorPort`. Живёт ~минуту (бот
+`Gateway__Channel__Settings__AllowedUserIds__0`), поэтому можно запустить второй exe
+с поддельным `Gateway__Channel__Settings__BotToken` (формат `<число>:<строка>` — иначе канал
+не создастся) и своими `Gateway__McpPort`/`Gateway__MonitorPort`. Живёт ~минуту (бот
 один, `getUpdates` отдаёт 409) — хватает дёрнуть монитор. MCP-конфиг у каждого экземпляра
 свой (`mcp-gateway-<pid>.json`), поэтому рабочему шлюзу проба не мешает. А вот `state.json`
 общий: не запускайте пробу, пока рабочий шлюз выполняет задачу.

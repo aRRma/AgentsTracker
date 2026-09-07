@@ -73,9 +73,10 @@ found» при битом `--resume`) — проверка сброса сесс
 Идущий запуск записан в `state.json` (`GatewayState.ActiveRun`): `ChatWorker` ставит
 `BeginRun` перед запуском и `EndRun` в `finally`. Запись на месте при старте — прошлый
 экземпляр умер посреди работы: `StartupNotice` шлёт «🔌 Шлюз запущен» всем из
-`AllowedUserIds`, в чат прерванного запуска — «прерван, напишите „продолжай“», пишет
-`run.end` с исходом `interrupted`. Пользователю, который ещё не писал боту, Telegram не даёт
-отправить первым — ошибка глотается на Debug.
+`IChatChannel.AllowedUsers`, в чат прерванного запуска (`ActiveRun.ChatKey` разбирает
+`IChatChannel.ParseChat`) — «прерван, напишите „продолжай“», пишет `run.end` с исходом
+`interrupted`. Пользователю, который ещё не писал боту, Telegram не даёт отправить первым —
+`ChannelFailure.CannotReach` глотается на Debug.
 
 В чате — `RunStatusMessage`: одно сообщение «Работаю…», раз в 4 с редактируется (время,
 счётчик вызовов, три последних шага, сабагенты с `↳`). `Report` из потока stdout только

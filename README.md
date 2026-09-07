@@ -38,8 +38,13 @@ irm https://claude.ai/install.ps1 | iex
 `appsettings.Local.json` и впишите:
 
 ```json
-"BotToken": "токен от BotFather",
-"ProjectPath": "C:/путь/к/вашему/проекту"
+"Gateway": {
+  "Channel": {
+    "Type": "telegram",
+    "Settings": { "BotToken": "токен от BotFather" }
+  },
+  "ProjectPath": "C:/путь/к/вашему/проекту"
+}
 ```
 
 **4. Запустите и узнайте свой id:**
@@ -51,13 +56,17 @@ dotnet run --project src\AgentsTracker.Gateway
 Напишите боту что угодно. В окне появится строка:
 
 ```
-warn: Отклонено сообщение от постороннего пользователя. user id: 123456789
+warn: Отклонено сообщение от постороннего пользователя. Пользователь: telegram:123456789
 ```
 
-Впишите номер в настройки:
+Впишите номер (без имени канала) в настройки канала:
 
 ```json
-"AllowedUserIds": [ 123456789 ]
+"Gateway": {
+  "Channel": {
+    "Settings": { "AllowedUserIds": [ 123456789 ] }
+  }
+}
 ```
 
 **5. Запустите снова** той же командой. Готово — пишите боту задачу.
@@ -121,8 +130,10 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 
 | Ключ | Зачем |
 |---|---|
-| `BotToken` | токен от @BotFather |
-| `AllowedUserIds` | кому можно управлять ботом |
+| `Channel:Type` | какой канал связи; пока только `telegram` |
+| `Channel:Settings:BotToken` | токен от @BotFather |
+| `Channel:Settings:AllowedUserIds` | кому можно управлять ботом |
+| `Channel:Settings:Proxy` | прокси только для этого канала; нет — берётся общий `Proxy` |
 | `ProjectPath` | папка проекта по умолчанию |
 | `Projects` / `ProjectsRoot` | какие папки показывать в меню выбора проекта |
 | `Agent` | какой агент за шлюзом; пока только `claude` |
@@ -130,7 +141,7 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 | `Claude:BuiltInSkills` | встроенные скиллы для `/skills`, строки `"/команда \| описание \| подсказка аргументов"` |
 | `Model`, `Effort` | модель и глубина размышлений по умолчанию |
 | `PermissionMode` | что можно без спроса: `default`, `acceptEdits`, `auto`, `plan` |
-| `Proxy` | прокси, если Telegram недоступен напрямую |
+| `Proxy` | общий прокси машины: агент и канал, у которого нет своего |
 | `MonitorPort` | порт веб-монитора (5100), `0` — выключить |
 | `McpPort` | порт, по которому `claude` спрашивает разрешения у бота (5099) |
 | `ApprovalTimeoutMinutes`, `RunTimeoutMinutes` | сколько ждать ответа на карточку (15) и всю задачу (60) |
@@ -141,7 +152,8 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 
 Бот даёт доступ к командной строке вашего ПК. Поэтому:
 
-- **обязательно** заполните `AllowedUserIds` — единственная защита от посторонних;
+- **обязательно** заполните `Channel:Settings:AllowedUserIds` — единственная защита
+  от посторонних;
 - групповые чаты бот игнорирует, только личные;
 - токен бота хранится зашифрованным (DPAPI): расшифрует только ваша учётная запись на этой
   машине;
@@ -166,7 +178,8 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 
 | Симптом | Причина |
 |---|---|
-| Бот молчит | не заполнен `AllowedUserIds` или неверный токен |
+| Бот молчит | не заполнен `Channel:Settings:AllowedUserIds` или неверный токен |
+| `Gateway:BotToken больше не читается` | настройки канала переехали в `Gateway:Channel:Settings` — перенесите `BotToken` и `AllowedUserIds` туда |
 | Правка настроек не подействовала | нужен перезапуск — см. выше |
 | В меню не все репозитории | не задан `ProjectsRoot`; список листается `◀ ▶` |
 | `claude` не найден | не поставлен CLI (шаг 1) или не открыто новое окно PowerShell |
