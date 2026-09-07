@@ -187,7 +187,7 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 | `MonitorBind` | где слушать монитор: `loopback` (по умолчанию) или `any` для контейнера |
 | `McpPort` | порт, по которому `claude` спрашивает разрешения у бота (5099) |
 | `DataDirectory` | где хранить состояние и аудит; задаётся до остального конфига — в `appsettings.json` рядом с exe или переменной `Gateway__DataDirectory` |
-| `ApprovalTimeoutMinutes`, `RunTimeoutMinutes` | сколько ждать ответа на карточку (15) и всю задачу (60) |
+| `ApprovalTimeoutMinutes`, `RunTimeoutMinutes` | сколько ждать ответа на карточку (15) и всю задачу (60); первый шлюз передаёт и агенту, иначе тот бросит ждать через 5 минут |
 
 Полный список — в `appsettings.json`.
 
