@@ -6,6 +6,8 @@
 - `docs/deployment.md` — промышленный запуск: публикация, install/uninstall, Docker, порты, секреты.
 - `docs/cli-contract.md` — контракт с CLI: подтверждения, stream-json, сессии, лимиты, скиллы.
 - `docs/monitor.md` — веб-монитор: эндпоинты, мок, стиль, доступность.
+- `docs/claude-permissions.md` — права Claude Code на машине: `allow`/`ask`/`deny`, пример
+  `docs/examples/claude-settings.example.json`, проектный `.claude/settings.json`.
 
 ## Что это
 

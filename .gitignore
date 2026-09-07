@@ -20,3 +20,6 @@ appsettings.Local.json
 
 # Личные заметки Claude Code
 .claude.local.md
+
+# Личные правила Claude Code для этого проекта; общие — в .claude/settings.json
+.claude/settings.local.json

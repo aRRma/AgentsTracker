@@ -211,7 +211,8 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
   { "permissions": { "deny": ["Bash(rm *)"] } }
   ```
 
-  Кнопка «Всегда» такие запреты не обходит;
+  Кнопка «Всегда» такие запреты не обходит. Рекомендуемый набор правил для всей машины
+  (секреты, сеть, необратимое в git) и готовый файл — [docs/claude-permissions.md](docs/claude-permissions.md);
 - правила «Всегда» привязаны к репозиторию: разрешённое в одном не действует в другом;
 - «Плагины» в `/skills` правят ваш `~/.claude/settings.json` — то же, что `/plugin` в самом
   Claude Code;
