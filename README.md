@@ -1,5 +1,9 @@
 <h1 align="center">AgentsTracker</h1>
 
+<picture align="center">
+  <img src="docs/images/banner.png" alt="AgentsTracker">
+</picture>
+
 <p align="center">
   Telegram-бот, через который вы ставите задачи Claude Code на своём компьютере.<br>
   Пишете боту — на ПК запускается <code>claude</code> в папке проекта — ответ приходит в чат.
