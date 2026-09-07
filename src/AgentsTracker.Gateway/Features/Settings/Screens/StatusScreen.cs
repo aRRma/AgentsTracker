@@ -1,8 +1,7 @@
 using System.Runtime.CompilerServices;
 using AgentsTracker.Gateway.Features.Chat;
 using AgentsTracker.Gateway.Infrastructure.Audit;
-using AgentsTracker.Gateway.Infrastructure.Telegram;
-using Telegram.Bot.Types.ReplyMarkups;
+using AgentsTracker.Gateway.Infrastructure.Chat;
 using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
@@ -17,13 +16,13 @@ public sealed class StatusScreen(
 {
     public string Key => "status";
 
-    public string? Apply(string argument, long userId, long chatId)
+    public string? Apply(string argument, UserId user, ChatId chat)
     {
         switch (argument)
         {
             case "stop":
                 var stopped = worker.Stop();
-                audit.Write(AuditEvent.Now(AuditKinds.Gateway, "/stop", userId, chatId, store.ProjectPath, store.SessionId,
+                audit.Write(AuditEvent.Now(AuditKinds.Gateway, "/stop", user, chat, store.ProjectPath, store.SessionId,
                     stopped ? "stopped" : "idle"));
                 return stopped ? "Остановлено" : "Сейчас ничего не выполняется";
 
@@ -35,11 +34,11 @@ public sealed class StatusScreen(
         }
     }
 
-    public async Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(long userId, CancellationToken ct) =>
+    public async Task<(string Html, Keyboard Keyboard)> RenderAsync(UserId user, CancellationToken ct) =>
         Render(await limits.ViewAsync(store.EffectiveModel, ct), 1.0);
 
-    public async IAsyncEnumerable<(string Html, InlineKeyboardMarkup Keyboard)> RenderFramesAsync(
-        long userId, [EnumeratorCancellation] CancellationToken ct)
+    public async IAsyncEnumerable<(string Html, Keyboard Keyboard)> RenderFramesAsync(
+        UserId user, [EnumeratorCancellation] CancellationToken ct)
     {
         var view = await limits.ViewAsync(store.EffectiveModel, ct);
 
@@ -53,7 +52,7 @@ public sealed class StatusScreen(
         }
     }
 
-    private (string Html, InlineKeyboardMarkup Keyboard) Render(LimitsView view, double progress)
+    private (string Html, Keyboard Keyboard) Render(LimitsView view, double progress)
     {
         var state = store.Snapshot();
         var project = store.ProjectPath;
@@ -83,7 +82,7 @@ public sealed class StatusScreen(
             {LimitBars.Render(view, progress)}
             """;
 
-        var keyboard = new InlineKeyboardMarkup(
+        var keyboard = new Keyboard(
         [
             busy
                 ? [Button("🔄 Обновить", "status:refresh"), Button("🛑 Остановить", "status:stop")]

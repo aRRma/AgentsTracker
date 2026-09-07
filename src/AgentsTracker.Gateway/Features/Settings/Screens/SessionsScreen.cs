@@ -1,7 +1,6 @@
 using AgentsTracker.Gateway.Features.Chat;
 using AgentsTracker.Gateway.Infrastructure.Audit;
-using AgentsTracker.Gateway.Infrastructure.Telegram;
-using Telegram.Bot.Types.ReplyMarkups;
+using AgentsTracker.Gateway.Infrastructure.Chat;
 using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
@@ -17,7 +16,7 @@ public sealed class SessionsScreen(SessionStore store, IAgentBackend agent, Chat
 
     public string Key => "sess";
 
-    public string? Apply(string argument, long userId, long chatId)
+    public string? Apply(string argument, UserId user, ChatId chat)
     {
         var project = store.ProjectPath;
         var previous = store.SessionId;
@@ -25,14 +24,14 @@ public sealed class SessionsScreen(SessionStore store, IAgentBackend agent, Chat
         if (argument == "new")
         {
             store.SetSessionId(null);
-            audit.Changed(store, userId, "session", previous, "новая");
+            audit.Changed(store, user, "session", previous, "новая");
             return "Следующее сообщение начнёт новую сессию";
         }
 
         if (argument == "stop")
         {
             var stopped = worker.Stop();
-            audit.Write(AuditEvent.Now(AuditKinds.Gateway, "/stop", userId, chatId, project, previous,
+            audit.Write(AuditEvent.Now(AuditKinds.Gateway, "/stop", user, chat, project, previous,
                 stopped ? "stopped" : "idle"));
             return stopped ? "Остановлено" : "Сейчас ничего не выполняется";
         }
@@ -40,7 +39,7 @@ public sealed class SessionsScreen(SessionStore store, IAgentBackend agent, Chat
         if (argument == "clear")
         {
             var removed = store.ForgetSessions(project);
-            if (removed > 0) audit.Changed(store, userId, "sessions", $"{removed}", "очищено");
+            if (removed > 0) audit.Changed(store, user, "sessions", $"{removed}", "очищено");
             return removed == 0 ? "Список и так пуст" : $"Забыто сессий: {removed}";
         }
 
@@ -50,14 +49,14 @@ public sealed class SessionsScreen(SessionStore store, IAgentBackend agent, Chat
         if (session is null) return "Сессии уже нет в списке";
 
         store.SetSessionId(session.Id);
-        audit.Changed(store, userId, "session", previous?.ShortId, session.Id.ShortId);
+        audit.Changed(store, user, "session", previous?.ShortId, session.Id.ShortId);
         return worker.IsBusy ? "Сессия сменится со следующего запуска" : "Сессия выбрана";
     }
 
-    public Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(long userId, CancellationToken ct) =>
+    public Task<(string Html, Keyboard Keyboard)> RenderAsync(UserId user, CancellationToken ct) =>
         Task.FromResult(Render());
 
-    private (string Html, InlineKeyboardMarkup Keyboard) Render()
+    private (string Html, Keyboard Keyboard) Render()
     {
         var project = store.ProjectPath;
         var active = store.SessionId;
@@ -98,6 +97,6 @@ public sealed class SessionsScreen(SessionStore store, IAgentBackend agent, Chat
             : [Button("🆕 Новая", "sess:new"), Button("🗑 Очистить", "sess:clear")]);
         buttons.Add([BackButton]);
 
-        return (html, new InlineKeyboardMarkup(buttons));
+        return (html, new Keyboard(buttons));
     }
 }

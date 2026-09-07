@@ -1,5 +1,4 @@
-using AgentsTracker.Gateway.Infrastructure.Telegram.Dispatch;
-using Telegram.Bot;
+using AgentsTracker.Gateway.Infrastructure.Chat.Dispatch;
 
 namespace AgentsTracker.Gateway.Features.Settings;
 
@@ -7,23 +6,23 @@ namespace AgentsTracker.Gateway.Features.Settings;
 /// Если пользователь нажал «С аргументами» — следующий его текст не промпт, а аргументы
 /// скилла. Регистрируется раньше постановки в очередь, иначе текст ушёл бы агентом как есть.
 /// </summary>
-public sealed class SkillArgumentsTextHandler(ITelegramBotClient bot, SkillLauncher launcher) : ITelegramTextHandler
+public sealed class SkillArgumentsTextHandler(IChatChannel channel, SkillLauncher launcher) : IChatTextHandler
 {
     private static readonly string[] CancelWords = ["отмена", "-", "cancel"];
 
-    public async Task<bool> TryHandleAsync(long chatId, long userId, string text, CancellationToken ct)
+    public async Task<bool> TryHandleAsync(ChatId chat, UserId user, string text, CancellationToken ct)
     {
-        if (!launcher.TryTake(userId, out var command)) return false;
+        if (!launcher.TryTake(user, out var command)) return false;
 
         var trimmed = text.Trim();
 
         if (CancelWords.Contains(trimmed, StringComparer.OrdinalIgnoreCase))
         {
-            await bot.SendMessage(chatId, $"Запуск {command} отменён.", cancellationToken: ct);
+            await channel.SendAsync(chat, new OutgoingMessage($"Запуск {command} отменён.", Rich: false), ct);
             return true;
         }
 
-        await bot.SendMessage(chatId, launcher.Launch(chatId, userId, command, trimmed), cancellationToken: ct);
+        await channel.SendAsync(chat, new OutgoingMessage(launcher.Launch(chat, user, command, trimmed), Rich: false), ct);
         return true;
     }
 }

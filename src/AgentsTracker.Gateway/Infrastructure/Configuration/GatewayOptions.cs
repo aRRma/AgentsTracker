@@ -1,14 +1,21 @@
 namespace AgentsTracker.Gateway.Infrastructure.Configuration;
 
+/// <summary>
+/// Какой канал связи стоит перед шлюзом. <see cref="Type"/> — ключ модуля канала;
+/// его собственные настройки (токен, кому можно) лежат в <c>Settings</c> и читает их
+/// только сам модуль: хост не знает, из чего они состоят.
+/// </summary>
+public sealed class ChannelOptions
+{
+    public string Type { get; set; } = "telegram";
+}
+
 public sealed class GatewayOptions
 {
     public const string SectionName = "Gateway";
 
-    /// <summary>Токен бота от @BotFather.</summary>
-    public string BotToken { get; set; } = "";
-
-    /// <summary>Telegram user id, которым разрешено управлять агентом. Пусто = запрещено всем.</summary>
-    public long[] AllowedUserIds { get; set; } = [];
+    /// <summary>Канал связи с человеком: тип и его настройки.</summary>
+    public ChannelOptions Channel { get; set; } = new();
 
     /// <summary>Рабочая папка по умолчанию. Из чата её меняет меню «Репозиторий».</summary>
     public string ProjectPath { get; set; } = "";
@@ -67,23 +74,23 @@ public sealed class GatewayOptions
     /// <summary>Предельная длительность одного запуска агента.</summary>
     public int RunTimeoutMinutes { get; set; } = 60;
 
-    /// <summary>HTTP-прокси для Telegram API, например "http://127.0.0.1:2080". null = без прокси.</summary>
+    /// <summary>
+    /// HTTP-прокси машины, например "http://127.0.0.1:2080": через него ходят и агент, и канал
+    /// (свой прокси канал может задать в своих настройках). null = без прокси.
+    /// </summary>
     public string? Proxy { get; set; }
 
     public IReadOnlyList<string> Validate()
     {
         var errors = new List<string>();
 
-        if (string.IsNullOrWhiteSpace(BotToken))
-            errors.Add($"{SectionName}:BotToken не задан. Создайте бота у @BotFather и впишите токен в appsettings.Local.json.");
+        if (string.IsNullOrWhiteSpace(Channel.Type))
+            errors.Add($"{SectionName}:Channel:Type не задан.");
 
         if (string.IsNullOrWhiteSpace(ProjectPath))
             errors.Add($"{SectionName}:ProjectPath не задан.");
         else if (!Directory.Exists(ProjectPath))
             errors.Add($"{SectionName}:ProjectPath — папки не существует: {ProjectPath}");
-
-        if (AllowedUserIds.Length == 0)
-            errors.Add($"{SectionName}:AllowedUserIds пуст. Запустите шлюз, напишите боту — id появится в логе — и впишите его сюда.");
 
         if (McpPort is < 1 or > 65535)
             errors.Add($"{SectionName}:McpPort вне диапазона: {McpPort}");

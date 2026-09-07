@@ -1,34 +1,32 @@
 using System.Collections.Concurrent;
-using System.Text;
-using AgentsTracker.Gateway.Infrastructure.Telegram;
-using Telegram.Bot;
-using Telegram.Bot.Types;
-using Telegram.Bot.Types.Enums;
-using Telegram.Bot.Types.ReplyMarkups;
 
 namespace AgentsTracker.Gateway.Features.Approvals;
 
 public sealed record ChoiceOption(string Key, string Label);
 
-/// <summary>Что нажали и кто: UserId нужен аудиту, чтобы записать, чьё это решение.</summary>
-public sealed record ChoiceResult(string Key, long UserId);
+/// <summary>Что нажали и кто: пользователь нужен аудиту, чтобы записать, чьё это решение.</summary>
+public sealed record ChoiceResult(string Key, UserId User);
 
 /// <summary>
-/// Мост между MCP-инструментом подтверждений и чатом: показывает карточку с кнопками
+/// Мост между запросом подтверждения от агента и чатом: показывает карточку с кнопками
 /// и блокирует вызывающий поток, пока пользователь не нажмёт кнопку (или не выйдет таймаут).
 /// </summary>
 public sealed class ApprovalBroker(
-    ITelegramBotClient bot,
+    IChatChannel channel,
     IOptions<GatewayOptions> options,
     ILogger<ApprovalBroker> logger)
 {
+    /// <summary>
+    /// Ожидающая карточка. Подписи кнопок храним у себя: канал не обязан возвращать вместе
+    /// с нажатием ту клавиатуру, которую показал, а в аудит и в карточку нужен текст кнопки.
+    /// </summary>
     private sealed record PendingChoice(
         TaskCompletionSource<ChoiceResult> Completion,
-        long ChatId,
-        int MessageId,
-        string Html);
+        MessageRef Message,
+        string Html,
+        IReadOnlyList<ChoiceOption> Buttons);
 
-    private sealed record TextPrompt(TaskCompletionSource<string> Completion, long ChatId);
+    private sealed record TextPrompt(TaskCompletionSource<string> Completion, ChatId Chat);
 
     private static readonly TimeSpan NetworkTimeout = TimeSpan.FromSeconds(15);
 
@@ -38,7 +36,7 @@ public sealed class ApprovalBroker(
     private TextPrompt? _textPrompt;
 
     /// <summary>Чат, в который уходят карточки. Выставляет ChatWorker перед самым запуском.</summary>
-    public long? ActiveChatId { get; set; }
+    public ChatId? ActiveChat { get; set; }
 
     public bool HasPending => !_choices.IsEmpty || _textPrompt is not null;
 
@@ -48,18 +46,20 @@ public sealed class ApprovalBroker(
     /// <exception cref="TimeoutException">Пользователь не ответил за отведённое время.</exception>
     public async Task<ChoiceResult> AskChoiceAsync(string html, IReadOnlyList<ChoiceOption> buttons, CancellationToken ct)
     {
-        var chatId = ActiveChatId
+        var chat = ActiveChat
             ?? throw new InvalidOperationException("Нет активного чата — некому показать запрос.");
 
         var id = Guid.NewGuid().ToString("N")[..8];
-        var keyboard = new InlineKeyboardMarkup(
-            buttons.Chunk(2).Select(row => row.Select(b =>
-                InlineKeyboardButton.WithCallbackData(b.Label, $"{id}:{b.Key}"))));
+        var keyboard = new Keyboard(
+        [
+            .. buttons.Chunk(2).Select(row => (IReadOnlyList<KeyboardButton>)
+                [.. row.Select(b => new KeyboardButton(Text.Clip(b.Label, channel.Limits.ButtonLabelLength), $"{id}:{b.Key}"))]),
+        ]);
 
-        var message = await bot.SendMessage(chatId, html, ParseMode.Html, replyMarkup: keyboard, cancellationToken: ct);
+        var message = await channel.SendAsync(chat, new OutgoingMessage(html, Keyboard: keyboard), ct);
 
         var completion = new TaskCompletionSource<ChoiceResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _choices[id] = new PendingChoice(completion, chatId, message.MessageId, html);
+        _choices[id] = new PendingChoice(completion, message, html, buttons);
 
         try
         {
@@ -72,7 +72,7 @@ public sealed class ApprovalBroker(
             // «Разрешить» на запросе, который уже отклонён по таймауту.
             completion.TrySetCanceled();
             _choices.TryRemove(id, out _);
-            await FinishCardAsync(chatId, message.MessageId, html, "⌛ Время ожидания истекло");
+            await FinishCardAsync(message, html, "⌛ Время ожидания истекло");
             throw;
         }
         finally
@@ -87,25 +87,24 @@ public sealed class ApprovalBroker(
     /// </summary>
     public async Task SendAttachmentAsync(string fileName, string content, CancellationToken ct)
     {
-        var chatId = ActiveChatId
+        var chat = ActiveChat
             ?? throw new InvalidOperationException("Нет активного чата — некому показать запрос.");
 
-        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
-        await bot.SendDocument(chatId, InputFile.FromStream(stream, fileName), cancellationToken: ct);
+        await channel.SendFileAsync(chat, fileName, content, ct);
     }
 
     /// <summary>Просит пользователя прислать свободный текст следующим сообщением.</summary>
     public async Task<string> AskTextAsync(string html, CancellationToken ct)
     {
-        var chatId = ActiveChatId
+        var chat = ActiveChat
             ?? throw new InvalidOperationException("Нет активного чата — некому показать запрос.");
 
         var completion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var prompt = new TextPrompt(completion, chatId);
+        var prompt = new TextPrompt(completion, chat);
         if (Interlocked.CompareExchange(ref _textPrompt, prompt, null) is not null)
             throw new InvalidOperationException("Уже ожидается другой текстовый ответ.");
 
-        await bot.SendMessage(chatId, html, ParseMode.Html, cancellationToken: ct);
+        await channel.SendAsync(chat, new OutgoingMessage(html), ct);
 
         try
         {
@@ -120,44 +119,42 @@ public sealed class ApprovalBroker(
     /// <summary>
     /// Отдаёт текст ожидающему запросу свободного ответа. Возвращает false, если никто не ждёт
     /// или ждут ответа из другого чата — тогда сообщение обрабатывается как обычный промпт.
-    /// Проверка чата нужна при нескольких AllowedUserIds: чужое сообщение не должно
-    /// становиться ответом на вопрос агента.
+    /// Проверка чата нужна, когда разрешённых пользователей несколько: чужое сообщение
+    /// не должно становиться ответом на вопрос агента.
     /// </summary>
-    public bool TryConsumeText(long chatId, string text)
+    public bool TryConsumeText(ChatId chat, string text)
     {
         var prompt = _textPrompt;
-        return prompt is not null && prompt.ChatId == chatId && prompt.Completion.TrySetResult(text);
+        return prompt is not null && prompt.Chat == chat && prompt.Completion.TrySetResult(text);
     }
 
-    public async Task HandleCallbackAsync(CallbackQuery query, CancellationToken ct)
+    public async Task HandlePressAsync(ButtonPress press, CancellationToken ct)
     {
-        var data = query.Data ?? "";
+        var data = press.Data;
         var separator = data.IndexOf(':');
 
         if (separator <= 0 || !_choices.TryGetValue(data[..separator], out var pending))
         {
-            await SafeAnswerAsync(query.Id, "Запрос уже неактуален");
+            await SafeAnswerAsync(press, "Запрос уже неактуален");
             return;
         }
 
         // Карточка адресована одному чату: нажатие из другого (второй разрешённый
         // пользователь) не должно одобрять действие, которого он не видел.
-        if (query.Message?.Chat.Id != pending.ChatId)
+        if (press.Chat != pending.Message.Chat)
         {
-            await SafeAnswerAsync(query.Id, "Этот запрос адресован другому чату");
+            await SafeAnswerAsync(press, "Этот запрос адресован другому чату");
             return;
         }
 
         var key = data[(separator + 1)..];
-        await SafeAnswerAsync(query.Id, null);
+        await SafeAnswerAsync(press, null);
 
-        if (!pending.Completion.TrySetResult(new ChoiceResult(key, query.From.Id))) return;
+        if (!pending.Completion.TrySetResult(new ChoiceResult(key, press.User))) return;
 
-        var label = query.Message?.ReplyMarkup?.InlineKeyboard
-            .SelectMany(row => row)
-            .FirstOrDefault(b => b.CallbackData == data)?.Text ?? key;
+        var label = pending.Buttons.FirstOrDefault(b => b.Key == key)?.Label ?? key;
 
-        await FinishCardAsync(pending.ChatId, pending.MessageId, pending.Html, $"➡️ {label}");
+        await FinishCardAsync(pending.Message, pending.Html, $"➡️ {label}");
     }
 
     /// <summary>Снимает все ожидания — например, когда пользователь дал /stop.</summary>
@@ -170,7 +167,7 @@ public sealed class ApprovalBroker(
             _choices.TryRemove(id, out _);
             // Кнопки надо убрать: иначе на снятой карточке остаётся живой выбор.
             // Ждать нечего — FinishCardAsync не бросает и не зависит от токена вызова.
-            _ = FinishCardAsync(pending.ChatId, pending.MessageId, pending.Html, "🛑 Отменено");
+            _ = FinishCardAsync(pending.Message, pending.Html, "🛑 Отменено");
         }
 
         Interlocked.Exchange(ref _textPrompt, null)?.Completion.TrySetCanceled();
@@ -204,15 +201,14 @@ public sealed class ApprovalBroker(
     /// Убирает кнопки и дописывает к карточке принятое решение. Собственный таймаут вместо
     /// токена вызова: карточку нужно закрыть и тогда, когда запуск уже отменён.
     /// </summary>
-    private async Task FinishCardAsync(long chatId, int messageId, string html, string verdict)
+    private async Task FinishCardAsync(MessageRef message, string html, string verdict)
     {
         using var timeout = new CancellationTokenSource(NetworkTimeout);
 
         try
         {
-            await bot.EditMessageText(
-                chatId, messageId, $"{html}\n\n{TelegramFormatter.Escape(verdict)}",
-                ParseMode.Html, replyMarkup: null, cancellationToken: timeout.Token);
+            await channel.EditAsync(
+                message, new OutgoingMessage($"{html}\n\n{ChatHtml.Escape(verdict)}"), timeout.Token);
         }
         catch (Exception ex)
         {
@@ -220,17 +216,17 @@ public sealed class ApprovalBroker(
         }
     }
 
-    private async Task SafeAnswerAsync(string callbackQueryId, string? text)
+    private async Task SafeAnswerAsync(ButtonPress press, string? toast)
     {
         using var timeout = new CancellationTokenSource(NetworkTimeout);
 
         try
         {
-            await bot.AnswerCallbackQuery(callbackQueryId, text, cancellationToken: timeout.Token);
+            await channel.AcknowledgeAsync(press, toast, timeout.Token);
         }
         catch (Exception ex)
         {
-            logger.LogDebug(ex, "Не удалось ответить на callback");
+            logger.LogDebug(ex, "Не удалось ответить на нажатие");
         }
     }
 }

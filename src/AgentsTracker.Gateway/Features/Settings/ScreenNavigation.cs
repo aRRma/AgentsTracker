@@ -9,20 +9,20 @@ namespace AgentsTracker.Gateway.Features.Settings;
 internal sealed record ScreenPosition(string? Group = null, int Page = 0, string? Card = null);
 
 /// <summary>
-/// Позиция в списке на каждого пользователя. Экраны — синглтоны, а <c>AllowedUserIds</c>
-/// допускает нескольких людей: общее поле означало бы, что страница, открытая одним,
+/// Позиция в списке на каждого пользователя. Экраны — синглтоны, а разрешённых пользователей
+/// у канала бывает несколько: общее поле означало бы, что страница, открытая одним,
 /// подменяет список под пальцем у другого.
 /// </summary>
 internal sealed class ScreenNavigation
 {
-    private readonly ConcurrentDictionary<long, ScreenPosition> _byUser = new();
+    private readonly ConcurrentDictionary<UserId, ScreenPosition> _byUser = new();
 
-    public ScreenPosition Of(long userId) => _byUser.GetValueOrDefault(userId) ?? new ScreenPosition();
+    public ScreenPosition Of(UserId user) => _byUser.GetValueOrDefault(user) ?? new ScreenPosition();
 
-    public void Set(long userId, ScreenPosition position) => _byUser[userId] = position;
+    public void Set(UserId user, ScreenPosition position) => _byUser[user] = position;
 
-    public void Update(long userId, Func<ScreenPosition, ScreenPosition> change) => Set(userId, change(Of(userId)));
+    public void Update(UserId user, Func<ScreenPosition, ScreenPosition> change) => Set(user, change(Of(user)));
 
     /// <summary>К началу: вызывается при открытии экрана из корня или командой, иначе показалась бы прошлая карточка.</summary>
-    public void Reset(long userId) => _byUser.TryRemove(userId, out _);
+    public void Reset(UserId user) => _byUser.TryRemove(user, out _);
 }

@@ -1,7 +1,5 @@
 using System.Diagnostics;
-using AgentsTracker.Gateway.Infrastructure.Telegram;
-using Telegram.Bot;
-using Telegram.Bot.Types.Enums;
+using AgentsTracker.Gateway.Infrastructure.Chat;
 
 namespace AgentsTracker.Gateway.Features.Chat;
 
@@ -9,18 +7,18 @@ namespace AgentsTracker.Gateway.Features.Chat;
 /// Статусное сообщение идущего запуска. Раз в несколько секунд редактируется: часы
 /// на циферблате крутятся, время растёт, под ними — последние шаги агента. Без этого
 /// долгий запуск неотличим от зависшего шлюза, и пользователь шлёт /stop зря.
-/// Заодно держит индикатор «печатает» — Telegram гасит его через пять секунд.
+/// Заодно держит индикатор «печатает» — каналы гасят его через несколько секунд.
 /// </summary>
 internal sealed class RunStatusMessage : IAsyncDisposable
 {
-    // Четыре, а не пять секунд: индикатор «печатает» Telegram гасит через пять, и на ровно
-    // пяти он мигал бы.
+    // Четыре, а не пять секунд: индикатор «печатает» гаснет через пять, и на ровно пяти
+    // он мигал бы.
     private static readonly TimeSpan Tick = TimeSpan.FromSeconds(4);
     private static readonly string[] Clock = ["🕐", "🕑", "🕒", "🕓", "🕔", "🕕", "🕖", "🕗", "🕘", "🕙", "🕚", "🕛"];
     private const int RecentSteps = 3;
 
-    private readonly ITelegramBotClient _bot;
-    private readonly long _chatId;
+    private readonly IChatChannel _channel;
+    private readonly ChatId _chat;
     private readonly string _thread;
     private readonly ILogger _logger;
     private readonly Stopwatch _elapsed = Stopwatch.StartNew();
@@ -28,28 +26,28 @@ internal sealed class RunStatusMessage : IAsyncDisposable
     private readonly Lock _lock = new();
     private readonly Queue<string> _recent = new();
 
-    private int _messageId;
+    private MessageRef _message = null!;
     private int _toolCalls;
     private string _lastRendered = "";
     private Task _loop = Task.CompletedTask;
 
-    private RunStatusMessage(ITelegramBotClient bot, long chatId, string thread, ILogger logger)
+    private RunStatusMessage(IChatChannel channel, ChatId chat, string thread, ILogger logger)
     {
-        _bot = bot;
-        _chatId = chatId;
+        _channel = channel;
+        _chat = chat;
         _thread = thread;
         _logger = logger;
     }
 
-    public int MessageId => _messageId;
+    /// <summary>Отправленное сообщение статуса: по нему ChatWorker удаляет его после запуска.</summary>
+    public MessageRef Message => _message;
 
     public static async Task<RunStatusMessage> StartAsync(
-        ITelegramBotClient bot, long chatId, string thread, ILogger logger, CancellationToken ct)
+        IChatChannel channel, ChatId chat, string thread, ILogger logger, CancellationToken ct)
     {
-        var status = new RunStatusMessage(bot, chatId, thread, logger);
+        var status = new RunStatusMessage(channel, chat, thread, logger);
         var text = status.Render();
-        var message = await bot.SendMessage(chatId, text, cancellationToken: ct);
-        status._messageId = message.MessageId;
+        status._message = await channel.SendAsync(chat, new OutgoingMessage(text, Rich: false), ct);
         status._lastRendered = text;
         status._loop = Task.Run(status.LoopAsync);
         return status;
@@ -95,18 +93,18 @@ internal sealed class RunStatusMessage : IAsyncDisposable
             catch (OperationCanceledException) { return; }
 
             // Два вызова — по отдельности: сбой индикатора не должен задерживать текст статуса.
-            await TryAsync(() => _bot.SendChatAction(_chatId, ChatAction.Typing, cancellationToken: _cts.Token));
+            await TryAsync(() => _channel.IndicateTypingAsync(_chat, _cts.Token));
 
             var text = Render();
             if (text == _lastRendered) continue;
 
-            if (await TryAsync(() => _bot.EditMessageText(_chatId, _messageId, text, cancellationToken: _cts.Token)))
+            if (await TryAsync(() => _channel.EditAsync(_message, new OutgoingMessage(text, Rich: false), _cts.Token)))
                 _lastRendered = text;
         }
     }
 
     /// <summary>
-    /// Сетевой вызов с поглощением ошибок: сообщение удалили или Telegram просит подождать —
+    /// Сетевой вызов с поглощением ошибок: сообщение удалили или канал просит подождать —
     /// пропускаем такт, не выходим из цикла, иначе один сбой сети оставит статус замершим
     /// до конца запуска.
     /// </summary>
@@ -127,7 +125,7 @@ internal sealed class RunStatusMessage : IAsyncDisposable
 
     /// <summary>
     /// Останавливает обновления и дожидается их: иначе правка догнала бы удаление сообщения.
-    /// Ждём ограниченно — зависший HTTP-вызов не должен держать очередь чата.
+    /// Ждём ограниченно — зависший сетевой вызов не должен держать очередь чата.
     /// </summary>
     public async ValueTask DisposeAsync()
     {

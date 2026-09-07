@@ -1,5 +1,4 @@
 using AgentsTracker.Gateway.Infrastructure.Audit;
-using Telegram.Bot.Types.ReplyMarkups;
 using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
@@ -46,23 +45,23 @@ public sealed class SkillsScreen(
 
     public string Key => "skills";
 
-    public void Open(long userId)
+    public void Open(UserId user)
     {
-        _nav.Reset(userId);
-        launcher.Cancel(userId);
+        _nav.Reset(user);
+        launcher.Cancel(user);
     }
 
-    public string? Apply(string argument, long userId, long chatId)
+    public string? Apply(string argument, UserId user, ChatId chat)
     {
         switch (argument)
         {
             case UpArgument:
-                _nav.Reset(userId);
+                _nav.Reset(user);
                 return null;
 
             case ListArgument:
-                _nav.Update(userId, p => p with { Card = null });
-                launcher.Cancel(userId);
+                _nav.Update(user, p => p with { Card = null });
+                launcher.Cancel(user);
                 return null;
 
             case ReloadArgument:
@@ -70,29 +69,29 @@ public sealed class SkillsScreen(
                 return "Список перечитан с диска";
 
             case PluginsArgument:
-                _nav.Set(userId, new ScreenPosition(Group: PluginsArgument));
+                _nav.Set(user, new ScreenPosition(Group: PluginsArgument));
                 return null;
         }
 
         if (argument.StartsWith(TogglePrefix, StringComparison.Ordinal))
-            return Toggle(argument[TogglePrefix.Length..], userId);
+            return Toggle(argument[TogglePrefix.Length..], user);
 
         if (argument.StartsWith(GroupPrefix, StringComparison.Ordinal))
         {
-            _nav.Set(userId, new ScreenPosition(Group: argument[GroupPrefix.Length..]));
+            _nav.Set(user, new ScreenPosition(Group: argument[GroupPrefix.Length..]));
             return null;
         }
 
         if (argument.StartsWith(PagePrefix, StringComparison.Ordinal)
             && int.TryParse(argument[PagePrefix.Length..], out var page))
         {
-            _nav.Update(userId, p => p with { Page = page });
+            _nav.Update(user, p => p with { Page = page });
             return null;
         }
 
         if (argument.StartsWith(CardPrefix, StringComparison.Ordinal))
         {
-            _nav.Update(userId, p => p with { Card = argument[CardPrefix.Length..] });
+            _nav.Update(user, p => p with { Card = argument[CardPrefix.Length..] });
             return null;
         }
 
@@ -101,8 +100,8 @@ public sealed class SkillsScreen(
             var skill = Find(argument[RunPrefix.Length..]);
             if (skill is null) return "Скилла уже нет в списке";
 
-            launcher.Cancel(userId);
-            return launcher.Launch(chatId, userId, skill.Command);
+            launcher.Cancel(user);
+            return launcher.Launch(chat, user, skill.Command);
         }
 
         if (argument.StartsWith(AskPrefix, StringComparison.Ordinal))
@@ -110,15 +109,15 @@ public sealed class SkillsScreen(
             var skill = Find(argument[AskPrefix.Length..]);
             if (skill is null) return "Скилла уже нет в списке";
 
-            launcher.Expect(userId, skill.Command);
+            launcher.Expect(user, skill.Command);
             return $"Напишите аргументы для {skill.Command} следующим сообщением";
         }
 
         return null;
     }
 
-    public Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(long userId, CancellationToken ct) =>
-        Task.FromResult(Render(userId));
+    public Task<(string Html, Keyboard Keyboard)> RenderAsync(UserId user, CancellationToken ct) =>
+        Task.FromResult(Render(user));
 
     /// <summary>Ищем по ключу, а не по номеру: между отрисовкой и нажатием список мог измениться.</summary>
     private SkillInfo? Find(string key) =>
@@ -129,7 +128,7 @@ public sealed class SkillsScreen(
     /// если плагин тем временем переключили в IDE, нажатие по устаревшей кнопке всё равно
     /// приведёт к состоянию, противоположному действующему, — и экран сразу покажет его.
     /// </summary>
-    private string? Toggle(string key, long userId)
+    private string? Toggle(string key, UserId user)
     {
         var project = store.ProjectPath;
         var plugin = catalog.Plugins(project).FirstOrDefault(p => Key12(p.Key) == key);
@@ -139,19 +138,19 @@ public sealed class SkillsScreen(
         var enabled = !plugin.Enabled;
         if (catalog.SetPluginEnabled(plugin.Key, enabled, project) is { } error) return error;
 
-        audit.Changed(store, userId, $"plugin {plugin.Name}", State(plugin.Enabled), State(enabled));
+        audit.Changed(store, user, $"plugin {plugin.Name}", State(plugin.Enabled), State(enabled));
         return $"{plugin.Name}: {State(enabled)} — со следующего запуска агента";
     }
 
     private static string State(bool enabled) => enabled ? "включён" : "выключен";
 
-    private (string Html, InlineKeyboardMarkup Keyboard) Render(long userId)
+    private (string Html, Keyboard Keyboard) Render(UserId user)
     {
-        var position = _nav.Of(userId);
+        var position = _nav.Of(user);
         var usage = store.SkillUsage();
 
         // Плагины раньше проверки на пустоту: когда выключены все, включить их можно только отсюда.
-        if (position.Group == PluginsArgument) return RenderPlugins(userId, position.Page);
+        if (position.Group == PluginsArgument) return RenderPlugins(user, position.Page);
 
         // Каталог кэширует обход диска на несколько секунд: сюда попадают и Apply, и Render одного нажатия.
         var sources = catalog.Grouped(store.ProjectPath);
@@ -166,29 +165,29 @@ public sealed class SkillsScreen(
 
                 <i>Неизвестные шлюзу слэш-команды и так уходят агенту как есть.</i>
                 """;
-            return (empty, new InlineKeyboardMarkup([ToolsRow(), [BackButton]]));
+            return (empty, new Keyboard([ToolsRow(), [BackButton]]));
         }
 
         if (position.Card is not null)
         {
             var skill = sources.SelectMany(g => g.Skills).FirstOrDefault(s => Key12(s.Command) == position.Card);
             if (skill is not null) return RenderCard(skill, usage);
-            _nav.Update(userId, p => p with { Card = null });
+            _nav.Update(user, p => p with { Card = null });
         }
 
         // Один источник — экран выбора источника лишний; группа «Частые» это не отменяет.
-        if (sources.Count == 1) return RenderSkills(userId, sources[0], single: true, position.Page, usage);
+        if (sources.Count == 1) return RenderSkills(user, sources[0], single: true, position.Page, usage);
 
         var groups = WithTop(sources, usage);
         var opened = position.Group is null ? null : groups.FirstOrDefault(g => Key12(g.Name) == position.Group);
 
         if (opened is null)
         {
-            _nav.Reset(userId);
-            return RenderGroups(userId, groups, position.Page);
+            _nav.Reset(user);
+            return RenderGroups(user, groups, position.Page);
         }
 
-        return RenderSkills(userId, opened, single: false, position.Page, usage);
+        return RenderSkills(user, opened, single: false, position.Page, usage);
     }
 
     /// <summary>
@@ -213,10 +212,10 @@ public sealed class SkillsScreen(
         return top.Count == 0 ? groups : [new SkillGroup(TopGroup, top), .. groups];
     }
 
-    private (string Html, InlineKeyboardMarkup Keyboard) RenderGroups(long userId, IReadOnlyList<SkillGroup> groups, int pageIndex)
+    private (string Html, Keyboard Keyboard) RenderGroups(UserId user, IReadOnlyList<SkillGroup> groups, int pageIndex)
     {
         var (page, clamped, counter, pageRow) = Page(groups, pageIndex, Key, PagePrefix, "источников");
-        _nav.Update(userId, p => p with { Page = clamped });
+        _nav.Update(user, p => p with { Page = clamped });
 
         var lines = page.Select(group => $"· <b>{E(group.Name)}</b> — {group.Skills.Count}");
 
@@ -238,14 +237,14 @@ public sealed class SkillsScreen(
         buttons.Add(ToolsRow());
         buttons.Add([BackButton]);
 
-        return (html, new InlineKeyboardMarkup(buttons));
+        return (html, new Keyboard(buttons));
     }
 
     /// <summary>
     /// Ряд служебных кнопок верхнего уровня. «Обновить» — сброс кэша: скилл добавили или плагин
     /// выключили в IDE, а шлюз ещё показывает старое. «Плагины» — только если они у агента есть.
     /// </summary>
-    private InlineKeyboardButton[] ToolsRow()
+    private KeyboardButton[] ToolsRow()
     {
         var plugins = catalog.Plugins(store.ProjectPath);
         var reload = Button("🔄 Обновить", $"{Key}:{ReloadArgument}");
@@ -259,11 +258,11 @@ public sealed class SkillsScreen(
     /// Плагин, заданный в настройках проекта, помечен замком: из чата шлюз правит только
     /// личные настройки, а слой проекта их перекрыл бы.
     /// </summary>
-    private (string Html, InlineKeyboardMarkup Keyboard) RenderPlugins(long userId, int pageIndex)
+    private (string Html, Keyboard Keyboard) RenderPlugins(UserId user, int pageIndex)
     {
         var plugins = catalog.Plugins(store.ProjectPath);
         var (page, clamped, counter, pageRow) = Page(plugins, pageIndex, Key, PagePrefix, "плагинов");
-        _nav.Update(userId, p => p with { Page = clamped });
+        _nav.Update(user, p => p with { Page = clamped });
 
         var lines = page.Select(plugin =>
             $"{Icon(plugin)} <b>{E(plugin.Name)}</b>"
@@ -287,17 +286,17 @@ public sealed class SkillsScreen(
         if (pageRow is not null) buttons.Add(pageRow);
         buttons.Add([Button("🧩 К скиллам", $"{Key}:{UpArgument}"), BackButton]);
 
-        return (html, new InlineKeyboardMarkup(buttons));
+        return (html, new Keyboard(buttons));
     }
 
     private static string Icon(PluginInfo plugin) =>
         plugin.LockedBy is not null ? "🔒" : plugin.Enabled ? "✅" : "⛔";
 
-    private (string Html, InlineKeyboardMarkup Keyboard) RenderSkills(
-        long userId, SkillGroup group, bool single, int pageIndex, IReadOnlyDictionary<string, int> usage)
+    private (string Html, Keyboard Keyboard) RenderSkills(
+        UserId user, SkillGroup group, bool single, int pageIndex, IReadOnlyDictionary<string, int> usage)
     {
         var (page, clamped, counter, pageRow) = Page(group.Skills, pageIndex, Key, PagePrefix, "скиллов");
-        _nav.Update(userId, p => p with { Page = clamped });
+        _nav.Update(user, p => p with { Page = clamped });
 
         var lines = page.Select(skill =>
             $"· <code>{E(skill.Command)}</code>"
@@ -324,7 +323,7 @@ public sealed class SkillsScreen(
         if (single) buttons.Add(ToolsRow());
         buttons.Add(single ? [BackButton] : [Button("📦 К источникам", $"{Key}:{UpArgument}"), BackButton]);
 
-        return (html, new InlineKeyboardMarkup(buttons));
+        return (html, new Keyboard(buttons));
     }
 
     /// <summary>
@@ -332,7 +331,7 @@ public sealed class SkillsScreen(
     /// нет, поэтому показываем то, что удалось достать — подсказку из frontmatter и флаги,
     /// упомянутые в тексте.
     /// </summary>
-    private (string Html, InlineKeyboardMarkup Keyboard) RenderCard(SkillInfo skill, IReadOnlyDictionary<string, int> usage)
+    private (string Html, Keyboard Keyboard) RenderCard(SkillInfo skill, IReadOnlyDictionary<string, int> usage)
     {
         var count = usage.GetValueOrDefault(skill.Command);
         var key = Key12(skill.Command);
@@ -352,7 +351,7 @@ public sealed class SkillsScreen(
 
         var html = string.Join("\n\n", parts);
 
-        var keyboard = new InlineKeyboardMarkup(
+        var keyboard = new Keyboard(
         [
             [Button("🚀 Запустить", $"{Key}:{RunPrefix}{key}"), Button("✏️ С аргументами", $"{Key}:{AskPrefix}{key}")],
             [Button("◀️ К списку", $"{Key}:{ListArgument}"), BackButton],

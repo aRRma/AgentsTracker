@@ -1,6 +1,5 @@
 using AgentsTracker.Gateway.Features.Chat;
-using AgentsTracker.Gateway.Infrastructure.Telegram.Dispatch;
-using Telegram.Bot;
+using AgentsTracker.Gateway.Infrastructure.Chat.Dispatch;
 
 namespace AgentsTracker.Gateway.Features.Settings;
 
@@ -9,71 +8,74 @@ namespace AgentsTracker.Gateway.Features.Settings;
 /// <c>/effort high</c> применяются через тот же экран «Агент», что и кнопки, — логика одна.
 /// </summary>
 public sealed class SettingsCommandHandler(
-    ITelegramBotClient bot,
+    IChatChannel channel,
     SettingsMenuCoordinator menu,
     SessionStore store,
     IAgentBackend agent,
     ChatWorker worker,
-    IOptions<GatewayOptions> options) : ITelegramCommandHandler
+    IOptions<GatewayOptions> options) : IChatCommandHandler
 {
     public IReadOnlyCollection<string> Commands { get; } =
         ["/menu", "/settings", "/status", "/sessions", "/agent", "/model", "/effort", "/mode", "/skills", "/project", "/usage"];
 
-    public async Task HandleAsync(TelegramCommandContext context, CancellationToken ct)
+    public async Task HandleAsync(ChatCommandContext context, CancellationToken ct)
     {
-        var (chatId, userId, command, argument) = context;
+        var (chat, user, command, argument) = context;
 
         switch (command)
         {
             case "/menu" or "/settings":
-                await menu.OpenAsync(chatId, userId, ct);
+                await menu.OpenAsync(chat, user, ct);
                 break;
 
             case "/status":
-                await menu.OpenAsync(chatId, userId, ct, "status");
+                await menu.OpenAsync(chat, user, ct, "status");
                 break;
 
             case "/sessions":
-                await menu.OpenAsync(chatId, userId, ct, "sess");
+                await menu.OpenAsync(chat, user, ct, "sess");
                 break;
 
             case "/skills":
-                await menu.OpenAsync(chatId, userId, ct, "skills");
+                await menu.OpenAsync(chat, user, ct, "skills");
                 break;
 
             case "/project":
-                await menu.OpenAsync(chatId, userId, ct, "proj");
+                await menu.OpenAsync(chat, user, ct, "proj");
                 break;
 
             case "/usage":
-                await menu.OpenAsync(chatId, userId, ct, "usage");
+                await menu.OpenAsync(chat, user, ct, "usage");
                 break;
 
             // Команда без аргумента открывает тот же экран с кнопками, что и меню: набирать
             // значение руками после подсказки текстом — лишний шаг с телефона.
             case "/agent":
             case "/model" or "/effort" or "/mode" when argument.Length == 0:
-                await menu.OpenAsync(chatId, userId, ct, "agent");
+                await menu.OpenAsync(chat, user, ct, "agent");
                 break;
 
             case "/model":
-                await bot.SendMessage(chatId, Agent().Apply("model:" + argument, userId, chatId) ?? "", cancellationToken: ct);
+                await ReplyAsync(chat, Agent().Apply("model:" + argument, user, chat) ?? "", ct);
                 break;
 
             case "/effort":
-                await bot.SendMessage(chatId, ChangeEffort(argument, userId, chatId), cancellationToken: ct);
+                await ReplyAsync(chat, ChangeEffort(argument, user, chat), ct);
                 break;
 
             case "/mode":
-                await bot.SendMessage(chatId, ChangeMode(argument, userId, chatId), cancellationToken: ct);
+                await ReplyAsync(chat, ChangeMode(argument, user, chat), ct);
                 break;
         }
     }
 
+    private Task ReplyAsync(ChatId chat, string text, CancellationToken ct) =>
+        channel.SendAsync(chat, new OutgoingMessage(text, Rich: false), ct);
+
     private ISettingsScreen Agent() => menu.Screen("agent");
 
     /// <summary>Меняет уровень усилий модели. Применяется со следующего запуска.</summary>
-    private string ChangeEffort(string argument, long userId, long chatId)
+    private string ChangeEffort(string argument, UserId user, ChatId chat)
     {
         if (agent.Capabilities.Effort is not { } setting)
             return $"{agent.DisplayName} не поддерживает уровень усилий.";
@@ -81,7 +83,7 @@ public sealed class SettingsCommandHandler(
         if (!argument.Equals("reset", StringComparison.OrdinalIgnoreCase) && setting.Resolve(argument) is null)
             return $"Не знаю уровень «{argument}». Доступно: {string.Join(", ", setting.Selectable)}, reset.";
 
-        Agent().Apply("effort:" + argument, userId, chatId);
+        Agent().Apply("effort:" + argument, user, chat);
 
         // Именно выбранный из чата уровень, а не действующий: после reset он null,
         // и ответ должен говорить про конфиг, а не повторять его значение как выбранное.
@@ -94,11 +96,11 @@ public sealed class SettingsCommandHandler(
     /// Меняет режим работы агента. Новый режим ложится в state.json
     /// и переживает перезапуск; текущий запуск доигрывает со старым.
     /// </summary>
-    private string ChangeMode(string argument, long userId, long chatId)
+    private string ChangeMode(string argument, UserId user, ChatId chat)
     {
         if (argument.Equals("reset", StringComparison.OrdinalIgnoreCase))
         {
-            Agent().Apply("mode:reset", userId, chatId);
+            Agent().Apply("mode:reset", user, chat);
             return $"🔐 Режим: {options.Value.PermissionMode} — как в конфиге. Применится со следующего запуска.";
         }
 
@@ -117,7 +119,7 @@ public sealed class SettingsCommandHandler(
 
         if (mode == store.EffectivePermissionMode) return $"Уже {setting.Describe(mode)}.";
 
-        Agent().Apply("mode:" + mode, userId, chatId);
+        Agent().Apply("mode:" + mode, user, chat);
 
         // Занятость спрашиваем у воркера, а не угадываем по тексту тоста экрана.
         var note = worker.IsBusy ? "\nТекущий запуск доигрывает со старым режимом." : "";

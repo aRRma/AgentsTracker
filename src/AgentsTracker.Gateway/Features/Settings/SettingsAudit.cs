@@ -7,9 +7,9 @@ internal static class SettingsAudit
 {
     extension(IAuditLog audit)
     {
-        public void Changed(SessionStore store, long userId, string what, string? from, string? to) =>
+        public void Changed(SessionStore store, UserId user, string what, string? from, string? to) =>
             audit.Write(AuditEvent.Now(
                 AuditKinds.Settings, $"{what}: {from ?? "—"} → {to ?? "—"}",
-                userId, project: store.ProjectPath, session: store.SessionId));
+                user, project: store.ProjectPath, session: store.SessionId));
     }
 }

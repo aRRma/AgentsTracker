@@ -1,9 +1,3 @@
-using Telegram.Bot;
-using Telegram.Bot.Exceptions;
-using Telegram.Bot.Types;
-using Telegram.Bot.Types.Enums;
-using Telegram.Bot.Types.ReplyMarkups;
-
 namespace AgentsTracker.Gateway.Features.Settings;
 
 /// <summary>
@@ -11,7 +5,7 @@ namespace AgentsTracker.Gateway.Features.Settings;
 /// <see cref="ISettingsScreen"/>, координатор только открывает, применяет и перерисовывает.
 /// </summary>
 public sealed class SettingsMenuCoordinator(
-    ITelegramBotClient bot,
+    IChatChannel channel,
     IEnumerable<ISettingsScreen> screens,
     ILogger<SettingsMenuCoordinator> logger)
 {
@@ -24,110 +18,90 @@ public sealed class SettingsMenuCoordinator(
     public ISettingsScreen Screen(string key) => _screens.GetValueOrDefault(key) ?? _screens["root"];
 
     /// <summary>Показывает меню новым сообщением. screen — экран, с которого начать.</summary>
-    public async Task OpenAsync(long chatId, long userId, CancellationToken ct, string screen = "root")
+    public async Task OpenAsync(ChatId chat, UserId user, CancellationToken ct, string screen = "root")
     {
         var target = Screen(screen);
-        target.Open(userId);
+        target.Open(user);
 
-        Message? message = null;
-        await foreach (var (html, keyboard) in target.RenderFramesAsync(userId, ct))
+        MessageRef? message = null;
+        await foreach (var (html, keyboard) in target.RenderFramesAsync(user, ct))
         {
             if (message is null)
-                message = await bot.SendMessage(chatId, html, ParseMode.Html, replyMarkup: keyboard, cancellationToken: ct);
+                message = await channel.SendAsync(chat, new OutgoingMessage(html, Keyboard: keyboard), ct);
             else
                 await EditQuietlyAsync(message, html, keyboard, ct);
         }
     }
 
-    public async Task HandleCallbackAsync(CallbackQuery query, CancellationToken ct)
+    public async Task HandlePressAsync(ButtonPress press, CancellationToken ct)
     {
-        var data = query.Data![CallbackPrefix.Length..];
+        var data = press.Data[CallbackPrefix.Length..];
         var separator = data.IndexOf(':');
         var screen = separator < 0 ? data : data[..separator];
         var argument = separator < 0 ? "" : data[(separator + 1)..];
 
         if (screen == "close")
         {
-            await AnswerAsync(query.Id, null, ct);
-            if (query.Message is { } closing) await DeleteQuietlyAsync(closing, ct);
+            await AnswerAsync(press, null, ct);
+            if (press.Message is { } closing) await DeleteQuietlyAsync(closing, ct);
             return;
         }
 
-        var userId = query.From.Id;
         var target = Screen(screen);
 
         // Применяем выбор до отрисовки: экран должен показать уже новое состояние.
         // Нажатие без аргумента — переход на экран из корня: он открывается с начала.
         string? toast = null;
-        if (argument.Length > 0) toast = target.Apply(argument, userId, query.Message?.Chat.Id ?? userId);
-        else target.Open(userId);
+        if (argument.Length > 0) toast = target.Apply(argument, press.User, press.Chat);
+        else target.Open(press.User);
 
-        await AnswerAsync(query.Id, toast, ct);
+        await AnswerAsync(press, toast, ct);
 
-        if (query.Message is not { } message) return;
+        // Сообщения с кнопками канал мог не отдать (оно старое или недоступно) — перерисовывать
+        // нечего, но выбор уже применён.
+        if (press.Message is not { } message) return;
 
-        await foreach (var (html, keyboard) in target.RenderFramesAsync(userId, ct))
+        await foreach (var (html, keyboard) in target.RenderFramesAsync(press.User, ct))
             await EditQuietlyAsync(message, html, keyboard, ct);
     }
 
-    private async Task EditQuietlyAsync(
-        Message message, string html, InlineKeyboardMarkup keyboard, CancellationToken ct)
+    /// <summary>
+    /// Перерисовка «в никуда»: неудача правки не должна ронять обработку нажатия. Ожидание
+    /// по просьбе канала и «текст не изменился» канал разбирает сам — здесь остаётся лог.
+    /// </summary>
+    private async Task EditQuietlyAsync(MessageRef message, string html, Keyboard keyboard, CancellationToken ct)
     {
         try
         {
-            await bot.EditMessageText(
-                message.Chat.Id, message.MessageId, html, ParseMode.Html,
-                replyMarkup: keyboard, cancellationToken: ct);
+            await channel.EditAsync(message, new OutgoingMessage(html, Keyboard: keyboard), ct);
         }
-        catch (ApiRequestException ex) when (ex.Parameters?.RetryAfter is { } seconds and <= 5)
+        catch (ChannelRequestException ex)
         {
-            // Кадры анимации идут чаще, чем Telegram позволяет править одно сообщение; выждав,
-            // повторяем один раз — иначе шкала осталась бы застывшей на промежуточном кадре.
-            await Task.Delay(TimeSpan.FromSeconds(seconds), ct);
-            await EditOnceAsync(message, html, keyboard, ct);
-        }
-        catch (ApiRequestException ex)
-        {
-            // «message is not modified» — нормальный исход: пользователь нажал ту же кнопку.
             logger.LogDebug(ex, "Не удалось перерисовать меню");
         }
     }
 
-    private async Task EditOnceAsync(Message message, string html, InlineKeyboardMarkup keyboard, CancellationToken ct)
+    private async Task DeleteQuietlyAsync(MessageRef message, CancellationToken ct)
     {
         try
         {
-            await bot.EditMessageText(
-                message.Chat.Id, message.MessageId, html, ParseMode.Html,
-                replyMarkup: keyboard, cancellationToken: ct);
+            await channel.DeleteAsync(message, ct);
         }
-        catch (ApiRequestException ex)
-        {
-            logger.LogDebug(ex, "Не удалось перерисовать меню после паузы");
-        }
-    }
-
-    private async Task DeleteQuietlyAsync(Message message, CancellationToken ct)
-    {
-        try
-        {
-            await bot.DeleteMessage(message.Chat.Id, message.MessageId, ct);
-        }
-        catch (ApiRequestException ex)
+        catch (ChannelRequestException ex)
         {
             logger.LogDebug(ex, "Не удалось закрыть меню");
         }
     }
 
-    private async Task AnswerAsync(string callbackQueryId, string? text, CancellationToken ct)
+    private async Task AnswerAsync(ButtonPress press, string? toast, CancellationToken ct)
     {
         try
         {
-            await bot.AnswerCallbackQuery(callbackQueryId, text, cancellationToken: ct);
+            await channel.AcknowledgeAsync(press, toast, ct);
         }
         catch (Exception ex)
         {
-            logger.LogDebug(ex, "Не удалось ответить на callback меню");
+            logger.LogDebug(ex, "Не удалось ответить на нажатие в меню");
         }
     }
 }

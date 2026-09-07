@@ -5,13 +5,13 @@ using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 namespace AgentsTracker.Gateway.Features.Settings;
 
 /// <summary>
-/// Шкалы остатка тарифных окон для чата. В Telegram нет графики, поэтому шкала — строка из
+/// Шкалы остатка тарифных окон для чата. Графики в чате нет, поэтому шкала — строка из
 /// сегментов в <c>&lt;code&gt;</c> (моноширинный шрифт держит их одной ширины), а «анимация» —
 /// несколько правок сообщения, на каждой шкала заполнена на долю <c>progress</c> от остатка.
 /// </summary>
 internal static class LimitBars
 {
-    /// <summary>Сколько правок делает заполнение: больше — красивее, но Telegram режет частые правки 429.</summary>
+    /// <summary>Сколько правок делает заполнение: больше — красивее, но каналы режут частые правки.</summary>
     public const int Frames = 3;
 
     /// <summary>Пауза между кадрами; на трёх кадрах укладываемся в секунду.</summary>

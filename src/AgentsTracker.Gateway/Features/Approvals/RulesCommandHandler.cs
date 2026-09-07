@@ -1,13 +1,12 @@
 using System.Text;
 using AgentsTracker.Gateway.Infrastructure.Audit;
-using AgentsTracker.Gateway.Infrastructure.Telegram.Dispatch;
-using Telegram.Bot;
+using AgentsTracker.Gateway.Infrastructure.Chat.Dispatch;
 
 namespace AgentsTracker.Gateway.Features.Approvals;
 
 /// <summary>/rules — показывает и снимает разрешения, выданные кнопкой «Всегда».</summary>
-public sealed class RulesCommandHandler(ITelegramBotClient bot, SessionStore store, IAuditLog audit)
-    : ITelegramCommandHandler
+public sealed class RulesCommandHandler(IChatChannel channel, SessionStore store, IAuditLog audit)
+    : IChatCommandHandler
 {
     /// <summary>Бюджет списка правил в символах и предел длины одного правила.</summary>
     private const int RuleListBudget = 3500;
@@ -20,10 +19,10 @@ public sealed class RulesCommandHandler(ITelegramBotClient bot, SessionStore sto
 
     public IReadOnlyCollection<string> Commands { get; } = ["/rules"];
 
-    public async Task HandleAsync(TelegramCommandContext context, CancellationToken ct) =>
-        await bot.SendMessage(context.ChatId, Manage(context), cancellationToken: ct);
+    public async Task HandleAsync(ChatCommandContext context, CancellationToken ct) =>
+        await channel.SendAsync(context.Chat, new OutgoingMessage(Manage(context), Rich: false), ct);
 
-    private string Manage(TelegramCommandContext context)
+    private string Manage(ChatCommandContext context)
     {
         var argument = context.Argument;
         var rules = store.AlwaysAllowRules();
@@ -54,7 +53,7 @@ public sealed class RulesCommandHandler(ITelegramBotClient bot, SessionStore sto
         if (rules.Count == 0)
             return $"Правил «всегда» для {project} нет — каждое действие спрашивается кнопками." + CliNote;
 
-        // Правил может накопиться сколько угодно, а сообщение Telegram ограничено:
+        // Правил может накопиться сколько угодно, а сообщение в чате ограничено:
         // набираем список по бюджету, остаток показываем числом.
         var list = new StringBuilder();
         var shown = 0;
@@ -80,8 +79,8 @@ public sealed class RulesCommandHandler(ITelegramBotClient bot, SessionStore sto
             """ + CliNote;
     }
 
-    private void Audit(TelegramCommandContext context, string summary) =>
-        audit.Write(AuditEvent.Now(AuditKinds.Rules, summary, context.UserId, context.ChatId, store.ProjectPath, outcome: "gateway"));
+    private void Audit(ChatCommandContext context, string summary) =>
+        audit.Write(AuditEvent.Now(AuditKinds.Rules, summary, context.User, context.Chat, store.ProjectPath, outcome: "gateway"));
 
     private static string Shorten(string text) => Text.Clip(text, RuleDisplayLimit);
 }

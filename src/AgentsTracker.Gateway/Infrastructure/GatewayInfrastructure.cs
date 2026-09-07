@@ -1,9 +1,9 @@
 using System.Net;
 using AgentsTracker.Gateway.Infrastructure.Audit;
+using AgentsTracker.Gateway.Infrastructure.Chat;
 using AgentsTracker.Gateway.Infrastructure.Modules;
 using AgentsTracker.Gateway.Infrastructure.Monitoring;
 using AgentsTracker.Gateway.Infrastructure.Security;
-using AgentsTracker.Gateway.Infrastructure.Telegram;
 
 namespace AgentsTracker.Gateway.Infrastructure;
 
@@ -24,7 +24,8 @@ public static class GatewayInfrastructure
             builder.Configuration.AddEnvironmentVariables();
         }
 
-        public void AddGatewayInfrastructure(IAgentBackendModule agent, IReadOnlyList<IFeatureModule> modules)
+        public void AddGatewayInfrastructure(
+            IAgentBackendModule agent, IChatChannelModule channel, IReadOnlyList<IFeatureModule> modules)
         {
             var services = builder.Services;
             var configuration = builder.Configuration;
@@ -39,10 +40,9 @@ public static class GatewayInfrastructure
             services.AddSingleton<RingBufferLog>();
             services.AddSingleton<ILoggerProvider, RingBufferLoggerProvider>();
 
-            services.AddTelegramBotClient();
-            services.AddSingleton<BotCommandsCatalog>();
+            services.AddSingleton<ChatDispatcher>();
             services.AddSingleton<StartupNotice>();
-            services.AddHostedService<TelegramBotService>();
+            services.AddHostedService<ChatGatewayService>();
 
             // Эндпоинт подтверждений и монитор доступны только с этой машины. Монитор — на
             // отдельном порту: у него нет токена, и его можно выключить, не трогая подтверждения.
@@ -56,9 +56,11 @@ public static class GatewayInfrastructure
                 if (monitorPort > 0 && monitorPort != port) kestrel.Listen(IPAddress.Loopback, monitorPort);
             });
 
-            // Бэкенду — только то, что ему нужно от хоста, без доступа к GatewayOptions целиком.
+            // Бэкенду и каналу — только то, что им нужно от хоста, без доступа к GatewayOptions целиком.
             services.AddSingleton(new AgentHost(AppPaths.DataDirectory, port, proxy));
+            services.AddSingleton(new ChannelHost(proxy));
             agent.AddServices(services, configuration);
+            channel.AddServices(services, configuration);
 
             foreach (var module in modules) module.AddServices(services, configuration);
         }
@@ -75,9 +77,12 @@ public static class GatewayInfrastructure
             var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
             var options = app.Services.GetRequiredService<IOptions<GatewayOptions>>().Value;
             var agent = app.Services.GetRequiredService<IAgentBackend>();
+            var channel = app.Services.GetRequiredService<IChatChannel>();
 
             var errors = options.Validate();
             if (errors.Count == 0) errors = options.ValidateFor(agent.Capabilities);
+            if (errors.Count == 0) errors = channel.Validate();
+            if (errors.Count == 0) errors = MovedChannelKeys(app.Services.GetRequiredService<IConfiguration>());
             if (errors.Count > 0)
             {
                 foreach (var error in errors) logger.LogCritical("{Error}", error);
@@ -119,11 +124,31 @@ public static class GatewayInfrastructure
             return 0;
         }
 
-        public void MapFeatures(IAgentBackendModule agent, IReadOnlyList<IFeatureModule> modules)
+        public void MapFeatures(
+            IAgentBackendModule agent, IChatChannelModule channel, IReadOnlyList<IFeatureModule> modules)
         {
             agent.MapEndpoints(app);
+            channel.MapEndpoints(app);
             foreach (var module in modules) module.MapEndpoints(app);
         }
+    }
+
+    /// <summary>
+    /// Ключи канала переехали в его собственную секцию. Старый конфиг с ними внешне рабочий:
+    /// шлюз стартовал бы с пустым списком разрешённых пользователей и молчащим ботом, поэтому
+    /// лучше не стартовать и сказать, куда переложить.
+    /// </summary>
+    private static IReadOnlyList<string> MovedChannelKeys(IConfiguration configuration)
+    {
+        string[] moved = ["BotToken", "AllowedUserIds"];
+
+        return
+        [
+            .. moved
+                .Where(key => configuration.GetSection($"{GatewayOptions.SectionName}:{key}").Exists())
+                .Select(key => $"{GatewayOptions.SectionName}:{key} больше не читается — перенесите его "
+                             + $"в {ChannelConfiguration.SettingsSection}:{key}."),
+        ];
     }
 
     private static void HideGatewaySettingsFromChildren()

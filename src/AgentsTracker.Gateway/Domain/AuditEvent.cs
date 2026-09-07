@@ -17,15 +17,17 @@ public static class AuditKinds
 }
 
 /// <summary>
-/// Одна короткая запись журнала действий: кто пришёл (UserId/ChatId), куда (Project/Session)
+/// Одна короткая запись журнала действий: кто пришёл (UserKey/ChatKey), куда (Project/Session)
 /// и что сделал (Kind/Summary/Outcome). Никаких секретов и полных текстов — только суть.
+/// Адреса — строками «канал:значение»: номера разных каналов совпадают, и число из одного
+/// читалось бы в журнале как чужой пользователь.
 /// </summary>
 public sealed record AuditEvent(
     DateTimeOffset At,
     string Kind,
     string Summary,
-    long? UserId = null,
-    long? ChatId = null,
+    string? UserKey = null,
+    string? ChatKey = null,
     string? Project = null,
     string? Session = null,
     string? Outcome = null)
@@ -34,9 +36,18 @@ public sealed record AuditEvent(
     public const int SummaryLimit = 200;
 
     public static AuditEvent Now(
-        string kind, string summary, long? userId = null, long? chatId = null,
+        string kind, string summary, UserId? user = null, ChatId? chat = null,
         string? project = null, string? session = null, string? outcome = null) =>
-        new(DateTimeOffset.Now, kind, Text.Clip(summary.ReplaceLineEndings(" "), SummaryLimit), userId, chatId,
+        NowByKeys(kind, summary, user?.Key, chat?.Key, project, session, outcome);
+
+    /// <summary>
+    /// То же, но адреса уже строками: запись по данным из state.json, где живут готовые Key
+    /// (прерванный запуск прошлого экземпляра).
+    /// </summary>
+    public static AuditEvent NowByKeys(
+        string kind, string summary, string? userKey = null, string? chatKey = null,
+        string? project = null, string? session = null, string? outcome = null) =>
+        new(DateTimeOffset.Now, kind, Text.Clip(summary.ReplaceLineEndings(" "), SummaryLimit), userKey, chatKey,
             project is { Length: > 0 } ? Path.GetFileName(project.TrimEnd('\\', '/')) : null,
             session is { Length: > 8 } ? session[..8] : session,
             outcome);

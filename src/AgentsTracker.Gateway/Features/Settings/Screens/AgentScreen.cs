@@ -1,6 +1,5 @@
 using AgentsTracker.Gateway.Features.Chat;
 using AgentsTracker.Gateway.Infrastructure.Audit;
-using Telegram.Bot.Types.ReplyMarkups;
 using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
@@ -17,7 +16,7 @@ public sealed class AgentScreen(
 {
     public string Key => "agent";
 
-    public string? Apply(string argument, long userId, long chatId)
+    public string? Apply(string argument, UserId user, ChatId chat)
     {
         var separator = argument.IndexOf(':');
         if (separator < 0) return null;
@@ -26,14 +25,14 @@ public sealed class AgentScreen(
 
         return argument[..separator] switch
         {
-            "model" => ApplyModel(value, userId),
-            "effort" => ApplyEffort(value, userId),
-            "mode" => ApplyMode(value, userId),
+            "model" => ApplyModel(value, user),
+            "effort" => ApplyEffort(value, user),
+            "mode" => ApplyMode(value, user),
             _ => null,
         };
     }
 
-    private string ApplyModel(string value, long userId)
+    private string ApplyModel(string value, UserId user)
     {
         var reset = IsReset(value);
         var model = reset ? null : agent.Capabilities.Model.Resolve(value);
@@ -41,11 +40,11 @@ public sealed class AgentScreen(
 
         var previous = store.Model;
         store.SetModel(model);
-        audit.Changed(store, userId, "model", previous, model);
+        audit.Changed(store, user, "model", previous, model);
         return $"Модель: {model ?? "по умолчанию"}";
     }
 
-    private string ApplyEffort(string value, long userId)
+    private string ApplyEffort(string value, UserId user)
     {
         if (agent.Capabilities.Effort is not { } setting) return $"{agent.DisplayName} не поддерживает уровень усилий";
 
@@ -55,18 +54,18 @@ public sealed class AgentScreen(
 
         var previous = store.Effort;
         store.SetEffort(effort);
-        audit.Changed(store, userId, "effort", previous, effort);
+        audit.Changed(store, user, "effort", previous, effort);
         return $"Effort: {effort ?? "по умолчанию"}";
     }
 
-    private string ApplyMode(string value, long userId)
+    private string ApplyMode(string value, UserId user)
     {
         var previous = store.EffectivePermissionMode;
 
         if (IsReset(value))
         {
             store.SetPermissionMode(null);
-            audit.Changed(store, userId, "mode", previous, options.Value.PermissionMode);
+            audit.Changed(store, user, "mode", previous, options.Value.PermissionMode);
             return $"Режим: {options.Value.PermissionMode} (из конфига)";
         }
 
@@ -78,7 +77,7 @@ public sealed class AgentScreen(
         if (mode == previous) return $"Уже {mode}";
 
         store.SetPermissionMode(mode);
-        audit.Changed(store, userId, "mode", previous, mode);
+        audit.Changed(store, user, "mode", previous, mode);
         return worker.IsBusy
             ? $"Режим: {mode} — со следующего запуска"
             : $"Режим: {mode}";
@@ -86,10 +85,10 @@ public sealed class AgentScreen(
 
     private static bool IsReset(string value) => value.Equals("reset", StringComparison.OrdinalIgnoreCase);
 
-    public Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(long userId, CancellationToken ct) =>
+    public Task<(string Html, Keyboard Keyboard)> RenderAsync(UserId user, CancellationToken ct) =>
         Task.FromResult(Render());
 
-    private (string Html, InlineKeyboardMarkup Keyboard) Render()
+    private (string Html, Keyboard Keyboard) Render()
     {
         var caps = agent.Capabilities;
         var model = store.EffectiveModel;
@@ -112,7 +111,7 @@ public sealed class AgentScreen(
             <code>appsettings.Local.json</code> на самой машине.</i>
             """;
 
-        var rows = new List<InlineKeyboardButton[]>();
+        var rows = new List<KeyboardButton[]>();
 
         rows.AddRange(Group("🧠", caps.Model, model, "model", 3));
         rows.Add([Button($"🧠 {Marker(model is null)} по умолчанию", "agent:model:reset")]);
@@ -128,11 +127,11 @@ public sealed class AgentScreen(
 
         rows.Add([BackButton]);
 
-        return (html, new InlineKeyboardMarkup(rows));
+        return (html, new Keyboard(rows));
     }
 
     /// <summary>Ряды кнопок одной настройки; эмодзи группы на каждой кнопке — иначе в общей клавиатуре ряды не различить.</summary>
-    private static IEnumerable<InlineKeyboardButton[]> Group(
+    private static IEnumerable<KeyboardButton[]> Group(
         string icon, AgentSetting setting, string? current, string kind, int perRow) =>
         setting.Selectable
             .Select(value => Button($"{icon} {Marker(value == current)} {value}", $"agent:{kind}:{value}"))

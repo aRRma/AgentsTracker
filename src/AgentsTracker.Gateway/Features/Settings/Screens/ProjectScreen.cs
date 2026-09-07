@@ -1,5 +1,4 @@
 using AgentsTracker.Gateway.Infrastructure.Audit;
-using Telegram.Bot.Types.ReplyMarkups;
 using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
@@ -27,13 +26,13 @@ public sealed class ProjectScreen(
 
     public string Key => "proj";
 
-    public void Open(long userId) => _nav.Reset(userId);
+    public void Open(UserId user) => _nav.Reset(user);
 
-    public string? Apply(string argument, long userId, long chatId)
+    public string? Apply(string argument, UserId user, ChatId chat)
     {
         if (argument == UpArgument)
         {
-            _nav.Reset(userId);
+            _nav.Reset(user);
             return null;
         }
 
@@ -41,14 +40,14 @@ public sealed class ProjectScreen(
         // Проверять здесь — лишний обход диска на каждое нажатие.
         if (argument.StartsWith(GroupPrefix, StringComparison.Ordinal))
         {
-            _nav.Set(userId, new ScreenPosition(Group: argument[GroupPrefix.Length..]));
+            _nav.Set(user, new ScreenPosition(Group: argument[GroupPrefix.Length..]));
             return null;
         }
 
         if (argument.StartsWith(PagePrefix, StringComparison.Ordinal)
             && int.TryParse(argument[PagePrefix.Length..], out var page))
         {
-            _nav.Update(userId, p => p with { Page = page });
+            _nav.Update(user, p => p with { Page = page });
             return null;
         }
 
@@ -63,10 +62,10 @@ public sealed class ProjectScreen(
         store.SetProjectPath(project);
 
         // Выбранная папка становится первой в списке — показывать при этом пятую страницу незачем.
-        _nav.Update(userId, p => p with { Page = 0 });
+        _nav.Update(user, p => p with { Page = 0 });
 
         logger.LogInformation("Рабочая папка переключена на {Project}", project);
-        audit.Changed(store, userId, "project", Path.GetFileName(previous), Path.GetFileName(project));
+        audit.Changed(store, user, "project", Path.GetFileName(previous), Path.GetFileName(project));
 
         // Сессии живут в папке, где созданы: у нового проекта своя активная сессия
         // или ни одной — предупреждаем, чтобы смена контекста не выглядела потерей истории.
@@ -75,39 +74,39 @@ public sealed class ProjectScreen(
             : $"{Path.GetFileName(project)} — вернулись к её сессии";
     }
 
-    public Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(long userId, CancellationToken ct) =>
-        Task.FromResult(Render(userId));
+    public Task<(string Html, Keyboard Keyboard)> RenderAsync(UserId user, CancellationToken ct) =>
+        Task.FromResult(Render(user));
 
-    private (string Html, InlineKeyboardMarkup Keyboard) Render(long userId)
+    private (string Html, Keyboard Keyboard) Render(UserId user)
     {
         var current = store.ProjectPath;
-        var position = _nav.Of(userId);
+        var position = _nav.Of(user);
 
         // Список пересобирается на каждый показ: папка могла исчезнуть вместе с репозиториями.
         var groups = catalog.Grouped(current);
 
         // Одна папка — промежуточный экран только добавил бы лишнее нажатие.
         if (groups.Count <= 1)
-            return RenderProjects(userId, groups.Count == 0 ? [] : groups[0].Projects, group: null, current, position.Page);
+            return RenderProjects(user, groups.Count == 0 ? [] : groups[0].Projects, group: null, current, position.Page);
 
         var opened = position.Group is null ? null : groups.FirstOrDefault(g => Key12(g.Name) == position.Group);
 
         if (opened is null)
         {
-            _nav.Reset(userId);
-            return RenderGroups(userId, groups, current, position.Page);
+            _nav.Reset(user);
+            return RenderGroups(user, groups, current, position.Page);
         }
 
-        return RenderProjects(userId, opened.Projects, opened.Name, current, position.Page);
+        return RenderProjects(user, opened.Projects, opened.Name, current, position.Page);
     }
 
-    private (string Html, InlineKeyboardMarkup Keyboard) RenderGroups(
-        long userId, IReadOnlyList<ProjectGroup> groups, string current, int pageIndex)
+    private (string Html, Keyboard Keyboard) RenderGroups(
+        UserId user, IReadOnlyList<ProjectGroup> groups, string current, int pageIndex)
     {
         // Папок-владельцев тоже бывает больше, чем влезает в клавиатуру: под корнем с
         // вложенностью группа — это каждая ветка дерева.
         var (page, clamped, counter, pageRow) = Page(groups, pageIndex, Key, PagePrefix, "папок");
-        _nav.Update(userId, p => p with { Page = clamped });
+        _nav.Update(user, p => p with { Page = clamped });
 
         var lines = page.Select(group =>
             $"{Marker(group.Projects.Any(p => ProjectCatalog.Same(p, current)))} "
@@ -133,14 +132,14 @@ public sealed class ProjectScreen(
         if (pageRow is not null) buttons.Add(pageRow);
         buttons.Add([BackButton]);
 
-        return (html, new InlineKeyboardMarkup(buttons));
+        return (html, new Keyboard(buttons));
     }
 
-    private (string Html, InlineKeyboardMarkup Keyboard) RenderProjects(
-        long userId, IReadOnlyList<string> all, string? group, string current, int pageIndex)
+    private (string Html, Keyboard Keyboard) RenderProjects(
+        UserId user, IReadOnlyList<string> all, string? group, string current, int pageIndex)
     {
         var (page, clamped, counter, pageRow) = Page(all, pageIndex, Key, PagePrefix, "репозиториев");
-        _nav.Update(userId, p => p with { Page = clamped });
+        _nav.Update(user, p => p with { Page = clamped });
 
         var lines = page.Select(path =>
             $"{Marker(ProjectCatalog.Same(path, current))} <b>{E(Path.GetFileName(path))}</b>\n   <code>{E(path)}</code>");
@@ -163,7 +162,7 @@ public sealed class ProjectScreen(
         if (pageRow is not null) buttons.Add(pageRow);
         buttons.Add(group is null ? [BackButton] : [Button("📂 К папкам", $"{Key}:{UpArgument}"), BackButton]);
 
-        return (html, new InlineKeyboardMarkup(buttons));
+        return (html, new Keyboard(buttons));
     }
 
     private string Source() => options.Value switch

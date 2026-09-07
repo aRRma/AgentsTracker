@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace AgentsTracker.Gateway.Infrastructure.Telegram;
+namespace AgentsTracker.Gateway.Infrastructure.Chat;
 
 /// <summary>Одна исходящая порция: либо готовый HTML для сообщения, либо файл.</summary>
 public sealed record OutgoingPart(string? Html, string? DocumentText, string? DocumentName)
@@ -11,55 +11,12 @@ public sealed record OutgoingPart(string? Html, string? DocumentText, string? Do
 }
 
 /// <summary>
-/// Переводит markdown из ответа агента в подмножество HTML, которое понимает Telegram,
-/// и режет результат под лимит сообщения (4096 символов).
+/// Переводит markdown из ответа агента в канонический формат канала (<see cref="ChatHtml"/>)
+/// и режет результат под лимит сообщения, который объявил канал.
 /// </summary>
-public static partial class TelegramFormatter
+public static partial class MarkdownRenderer
 {
-    public const int MaxMessageLength = 3800;
-
-    public static string Escape(string text) => text
-        .Replace("&", "&amp;")
-        .Replace("<", "&lt;")
-        .Replace(">", "&gt;");
-
-    /// <summary>
-    /// Экранирует и обрезает так, чтобы результат гарантированно уложился в maxLength.
-    /// Считать бюджет по исходной строке нельзя: один символ «&amp;» превращается в пять.
-    /// </summary>
-    public static string EscapeCapped(string text, int maxLength)
-    {
-        // Один символ придерживаем под многоточие, чтобы обрезка не выходила за maxLength.
-        var budget = maxLength - 1;
-        var result = new StringBuilder(Math.Min(text.Length, maxLength));
-
-        foreach (var ch in text)
-        {
-            var entity = ch switch
-            {
-                '&' => "&amp;",
-                '<' => "&lt;",
-                '>' => "&gt;",
-                _ => null,
-            };
-
-            if (result.Length + (entity?.Length ?? 1) > budget)
-            {
-                // Обрезка между половинками суррогатной пары (эмодзи) даёт невалидный UTF-16:
-                // Telegram отвергнет сообщение, а карточка подтверждения превратится в отказ.
-                if (result.Length > 0 && char.IsHighSurrogate(result[^1])) result.Length--;
-                result.Append('…');
-                break;
-            }
-
-            if (entity is null) result.Append(ch);
-            else result.Append(entity);
-        }
-
-        return result.ToString();
-    }
-
-    public static IReadOnlyList<OutgoingPart> Render(string markdown, int maxLength = MaxMessageLength)
+    public static IReadOnlyList<OutgoingPart> Render(string markdown, int maxLength)
     {
         var parts = new List<OutgoingPart>();
         var current = new StringBuilder();
@@ -85,12 +42,12 @@ public static partial class TelegramFormatter
             if (block.IsCode)
             {
                 var cls = block.Language is { Length: > 0 } l
-                    ? $" class=\"language-{Escape(l)}\""
+                    ? $" class=\"language-{ChatHtml.Escape(l)}\""
                     : "";
 
                 // Меряем готовый HTML: экранирование и теги раздувают исходник,
-                // а лимит Telegram считается по тому, что реально уходит в сообщение.
-                var html = $"<pre><code{cls}>{Escape(block.Content)}</code></pre>";
+                // а лимит канала считается по тому, что реально уходит в сообщение.
+                var html = $"<pre><code{cls}>{ChatHtml.Escape(block.Content)}</code></pre>";
 
                 if (html.Length > maxLength)
                 {
@@ -170,7 +127,7 @@ public static partial class TelegramFormatter
 
     /// <summary>
     /// Выделяет из обычного текста markdown-таблицы и отдаёт их как блоки кода.
-    /// В HTML Telegram таблиц нет: без выравнивания моноширинным шрифтом столбцы
+    /// В HTML канала таблиц нет: без выравнивания моноширинным шрифтом столбцы
     /// расползаются и читать нечего.
     /// </summary>
     private static IEnumerable<Block> SplitTables(string content)
@@ -304,7 +261,7 @@ public static partial class TelegramFormatter
             return $"{Sentinel}{spans.Count - 1}{Sentinel}";
         });
 
-        var html = Escape(withPlaceholders);
+        var html = ChatHtml.Escape(withPlaceholders);
 
         // Кавычка в URL иначе закрыла бы атрибут href и впустила в сообщение произвольный HTML.
         html = LinkRegex().Replace(html, m => $"<a href=\"{m.Groups[2].Value.Replace("\"", "&quot;")}\">{m.Groups[1].Value}</a>");
@@ -320,13 +277,13 @@ public static partial class TelegramFormatter
         html = ApplyLineBlocks(html);
 
         for (var i = 0; i < spans.Count; i++)
-            html = html.Replace($"{Sentinel}{i}{Sentinel}", $"<code>{Escape(spans[i])}</code>", StringComparison.Ordinal);
+            html = html.Replace($"{Sentinel}{i}{Sentinel}", $"<code>{ChatHtml.Escape(spans[i])}</code>", StringComparison.Ordinal);
 
         return html;
     }
 
     /// <summary>
-    /// Построчные элементы markdown, которых в HTML Telegram нет: маркеры списка,
+    /// Построчные элементы markdown, которых в HTML канала нет: маркеры списка,
     /// горизонтальная линия, цитата. Без этого «- пункт» и «---» уходят в чат как есть.
     /// </summary>
     private static string ApplyLineBlocks(string html)
@@ -358,7 +315,7 @@ public static partial class TelegramFormatter
                 continue;
             }
 
-            // Вложенный уровень отличаем пустым кружком — отступ в Telegram сохраняется,
+            // Вложенный уровень отличаем пустым кружком — отступ сохраняется,
             // но одинаковые маркеры на разных уровнях сливаются в одну кашу.
             result
                 .Append(BulletRegex().Replace(line, m => m.Groups[1].Value.Length > 0 ? $"{m.Groups[1].Value}◦ " : "• "))

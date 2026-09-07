@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace AgentsTracker.Gateway.Infrastructure.Telegram;
+namespace AgentsTracker.Gateway.Infrastructure.Chat;
 
 /// <summary>Единое представление токенов и времени во всех сообщениях чата.</summary>
 public static class DisplayFormat

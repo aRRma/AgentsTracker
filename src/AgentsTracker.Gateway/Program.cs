@@ -1,4 +1,5 @@
 using AgentsTracker.Agents.Claude;
+using AgentsTracker.Channels.Telegram;
 using AgentsTracker.Gateway.Features.Approvals;
 using AgentsTracker.Gateway.Features.Audit;
 using AgentsTracker.Gateway.Features.Chat;
@@ -8,9 +9,14 @@ using AgentsTracker.Gateway.Features.Settings;
 using AgentsTracker.Gateway.Infrastructure.Modules;
 using AgentsTracker.Gateway.Infrastructure.Security;
 
+// Единственное место, где хост знает конкретные каналы связи. Новый канал — свой проект
+// с IChatChannelModule и строка здесь.
+IReadOnlyList<IChatChannelModule> channels = [new TelegramChannelModule()];
+
 // Служебная команда: зашифровать секреты локального конфига и перенести его в папку данных.
+// Какие ключи в секции канала секретные, знает только его модуль.
 if (args is [ProtectSecretsCommand.Name, ..])
-    return ProtectSecretsCommand.Run(args, Console.Out);
+    return ProtectSecretsCommand.Run(args, channels, Console.Out);
 
 // Единственное место, где хост знает конкретных агентов. Новый агент — свой проект
 // с IAgentBackendModule и строка здесь.
@@ -47,16 +53,26 @@ if (agent is null)
     return 1;
 }
 
-builder.AddGatewayInfrastructure(agent, modules);
+// Канал — тоже до сборки контейнера и по тому же образцу.
+var channelId = builder.Configuration[ChannelConfiguration.TypeKey] ?? new ChannelOptions().Type;
+var channel = channels.FirstOrDefault(c => c.Id.Equals(channelId, StringComparison.OrdinalIgnoreCase));
+if (channel is null)
+{
+    Console.Error.WriteLine(
+        $"{ChannelConfiguration.TypeKey} = '{channelId}'. Известные каналы: {string.Join(", ", channels.Select(c => c.Id))}.");
+    return 1;
+}
+
+builder.AddGatewayInfrastructure(agent, channel, modules);
 
 var app = builder.Build();
 
 if (app.ValidateStartup() is not 0 and var exitCode) return exitCode;
 
-app.MapFeatures(agent, modules);
+app.MapFeatures(agent, channel, modules);
 
 await app.RunAsync();
 
-// Ненулевой код ставит TelegramBotService, когда не смог подключиться: по нему Планировщик
+// Ненулевой код ставит ChatGatewayService, когда не смог подключиться: по нему Планировщик
 // перезапускает задачу.
 return Environment.ExitCode;

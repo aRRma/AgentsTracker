@@ -1,6 +1,5 @@
 using AgentsTracker.Gateway.Infrastructure.Audit;
-using AgentsTracker.Gateway.Infrastructure.Telegram.Dispatch;
-using Telegram.Bot;
+using AgentsTracker.Gateway.Infrastructure.Chat.Dispatch;
 
 namespace AgentsTracker.Gateway.Features.Chat;
 
@@ -9,12 +8,12 @@ namespace AgentsTracker.Gateway.Features.Chat;
 /// Регистрируется последним, поэтому всегда возвращает true.
 /// </summary>
 public sealed class ChatEnqueueTextHandler(
-    ITelegramBotClient bot, ChatWorker worker, SessionStore store, IAuditLog audit) : ITelegramTextHandler
+    IChatChannel channel, ChatWorker worker, SessionStore store, IAuditLog audit) : IChatTextHandler
 {
-    public async Task<bool> TryHandleAsync(long chatId, long userId, string text, CancellationToken ct)
+    public async Task<bool> TryHandleAsync(ChatId chat, UserId user, string text, CancellationToken ct)
     {
         // Превью, а не весь промпт: в него могли вставить токен или содержимое файла.
-        audit.Write(AuditEvent.Now(AuditKinds.Message, $"text: {Text.Preview(text)}", userId, chatId, store.ProjectPath, store.SessionId));
+        audit.Write(AuditEvent.Now(AuditKinds.Message, $"text: {Text.Preview(text)}", user, chat, store.ProjectPath, store.SessionId));
 
         // Проверяем занятость до постановки в очередь, иначе первое же сообщение
         // может увидеть уже начавшуюся собственную обработку.
@@ -24,17 +23,17 @@ public sealed class ChatEnqueueTextHandler(
         // Считаем их, чтобы экран скиллов знал, что запускают чаще всего.
         if (text.StartsWith('/')) store.RecordSkillUse(CommandName(text));
 
-        // ActiveChatId выставляет ChatWorker перед самым запуском: сделать это здесь значило бы
+        // Активный чат выставляет ChatWorker перед самым запуском: сделать это здесь значило бы
         // увести карточки уже идущего запуска в чат другого пользователя.
-        worker.Enqueue(chatId, userId, text);
+        worker.Enqueue(chat, user, text);
 
         if (wasBusy)
-            await bot.SendMessage(chatId, "📥 Добавлено в очередь — отвечу, как освобожусь.", cancellationToken: ct);
+            await channel.SendAsync(chat, new OutgoingMessage("📥 Добавлено в очередь — отвечу, как освобожусь.", Rich: false), ct);
 
         return true;
     }
 
-    /// <summary>Первое слово без суффикса «@имябота»: Telegram подставляет его при выборе из подсказок.</summary>
+    /// <summary>Первое слово без суффикса «@имябота»: каналы подставляют его при выборе из подсказок.</summary>
     private static string CommandName(string text)
     {
         var word = text.Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries)[0];

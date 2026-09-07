@@ -1,5 +1,5 @@
 using AgentsTracker.Gateway.Infrastructure.Modules;
-using AgentsTracker.Gateway.Infrastructure.Telegram.Dispatch;
+using AgentsTracker.Gateway.Infrastructure.Chat.Dispatch;
 
 namespace AgentsTracker.Gateway.Features.Audit;
 
@@ -7,7 +7,7 @@ namespace AgentsTracker.Gateway.Features.Audit;
 public sealed class AuditModule : IFeatureModule
 {
     public void AddServices(IServiceCollection services, IConfiguration configuration) =>
-        services.AddSingleton<ITelegramCommandHandler, AuditCommandHandler>();
+        services.AddSingleton<IChatCommandHandler, AuditCommandHandler>();
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints) { }
 }

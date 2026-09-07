@@ -1,6 +1,5 @@
 using AgentsTracker.Gateway.Infrastructure.Audit;
-using AgentsTracker.Gateway.Infrastructure.Telegram;
-using Telegram.Bot.Types.ReplyMarkups;
+using AgentsTracker.Gateway.Infrastructure.Chat;
 using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
@@ -16,16 +15,16 @@ public sealed class UsageScreen(SessionStore store, IAgentLimits limits, IAuditL
 
     public string Key => "usage";
 
-    public string? Apply(string argument, long userId, long chatId)
+    public string? Apply(string argument, UserId user, ChatId chat)
     {
         if (argument != "reset") return null;
 
         store.ResetUsage();
-        audit.Changed(store, userId, "usage", "статистика", "обнулена");
+        audit.Changed(store, user, "usage", "статистика", "обнулена");
         return "Статистика обнулена";
     }
 
-    public async Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(long userId, CancellationToken ct)
+    public async Task<(string Html, Keyboard Keyboard)> RenderAsync(UserId user, CancellationToken ct)
     {
         var usage = store.Snapshot().Usage;
         var total = usage.Total;
@@ -64,6 +63,6 @@ public sealed class UsageScreen(SessionStore store, IAgentLimits limits, IAuditL
             {(models.Any() ? string.Join("\n", models) : "<i>пусто</i>")}
             """;
 
-        return (html, new InlineKeyboardMarkup([[Button("♻️ Сбросить", "usage:reset")], [BackButton]]));
+        return (html, new Keyboard([[Button("♻️ Сбросить", "usage:reset")], [BackButton]]));
     }
 }

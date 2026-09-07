@@ -1,15 +1,14 @@
-using AgentsTracker.Gateway.Infrastructure.Telegram.Dispatch;
-using Telegram.Bot;
+using AgentsTracker.Gateway.Infrastructure.Chat.Dispatch;
 
 namespace AgentsTracker.Gateway.Features.Help;
 
 /// <summary>/start и /help — справка по командам шлюза.</summary>
-public sealed class HelpCommandHandler(ITelegramBotClient bot, IAgentBackend agent) : ITelegramCommandHandler
+public sealed class HelpCommandHandler(IChatChannel channel, IAgentBackend agent) : IChatCommandHandler
 {
     public IReadOnlyCollection<string> Commands { get; } = ["/start", "/help"];
 
-    public async Task HandleAsync(TelegramCommandContext context, CancellationToken ct) =>
-        await bot.SendMessage(context.ChatId, Text(), cancellationToken: ct);
+    public async Task HandleAsync(ChatCommandContext context, CancellationToken ct) =>
+        await channel.SendAsync(context.Chat, new OutgoingMessage(Text(), Rich: false), ct);
 
     private string Text()
     {

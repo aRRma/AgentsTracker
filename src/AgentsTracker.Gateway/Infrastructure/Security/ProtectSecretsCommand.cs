@@ -13,10 +13,15 @@ public static class ProtectSecretsCommand
 {
     public const string Name = "protect-secrets";
 
-    /// <summary>Ключи секции Gateway, которые не должны лежать открытым текстом.</summary>
-    private static readonly string[] SensitiveKeys = ["BotToken", "Proxy"];
+    /// <summary>Ключи самой секции Gateway, которые не должны лежать открытым текстом.</summary>
+    private static readonly string[] GatewaySecrets = ["Proxy"];
 
-    public static int Run(string[] args, TextWriter output)
+    /// <summary>
+    /// Шифрует секреты хоста и секреты выбранного канала: какие ключи в его настройках
+    /// секретные, знает только модуль канала (<see cref="IChatChannelModule.SecretKeys"/>).
+    /// Берём ключи всех известных каналов — шифруется всё равно только то, что есть в файле.
+    /// </summary>
+    public static int Run(string[] args, IReadOnlyList<IChatChannelModule> channels, TextWriter output)
     {
         var source = args.Length > 1 ? args[1] : FindSource();
         if (source is null || !File.Exists(source))
@@ -32,15 +37,10 @@ public static class ProtectSecretsCommand
             return 1;
         }
 
-        var changed = 0;
-        foreach (var key in SensitiveKeys)
-        {
-            if (gateway[key]?.GetValue<string>() is not { Length: > 0 } value) continue;
-            if (SecretsProtector.IsProtected(value)) continue;
+        var changed = Protect(gateway, GatewaySecrets);
 
-            gateway[key] = SecretsProtector.Protect(value);
-            changed++;
-        }
+        if (gateway["Channel"] is JsonObject { } channel && channel["Settings"] is JsonObject settings)
+            changed += Protect(settings, [.. channels.SelectMany(c => c.SecretKeys).Distinct(StringComparer.Ordinal)]);
 
         var target = AppPaths.LocalSettings;
         var moving = !string.Equals(Path.GetFullPath(source), Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase);
@@ -71,6 +71,23 @@ public static class ProtectSecretsCommand
             ? "Все секреты уже зашифрованы."
             : $"Зашифровано значений: {changed}. Файл: {target}");
         return 0;
+    }
+
+    /// <summary>Зашифровывает перечисленные ключи объекта на месте. Возвращает, сколько значений тронуто.</summary>
+    private static int Protect(JsonObject section, IReadOnlyList<string> keys)
+    {
+        var changed = 0;
+
+        foreach (var key in keys)
+        {
+            if (section[key]?.GetValue<string>() is not { Length: > 0 } value) continue;
+            if (SecretsProtector.IsProtected(value)) continue;
+
+            section[key] = SecretsProtector.Protect(value);
+            changed++;
+        }
+
+        return changed;
     }
 
     private static string? FindSource()

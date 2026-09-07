@@ -1,5 +1,4 @@
 using AgentsTracker.Gateway.Features.Chat;
-using Telegram.Bot.Types.ReplyMarkups;
 using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
@@ -13,9 +12,9 @@ public sealed class RootScreen(SessionStore store, IAgentBackend agent, ChatWork
 {
     public string Key => "root";
 
-    public string? Apply(string argument, long userId, long chatId) => null;
+    public string? Apply(string argument, UserId user, ChatId chat) => null;
 
-    public async Task<(string Html, InlineKeyboardMarkup Keyboard)> RenderAsync(long userId, CancellationToken ct)
+    public async Task<(string Html, Keyboard Keyboard)> RenderAsync(UserId user, CancellationToken ct)
     {
         var project = store.ProjectPath;
         var session = ActiveSession();
@@ -41,7 +40,7 @@ public sealed class RootScreen(SessionStore store, IAgentBackend agent, ChatWork
             ⚙️ {(worker.IsBusy ? "выполняется" : "простаивает")}, в очереди: {worker.QueueLength}
             """;
 
-        var keyboard = new InlineKeyboardMarkup(
+        var keyboard = new Keyboard(
         [
             [Button("📟 Статус", "status"), Button("🧵 Сессии", "sess")],
             [Button("🤖 Агент", "agent")],

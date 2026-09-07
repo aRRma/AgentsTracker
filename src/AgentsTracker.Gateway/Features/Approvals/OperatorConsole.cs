@@ -2,12 +2,12 @@ using System.Text;
 using System.Text.Json;
 using AgentsTracker.Gateway.Infrastructure.Audit;
 using AgentsTracker.Gateway.Infrastructure.Monitoring;
-using AgentsTracker.Gateway.Infrastructure.Telegram;
+using AgentsTracker.Gateway.Infrastructure.Chat;
 
 namespace AgentsTracker.Gateway.Features.Approvals;
 
 /// <summary>
-/// Человек в Telegram глазами бэкенда: карточка запроса разрешения с кнопками, правила
+/// Человек в чате глазами бэкенда: карточка запроса разрешения с кнопками, правила
 /// «всегда», вопросы агента с вариантами — и аудит каждого решения. Бэкенд получает
 /// только решение; как оно добыто, в каком чате и кем, знает лишь хост.
 /// </summary>
@@ -19,14 +19,11 @@ public sealed class OperatorConsole(
     ILogger<OperatorConsole> logger) : IOperatorConsole
 {
     // Бюджеты в символах уже экранированного HTML: сумма с запасом влезает в лимит
-    // сообщения Telegram (4096), даже если текст целиком состоит из «&».
+    // сообщения канала, даже если текст целиком состоит из «&».
     private const int HeaderBudget = 200;
     private const int QuestionBudget = 1000;
     private const int OptionLabelBudget = 120;
     private const int OptionDescriptionBudget = 300;
-
-    /// <summary>Предел длины подписи на инлайн-кнопке Telegram.</summary>
-    private const int ButtonLabelLimit = 64;
 
     public async Task<ApprovalDecision> ApproveAsync(ApprovalRequest request, CancellationToken ct)
     {
@@ -81,8 +78,8 @@ public sealed class OperatorConsole(
         if (card.Attachment is { } attachment)
             await broker.SendAttachmentAsync(attachment.FileName, attachment.Text, ct);
 
-        var (key, userId) = await broker.AskChoiceAsync(card.Html, buttons, ct);
-        Audit(AuditKinds.Approval, signature, key, userId);
+        var (key, user) = await broker.AskChoiceAsync(card.Html, buttons, ct);
+        Audit(AuditKinds.Approval, signature, key, user);
 
         switch (key)
         {
@@ -92,7 +89,7 @@ public sealed class OperatorConsole(
             case "always":
                 // Правило агента шире и живёт у него; своё запоминаем, только когда он ничего не предложил.
                 if (suggested is null) store.AddAlwaysAllow(signature);
-                Audit(AuditKinds.Rules, $"add {signature}", suggested is null ? "gateway" : "agent", userId);
+                Audit(AuditKinds.Rules, $"add {signature}", suggested is null ? "gateway" : "agent", user);
                 return ApprovalDecision.Allow(persistRules: suggested is not null);
 
             case "reason":
@@ -137,8 +134,8 @@ public sealed class OperatorConsole(
     {
         var card = new StringBuilder("❓ ");
         if (question.Header is { Length: > 0 } header)
-            card.Append("<b>").Append(TelegramFormatter.EscapeCapped(header, HeaderBudget)).Append("</b>\n");
-        card.Append(TelegramFormatter.EscapeCapped(question.Text, QuestionBudget));
+            card.Append("<b>").Append(ChatHtml.EscapeCapped(header, HeaderBudget)).Append("</b>\n");
+        card.Append(ChatHtml.EscapeCapped(question.Text, QuestionBudget));
 
         var buttons = new List<ChoiceOption>();
         // На кнопке подпись урезана, а агенту нужен полный текст варианта.
@@ -148,12 +145,13 @@ public sealed class OperatorConsole(
         {
             var (label, description) = question.Options[i];
 
-            card.Append("\n\n<b>").Append(TelegramFormatter.EscapeCapped(label, OptionLabelBudget)).Append("</b>");
+            card.Append("\n\n<b>").Append(ChatHtml.EscapeCapped(label, OptionLabelBudget)).Append("</b>");
             if (description is { Length: > 0 })
-                card.Append(" — ").Append(TelegramFormatter.EscapeCapped(description, OptionDescriptionBudget));
+                card.Append(" — ").Append(ChatHtml.EscapeCapped(description, OptionDescriptionBudget));
 
             fullLabels[$"o{i}"] = label;
-            buttons.Add(new ChoiceOption($"o{i}", Text.Clip(label, ButtonLabelLimit)));
+            // Подпись под предел кнопки режет сам брокер: предел объявляет канал.
+            buttons.Add(new ChoiceOption($"o{i}", label));
         }
 
         buttons.Add(new ChoiceOption("free", "✍️ Свой ответ"));
@@ -161,7 +159,7 @@ public sealed class OperatorConsole(
         if (question.MultiSelect)
             card.Append("\n\n<i>Можно выбрать несколько — тогда «Свой ответ» и перечислите через запятую.</i>");
 
-        var (key, userId) = await broker.AskChoiceAsync(card.ToString(), buttons, ct);
+        var (key, user) = await broker.AskChoiceAsync(card.ToString(), buttons, ct);
 
         var answer = key == "free"
             ? await broker.AskTextAsync("Напишите ответ сообщением:", ct)
@@ -169,7 +167,7 @@ public sealed class OperatorConsole(
 
         Audit(AuditKinds.Question,
             $"{Text.Preview(question.Header ?? question.Text, 60)}: {Text.Preview(answer, 60)}",
-            key == "free" ? "free" : "option", userId);
+            key == "free" ? "free" : "option", user);
 
         return new QuestionAnswer(question.Text, answer);
     }
@@ -221,6 +219,6 @@ public sealed class OperatorConsole(
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
-    private void Audit(string kind, string summary, string outcome, long? userId = null) =>
-        audit.Write(AuditEvent.Now(kind, summary, userId, broker.ActiveChatId, store.ProjectPath, store.SessionId, outcome));
+    private void Audit(string kind, string summary, string outcome, UserId? user = null) =>
+        audit.Write(AuditEvent.Now(kind, summary, user, broker.ActiveChat, store.ProjectPath, store.SessionId, outcome));
 }

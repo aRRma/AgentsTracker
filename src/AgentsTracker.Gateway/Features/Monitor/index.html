@@ -368,7 +368,7 @@
     $('clock-note').textContent = approvals.length ? 'ждёт ответа' : 'идёт запуск';
 
     $('approval').innerHTML = approvals.map(a =>
-      `<div class="approval"><b>${esc(a.tool)}</b> <span class="mono">${esc(a.brief)}</span><span class="since">ждёт <span data-since="${esc(a.sinceUtc)}"></span></span><div>ответьте кнопками в Telegram</div></div>`).join('');
+      `<div class="approval"><b>${esc(a.tool)}</b> <span class="mono">${esc(a.brief)}</span><span class="since">ждёт <span data-since="${esc(a.sinceUtc)}"></span></span><div>ответьте кнопками в чате</div></div>`).join('');
 
     if (s.run) {
       const r = s.run, st = r.start, n = r.steps.length;
@@ -387,7 +387,7 @@
     } else {
       tapeKey = null;
       const prev = runs[0];
-      $('run').innerHTML = `<div class="prompt idle">Запусков нет. Напишите боту в Telegram — работа появится здесь.</div>
+      $('run').innerHTML = `<div class="prompt idle">Запусков нет. Напишите боту в чат — работа появится здесь.</div>
         <div class="runmeta"><span>сессия проекта <b class="mono">${esc(s.session ? shortId(s.session) : 'новая')}</b></span>
           ${prev ? `<span>последний запуск ${fmtWhen(prev.startedUtc)}</span><span>${fmtDur(prev.durationMs)}</span>
             <span class="mark ${esc(prev.outcome)}">${esc(prev.outcome)}</span><span>${esc(prev.prompt)}</span>` : ''}</div>`;

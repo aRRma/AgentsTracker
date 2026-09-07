@@ -1,5 +1,5 @@
 using AgentsTracker.Gateway.Infrastructure.Modules;
-using AgentsTracker.Gateway.Infrastructure.Telegram.Dispatch;
+using AgentsTracker.Gateway.Infrastructure.Chat.Dispatch;
 
 namespace AgentsTracker.Gateway.Features.Approvals;
 
@@ -14,9 +14,9 @@ public sealed class ApprovalsModule : IFeatureModule
     {
         services.AddSingleton<ApprovalBroker>();
         services.AddSingleton<IOperatorConsole, OperatorConsole>();
-        services.AddSingleton<ITelegramCallbackHandler, ApprovalCallbackHandler>();
-        services.AddSingleton<ITelegramTextHandler, ApprovalTextHandler>();
-        services.AddSingleton<ITelegramCommandHandler, RulesCommandHandler>();
+        services.AddSingleton<IChatButtonHandler, ApprovalCallbackHandler>();
+        services.AddSingleton<IChatTextHandler, ApprovalTextHandler>();
+        services.AddSingleton<IChatCommandHandler, RulesCommandHandler>();
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints) { }

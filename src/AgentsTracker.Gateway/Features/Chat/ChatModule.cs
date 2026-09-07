@@ -1,5 +1,5 @@
 using AgentsTracker.Gateway.Infrastructure.Modules;
-using AgentsTracker.Gateway.Infrastructure.Telegram.Dispatch;
+using AgentsTracker.Gateway.Infrastructure.Chat.Dispatch;
 
 namespace AgentsTracker.Gateway.Features.Chat;
 
@@ -15,8 +15,8 @@ public sealed class ChatModule : IFeatureModule
         services.AddSingleton<ChatWorker>();
         services.AddHostedService(sp => sp.GetRequiredService<ChatWorker>());
 
-        services.AddSingleton<ITelegramCommandHandler, ChatCommandHandler>();
-        services.AddSingleton<ITelegramTextHandler, ChatEnqueueTextHandler>();
+        services.AddSingleton<IChatCommandHandler, ChatCommandHandler>();
+        services.AddSingleton<IChatTextHandler, ChatEnqueueTextHandler>();
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints) { }

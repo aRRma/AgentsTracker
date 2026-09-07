@@ -1,19 +1,19 @@
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using AgentsTracker.Gateway.Infrastructure.Telegram;
+using AgentsTracker.Gateway.Infrastructure.Chat;
 
 namespace AgentsTracker.Gateway.Features.Approvals;
 
 /// <summary>
-/// Собирает карточку запроса разрешения для Telegram: вместо сырого JSON показывает то, что
+/// Собирает карточку запроса разрешения для чата: вместо сырого JSON показывает то, что
 /// человек реально решает — команду, файл и суть правки. Незнакомые инструменты получают
 /// аккуратно отформатированный вход.
 /// </summary>
 public static class ApprovalCardRenderer
 {
     // Бюджеты в символах уже экранированного HTML. Сумма всех фрагментов с запасом влезает
-    // в лимит сообщения Telegram (4096), даже если текст целиком состоит из «&».
+    // в лимит сообщения канала, даже если текст целиком состоит из «&».
     private const int ToolNameBudget = 200;
     private const int PathBudget = 300;
     private const int CommandBudget = 1200;
@@ -49,7 +49,7 @@ public static class ApprovalCardRenderer
         /// <summary>Экранирует под бюджет и запоминает исходник, если он не влез целиком.</summary>
         public string Capped(string title, string text, int budget)
         {
-            if (TelegramFormatter.Escape(text).Length > budget) _items.Add((title, text));
+            if (ChatHtml.Escape(text).Length > budget) _items.Add((title, text));
             return E(text, budget);
         }
 
@@ -57,7 +57,7 @@ public static class ApprovalCardRenderer
         public void Add(string title, string text) => _items.Add((title, text));
 
         /// <summary>
-        /// Целый документ вместо сводки «=== фрагмент ===»: план в .md Telegram открывает
+        /// Целый документ вместо сводки «=== фрагмент ===»: план в .md чат открывает
         /// с разметкой, а в .txt с заголовком-разделителем он читался как сырой текст.
         /// Заменяет сводку целиком — у инструмента с документом других обрезанных полей нет.
         /// </summary>
@@ -249,7 +249,7 @@ public static class ApprovalCardRenderer
                 // Пустой план — не план: пусть его покажет общий рендер, а не «Строк: 1» с пустым блоком.
                 if (Str(input, "plan") is not { Length: > 0 } rawPlan) return false;
                 var plan = rawPlan.Replace("\r\n", "\n").Trim('\n');
-                // План — это markdown: целиком он уходит файлом .md, который Telegram и
+                // План — это markdown: целиком он уходит файлом .md, который чат и
                 // редакторы показывают с заголовками и списками, а не сплошным текстом.
                 if (!AppendPreview(card, "📋 Строк: ", plan))
                     truncated.AddDocument("plan.md", PlanDocument(plan));
@@ -276,7 +276,7 @@ public static class ApprovalCardRenderer
             if (props.All(p => p.Value.ValueKind is JsonValueKind.String or JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False))
             {
                 // Общий бюджет на весь список: полей у незнакомого инструмента может быть
-                // сколько угодно, а переполненное сообщение Telegram не примет — отправка упадёт,
+                // сколько угодно, а переполненное сообщение канал не примет — отправка упадёт,
                 // и исключение превратится в отказ вместо карточки.
                 var left = RawInputBudget;
 
@@ -374,7 +374,7 @@ public static class ApprovalCardRenderer
 
         var preview = string.Join('\n', lines.Take(PreviewLines));
         var shown = E(preview, ContentBudget);
-        var cut = TelegramFormatter.Escape(preview).Length > ContentBudget;
+        var cut = ChatHtml.Escape(preview).Length > ContentBudget;
 
         card.Append("<pre>").Append(shown);
         // EscapeCapped уже поставил многоточие, если обрезал строки; второе на хвост не нужно.
@@ -397,5 +397,5 @@ public static class ApprovalCardRenderer
     private static string? Str(JsonElement obj, string name) =>
         obj.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
-    private static string E(string text, int budget) => TelegramFormatter.EscapeCapped(text, budget);
+    private static string E(string text, int budget) => ChatHtml.EscapeCapped(text, budget);
 }

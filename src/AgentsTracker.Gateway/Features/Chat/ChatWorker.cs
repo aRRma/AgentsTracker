@@ -1,14 +1,8 @@
-using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using AgentsTracker.Gateway.Features.Approvals;
 using AgentsTracker.Gateway.Infrastructure.Audit;
+using AgentsTracker.Gateway.Infrastructure.Chat;
 using AgentsTracker.Gateway.Infrastructure.Monitoring;
-using AgentsTracker.Gateway.Infrastructure.Telegram;
-using Telegram.Bot;
-using Telegram.Bot.Exceptions;
-using Telegram.Bot.Types;
-using Telegram.Bot.Types.Enums;
 
 namespace AgentsTracker.Gateway.Features.Chat;
 
@@ -17,8 +11,8 @@ namespace AgentsTracker.Gateway.Features.Chat;
 /// копятся в очереди, а не запускают второй процесс. Сессии — тоже здесь: бэкенд только
 /// сообщает, что сессия началась или что агент её не нашёл, а помнит их шлюз.
 /// </summary>
-public sealed partial class ChatWorker(
-    ITelegramBotClient bot,
+public sealed class ChatWorker(
+    IChatChannel channel,
     IAgentBackend agent,
     IAgentLimits limits,
     ApprovalBroker broker,
@@ -35,15 +29,15 @@ public sealed partial class ChatWorker(
 
     private CancellationTokenSource? _runCts;
 
-    private sealed record QueuedPrompt(long ChatId, long UserId, string Text);
+    private sealed record QueuedPrompt(ChatId Chat, UserId User, string Text);
 
     public bool IsBusy => _runCts is not null;
 
     public int QueueLength => _queue.Reader.Count;
 
-    public void Enqueue(long chatId, long userId, string text)
+    public void Enqueue(ChatId chat, UserId user, string text)
     {
-        _queue.Writer.TryWrite(new QueuedPrompt(chatId, userId, text));
+        _queue.Writer.TryWrite(new QueuedPrompt(chat, user, text));
         monitor.Enqueued(Text.Preview(text));
     }
 
@@ -76,7 +70,7 @@ public sealed partial class ChatWorker(
             catch (Exception ex)
             {
                 logger.LogError(ex, "Ошибка при обработке сообщения");
-                await SendPlainAsync(prompt.ChatId, $"Внутренняя ошибка шлюза: {ex.Message}", stoppingToken);
+                await SendPlainAsync(prompt.Chat, $"Внутренняя ошибка шлюза: {ex.Message}", stoppingToken);
             }
         }
     }
@@ -91,14 +85,14 @@ public sealed partial class ChatWorker(
         if (await limits.RefusalAsync(store.EffectiveModel, stoppingToken) is { } exhausted)
         {
             Audit(prompt, AuditKinds.LimitRefused, "лимит тарифа");
-            await SendPlainAsync(prompt.ChatId, exhausted, stoppingToken);
-            await DropQueueAsync(prompt.ChatId, stoppingToken);
+            await SendPlainAsync(prompt.Chat, exhausted, stoppingToken);
+            await DropQueueAsync(prompt.Chat, stoppingToken);
             return;
         }
 
         // Выставляем здесь, а не при получении сообщения: иначе карточки уже идущего запуска
         // ушли бы в чат другого пользователя.
-        broker.ActiveChatId = prompt.ChatId;
+        broker.ActiveChat = prompt.Chat;
 
         using var runCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
         _runCts = runCts;
@@ -111,7 +105,7 @@ public sealed partial class ChatWorker(
             $"{store.EffectiveModel ?? "модель по умолчанию"}, {store.EffectivePermissionMode}, effort {store.EffectiveEffort ?? "—"}",
             session);
 
-        var status = await RunStatusMessage.StartAsync(bot, prompt.ChatId, thread, logger, stoppingToken);
+        var status = await RunStatusMessage.StartAsync(channel, prompt.Chat, thread, logger, stoppingToken);
 
         var startedUtc = DateTimeOffset.UtcNow;
         var project = store.ProjectPath;
@@ -123,8 +117,8 @@ public sealed partial class ChatWorker(
         // экземпляр должен знать, кому и про что сказать «прервано».
         store.BeginRun(new ActiveRun
         {
-            ChatId = prompt.ChatId,
-            UserId = prompt.UserId,
+            ChatKey = prompt.Chat.Key,
+            UserKey = prompt.User.Key,
             StartedUtc = startedUtc,
             ProjectPath = project,
             SessionId = session,
@@ -162,7 +156,7 @@ public sealed partial class ChatWorker(
             await status.DisposeAsync();
             // Процесс завершён — отвечать на висящие карточки уже некому.
             broker.CancelAll();
-            await DeleteQuietlyAsync(prompt.ChatId, status.MessageId, stoppingToken);
+            await DeleteQuietlyAsync(status.Message, stoppingToken);
         }
 
         // Неудачный запуск тоже стоит денег, поэтому пишем расход и по нему — лишь бы агент
@@ -198,11 +192,11 @@ public sealed partial class ChatWorker(
         });
 
         var text = result.Ok ? result.Text : $"⚠️ {result.Text}";
-        await SendRenderedAsync(prompt.ChatId, text + note + Footer(result), stoppingToken);
+        await SendRenderedAsync(prompt.Chat, text + note + Footer(result), stoppingToken);
 
         // Запуск упёрся в лимит тарифа: следующие задачи упрутся в тот же лимит, а платить
         // за них кредитами шлюзу запрещено — очередь чистим, чтобы не жечь её на отказах.
-        if (result.RateLimited) await DropQueueAsync(prompt.ChatId, stoppingToken);
+        if (result.RateLimited) await DropQueueAsync(prompt.Chat, stoppingToken);
     }
 
     /// <summary>
@@ -260,7 +254,7 @@ public sealed partial class ChatWorker(
     }
 
     private void Audit(QueuedPrompt prompt, string kind, string summary, string? session = null, string? outcome = null) =>
-        audit.Write(AuditEvent.Now(kind, summary, prompt.UserId, prompt.ChatId, store.ProjectPath, session, outcome));
+        audit.Write(AuditEvent.Now(kind, summary, prompt.User, prompt.Chat, store.ProjectPath, session, outcome));
 
     /// <summary>
     /// Подпись под ответом: id сессии, которой отвечал агент. По нему ответ узнаётся в
@@ -283,7 +277,7 @@ public sealed partial class ChatWorker(
     /// Снимает очередь целиком: пока тарифное окно не сбросится, запускать нечего.
     /// Задачи не переносим, а возвращаем пользователю — за время ожидания они могли устареть.
     /// </summary>
-    private async Task DropQueueAsync(long chatId, CancellationToken ct)
+    private async Task DropQueueAsync(ChatId chat, CancellationToken ct)
     {
         var dropped = 0;
         while (_queue.Reader.TryRead(out _)) dropped++;
@@ -294,62 +288,57 @@ public sealed partial class ChatWorker(
         logger.LogWarning("Очередь снята после лимита тарифа: задач {Count}", dropped);
 
         await SendPlainAsync(
-            chatId,
+            chat,
             $"Очередь снята: {dropped} задач(и) не запущены — пришлите их снова после сброса лимита.",
             ct);
     }
 
-    private async Task SendRenderedAsync(long chatId, string markdown, CancellationToken ct)
+    /// <summary>
+    /// Ответ агента: markdown переводится в формат канала и режется под его лимит. Порцию,
+    /// которая не влезла и в файл разметки не нуждается, канал отправляет документом.
+    /// </summary>
+    private async Task SendRenderedAsync(ChatId chat, string markdown, CancellationToken ct)
     {
-        foreach (var part in TelegramFormatter.Render(markdown))
-        {
-            if (part.DocumentText is { } document)
-            {
-                await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(document));
-                await bot.SendDocument(
-                    chatId, InputFile.FromStream(stream, part.DocumentName ?? "fragment.txt"),
-                    cancellationToken: ct);
-                continue;
-            }
-
-            if (part.Html is not { Length: > 0 } html) continue;
-
-            try
-            {
-                await bot.SendMessage(chatId, html, ParseMode.Html, cancellationToken: ct);
-            }
-            catch (ApiRequestException ex)
-            {
-                // Разметка могла не пережить конвертацию — лучше отправить как есть, чем ничего.
-                logger.LogWarning(ex, "Telegram отверг HTML, отправляю без разметки");
-                await SendPlainAsync(chatId, StripTags(html), ct);
-            }
-        }
-    }
-
-    private async Task SendPlainAsync(long chatId, string text, CancellationToken ct)
-    {
-        foreach (var chunk in Chunk(text, TelegramFormatter.MaxMessageLength))
+        foreach (var part in MarkdownRenderer.Render(markdown, channel.Limits.MessageLength))
         {
             try
             {
-                await bot.SendMessage(chatId, chunk, cancellationToken: ct);
+                if (part.DocumentText is { } document)
+                    await channel.SendFileAsync(chat, part.DocumentName ?? "fragment.txt", document, ct);
+                else if (part.Html is { Length: > 0 } html)
+                    await channel.SendAsync(chat, new OutgoingMessage(html), ct);
             }
-            catch (Exception ex)
+            catch (ChannelRequestException ex)
             {
-                logger.LogError(ex, "Не удалось отправить сообщение в чат {ChatId}", chatId);
+                logger.LogError(ex, "Не удалось отправить ответ в чат {Chat}", chat.Key);
                 return;
             }
         }
     }
 
-    private async Task DeleteQuietlyAsync(long chatId, int messageId, CancellationToken ct)
+    private async Task SendPlainAsync(ChatId chat, string text, CancellationToken ct)
+    {
+        foreach (var chunk in Chunk(text, channel.Limits.MessageLength))
+        {
+            try
+            {
+                await channel.SendAsync(chat, new OutgoingMessage(chunk, Rich: false), ct);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Не удалось отправить сообщение в чат {Chat}", chat.Key);
+                return;
+            }
+        }
+    }
+
+    private async Task DeleteQuietlyAsync(MessageRef message, CancellationToken ct)
     {
         try
         {
-            await bot.DeleteMessage(chatId, messageId, ct);
+            await channel.DeleteAsync(message, ct);
         }
-        catch (ApiRequestException ex)
+        catch (ChannelRequestException ex)
         {
             logger.LogDebug(ex, "Не удалось удалить статусное сообщение");
         }
@@ -362,15 +351,4 @@ public sealed partial class ChatWorker(
         for (var i = 0; i < text.Length; i += size)
             yield return text.Substring(i, Math.Min(size, text.Length - i));
     }
-
-    /// <summary>
-    /// Снимает всю разметку, а не перечисленные вручную теги: иначе &lt;a href=…&gt; и
-    /// &lt;code class="language-x"&gt; уезжают пользователю как есть. Сущности разворачиваем
-    /// после удаления тегов, иначе экранированный текст сам стал бы разметкой.
-    /// </summary>
-    private static string StripTags(string html) => TagRegex().Replace(html, "")
-        .Replace("&lt;", "<").Replace("&gt;", ">").Replace("&amp;", "&");
-
-    [GeneratedRegex("<[^>]*>")]
-    private static partial Regex TagRegex();
 }

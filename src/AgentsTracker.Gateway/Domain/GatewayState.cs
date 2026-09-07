@@ -68,8 +68,10 @@ public sealed class GatewayState
 /// <summary>Идущий запуск: кому отвечать и что было запущено — чтобы после перезапуска сказать, что прервано.</summary>
 public sealed class ActiveRun
 {
-    public long ChatId { get; set; }
-    public long UserId { get; set; }
+    /// <summary>Адрес чата строкой «канал:значение»: разобрать его умеет канал, выбранный в конфиге.</summary>
+    public string ChatKey { get; set; } = "";
+
+    public string UserKey { get; set; } = "";
     public DateTimeOffset StartedUtc { get; set; }
     public string ProjectPath { get; set; } = "";
     public string? SessionId { get; set; }

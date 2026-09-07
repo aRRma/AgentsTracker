@@ -1,21 +1,18 @@
 using AgentsTracker.Gateway.Infrastructure.Audit;
-using Telegram.Bot;
-using Telegram.Bot.Exceptions;
 
-namespace AgentsTracker.Gateway.Infrastructure.Telegram;
+namespace AgentsTracker.Gateway.Infrastructure.Chat;
 
 /// <summary>
-/// Сообщение в чат при старте шлюза: «запущен» всем из AllowedUserIds, а тому, чей запуск
-/// прошлый экземпляр не довёл до конца, — ещё и «прерван». Без этого перезапуск посреди
+/// Сообщение в чат при старте шлюза: «запущен» всем разрешённым пользователям, а тому, чей
+/// запуск прошлый экземпляр не довёл до конца, — ещё и «прерван». Без этого перезапуск посреди
 /// работы (Stop-Process из другой сессии, падение) выглядит как молчание: статус «Работаю…»
 /// висит, ответа нет, и человек узнаёт о проблеме, только переспросив.
 /// </summary>
 public sealed class StartupNotice(
-    ITelegramBotClient bot,
+    IChatChannel channel,
     SessionStore store,
     IAgentBackend agent,
     IAuditLog audit,
-    IOptions<GatewayOptions> options,
     ILogger<StartupNotice> logger)
 {
     public async Task SendAsync(CancellationToken ct)
@@ -27,20 +24,21 @@ public sealed class StartupNotice(
         var version = probe.Version is { Length: > 0 } v ? $" {v}" : "";
         var started = $"🔌 Шлюз запущен — {agent.DisplayName}{version}, проект {Path.GetFileName(store.ProjectPath)}.";
 
-        // В личном чате id чата равен id пользователя, поэтому список получателей — AllowedUserIds.
-        foreach (var userId in options.Value.AllowedUserIds.Distinct())
-        {
-            var text = interrupted is { } run && run.ChatId == userId
-                ? started + "\n\n" + Interrupted(run)
-                : started;
+        var interruptedChat = interrupted is null ? null : channel.ParseChat(interrupted.ChatKey);
+        var told = false;
 
-            await SendQuietlyAsync(userId, text, ct);
+        foreach (var chat in channel.AllowedUsers.Select(channel.DirectChat).OfType<ChatId>())
+        {
+            var mine = interruptedChat is not null && chat == interruptedChat;
+            told |= mine;
+
+            await SendQuietlyAsync(chat, mine ? started + "\n\n" + Interrupted(interrupted!) : started, ct);
         }
 
-        // Прерванный запуск шёл в чате, которого в AllowedUserIds уже нет (список правили) —
-        // сказать всё равно надо, ответ там так и не пришёл.
-        if (interrupted is { } orphan && !options.Value.AllowedUserIds.Contains(orphan.ChatId))
-            await SendQuietlyAsync(orphan.ChatId, started + "\n\n" + Interrupted(orphan), ct);
+        // Прерванный запуск шёл в чате, которого в списке разрешённых уже нет (список правили)
+        // или который канал не смог вычислить, — сказать всё равно надо, ответ там так и не пришёл.
+        if (!told && interruptedChat is not null)
+            await SendQuietlyAsync(interruptedChat, started + "\n\n" + Interrupted(interrupted!), ct);
     }
 
     private static string Interrupted(ActiveRun run)
@@ -61,8 +59,8 @@ public sealed class StartupNotice(
     {
         logger.LogWarning("Прошлый экземпляр шлюза умер посреди запуска «{Prompt}» (начат {StartedUtc})", run.Prompt, run.StartedUtc);
 
-        audit.Write(AuditEvent.Now(AuditKinds.RunEnd, "прерван перезапуском шлюза",
-            run.UserId, run.ChatId, run.ProjectPath, run.SessionId, "interrupted"));
+        audit.Write(AuditEvent.NowByKeys(AuditKinds.RunEnd, "прерван перезапуском шлюза",
+            run.UserKey, run.ChatKey, run.ProjectPath, run.SessionId, "interrupted"));
 
         store.RecordRunOutcome(new RunRecord
         {
@@ -76,16 +74,16 @@ public sealed class StartupNotice(
         });
     }
 
-    private async Task SendQuietlyAsync(long chatId, string text, CancellationToken ct)
+    private async Task SendQuietlyAsync(ChatId chat, string text, CancellationToken ct)
     {
         try
         {
-            await bot.SendMessage(chatId, text, cancellationToken: ct);
+            await channel.SendAsync(chat, new OutgoingMessage(text, Rich: false), ct);
         }
-        catch (ApiRequestException ex)
+        catch (ChannelRequestException ex)
         {
-            // Пользователь из списка ещё не писал боту: Telegram не даёт боту начать разговор первым.
-            logger.LogDebug(ex, "Сообщение о старте не доставлено в чат {ChatId}", chatId);
+            // Пользователь из списка ещё не писал боту: каналы не дают начать разговор первым.
+            logger.LogDebug(ex, "Сообщение о старте не доставлено в чат {Chat}", chat.Key);
         }
     }
 }

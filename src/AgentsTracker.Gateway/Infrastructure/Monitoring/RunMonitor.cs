@@ -14,7 +14,7 @@ public sealed record RunStart(
 public sealed record CurrentRun(
     RunStart Start, DateTimeOffset StartedUtc, int ToolCalls, IReadOnlyList<StepRecord> Steps, int DroppedSteps);
 
-/// <summary>Карточка, которая ждёт нажатия в Telegram.</summary>
+/// <summary>Карточка, которая ждёт нажатия в чате.</summary>
 public sealed record PendingApproval(DateTimeOffset SinceUtc, string Tool, string Brief);
 
 /// <summary>Всё живое состояние шлюза одним снимком — его получает страница монитора.</summary>
