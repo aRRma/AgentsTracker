@@ -90,54 +90,52 @@ public sealed class McpConfigFile : IDisposable
     /// </summary>
     private void RemoveStaleFiles(string directory)
     {
-        IEnumerable<string> candidates;
+        // Вызывается до записи своего файла, поэтому среди кандидатов его нет. Вся уборка —
+        // «по возможности»: любая её ошибка (обход папки, удаление) не должна мешать записи
+        // конфига и старту шлюза.
         try
         {
-            candidates = Directory.EnumerateFiles(directory, $"{FilePrefix}*{FileSuffix}")
-                .Append(System.IO.Path.Combine(directory, "mcp-gateway.json"));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "Не удалось перечислить старые MCP-конфиги в {Directory}", directory);
-            return;
-        }
+            var candidates = Directory.EnumerateFiles(directory, $"{FilePrefix}*{FileSuffix}")
+                .Append(System.IO.Path.Combine(directory, "mcp-gateway.json"))
+                .ToList();
 
-        foreach (var file in candidates)
-        {
-            if (string.Equals(file, Path, StringComparison.OrdinalIgnoreCase) || !File.Exists(file)) continue;
-
-            var name = System.IO.Path.GetFileNameWithoutExtension(file);
-            if (name.Length > FilePrefix.Length
-                && int.TryParse(name.AsSpan(FilePrefix.Length), out var pid)
-                && IsRunning(pid))
+            foreach (var file in candidates)
             {
-                continue;
-            }
+                if (!File.Exists(file)) continue;
 
-            try
-            {
+                var name = System.IO.Path.GetFileNameWithoutExtension(file);
+                if (name.Length > FilePrefix.Length
+                    && int.TryParse(name.AsSpan(FilePrefix.Length), out var pid)
+                    && IsGateway(pid))
+                {
+                    continue;
+                }
+
                 File.Delete(file);
                 _logger.LogInformation("Удалён MCP-конфиг завершившегося экземпляра: {Path}", file);
             }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Не удалось удалить {Path}", file);
-            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Не удалось убрать старые MCP-конфиги в {Directory}", directory);
         }
     }
 
-    private static bool IsRunning(int pid)
+    /// <summary>
+    /// Живой ли это наш экземпляр. PID после перезагрузки достаётся кому угодно, в том числе
+    /// системным процессам, которые нельзя открыть (Win32Exception «Отказано в доступе»), —
+    /// такой процесс шлюзом быть не может, файл считаем брошенным. Сверяем и имя: чужой процесс
+    /// с тем же PID не должен удерживать файл мёртвого шлюза.
+    /// </summary>
+    private static bool IsGateway(int pid)
     {
         try
         {
             using var process = Process.GetProcessById(pid);
-            return !process.HasExited;
+            return !process.HasExited
+                && string.Equals(process.ProcessName, Process.GetCurrentProcess().ProcessName, StringComparison.OrdinalIgnoreCase);
         }
-        catch (ArgumentException)
-        {
-            return false;
-        }
-        catch (InvalidOperationException)
+        catch (Exception)
         {
             return false;
         }
