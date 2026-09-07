@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Read(//**/mcp-gateway-*.json)",
+      "Read(//**/.env)",
+      "Edit(//**/.env)"
+    ],
+    "ask": [
+      "Read(//**/appsettings.Local.json)",
+      "Edit(//**/appsettings.Local.json)",
+      "Bash(dotnet run*)",
+      "PowerShell(dotnet run*)",
+      "Bash(*AgentsTracker.Gateway.exe*)",
+      "PowerShell(*AgentsTracker.Gateway.exe*)",
+      "Bash(schtasks*)",
+      "PowerShell(schtasks*)",
+      "PowerShell(Stop-Process*)",
+      "PowerShell(Stop-ScheduledTask*)",
+      "Bash(docker compose*)",
+      "PowerShell(docker compose*)"
+    ]
+  }
+}

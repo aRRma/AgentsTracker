@@ -3,14 +3,18 @@
 Подсказки для Claude Code при работе с этим репозиторием. Подробности — в `docs/`:
 
 - `docs/operations.md` — перезапуск шлюза, пробный экземпляр, worktree, инструменты.
+- `docs/deployment.md` — промышленный запуск: публикация, install/uninstall, Docker, порты, секреты.
 - `docs/cli-contract.md` — контракт с CLI: подтверждения, stream-json, сессии, лимиты, скиллы.
 - `docs/monitor.md` — веб-монитор: эндпоинты, мок, стиль, доступность.
+- `docs/claude-permissions.md` — права Claude Code на машине: `allow`/`ask`/`deny`, пример
+  `docs/examples/claude-settings.example.json`, проектный `.claude/settings.json`.
 
 ## Что это
 
-Мостик между Telegram и Claude Code. Одно приложение .NET 10 на всегда включённом Windows-ПК:
+Мостик между Telegram и Claude Code. Одно приложение .NET 10 на всегда включённом ПК:
 сообщение из чата → `claude -p` в папке проекта → вопросы «можно?» кнопками в Telegram → ответ
-агента обратно в чат.
+агента обратно в чат. Разрабатывается на Windows; в контейнере работает на Linux, отдельной
+установки для macOS и Linux пока нет.
 
 Код, комментарии, лог и тексты в чате — на русском.
 
@@ -20,16 +24,19 @@
 dotnet build                                    # TreatWarningsAsErrors включён
 dotnet run --project src\AgentsTracker.Gateway  # нужен appsettings.Local.json (рядом или в папке данных)
 dotnet run --project src\AgentsTracker.Gateway -- protect-secrets   # зашифровать секреты канала и Proxy, перенести конфиг в %LOCALAPPDATA%
-pwsh -File scripts\install-autostart.ps1        # publish + protect-secrets + ACL + задача Планировщика
 pwsh -File scripts\migrate-channel-settings.ps1 # разовый перенос BotToken/AllowedUserIds в Gateway:Channel:Settings
+dotnet publish src\AgentsTracker.Gateway -c Release -o C:\Apps\AgentsTracker   # установка: публикация…
+C:\Apps\AgentsTracker\AgentsTracker.Gateway.exe install --start                # …и автозапуск; снять — uninstall
+docker compose up -d --build                    # тот же шлюз в контейнере, нужен .env
 ```
 
 Тестов нет. Всё, что трогает контракт с CLI, проверяется руками: запустить шлюз и смотреть лог.
 
-**Шлюз запущен из `bin\Debug` папки `main`.** Пока он работает, `dotnet build` падает с
-`MSB3021`; переключение ветки подменит исходники под процессом. Перезапуск, сборка в другую
-папку и работа в worktree — `docs/operations.md`. Из сессии, запущенной из Telegram,
-перезапускать нельзя — дайте пользователю команды оттуда.
+**Шлюз запущен из `bin\Debug` основной папки** (`AgentsTracker`, ветка `master`; ветки `main`
+нет). Пока он работает, `dotnet build` падает с `MSB3021`; переключение ветки подменит
+исходники под процессом. Перезапуск, сборка в другую папку и работа в worktree —
+`docs/operations.md`. Из сессии, запущенной из Telegram, перезапускать нельзя — дайте
+пользователю команды оттуда.
 
 ## Как добавить
 
@@ -76,10 +83,24 @@ pwsh -File scripts\migrate-channel-settings.ps1 # разовый перенос 
 **Эндпоинт монитора.** `api.MapGet` в `MonitorModule.MapEndpoints`, только чтение —
 `docs/monitor.md`.
 
+**Команду exe.** Класс в `Infrastructure/Cli/` с `public const string Name` и
+`Run(string[] args, TextWriter output)`, строка в `switch` у `ConsoleCommands` и в её справке.
+Команды отрабатывают до сборки хоста: DI и Telegram им недоступны, ответ — только в
+`output`, код возврата 0 или 1. Заняты: `protect-secrets`, `install`, `uninstall`, `help`.
+Всё, что начинается с дефиса, командой не считается — это аргументы конфигурации.
+
+**Способ автозапуска (launchd, systemd).** Реализация `IAutostartInstaller` в
+`Infrastructure/Autostart/` и строка в `AutostartInstaller.ForCurrentOs`. Приём один на все
+ОС: положить файл-описание и позвать штатную утилиту через `ProcessAutostartInstaller.Run` —
+решение по коду возврата, вывод у них локализован. XML для `schtasks` пишется в UTF-16:
+в UTF-8 кириллица в описании задачи превращается в кракозябры.
+
 **Ключ конфига.** Свойство в `GatewayOptions` (+ `Validate`), дефолт в `appsettings.json`,
 пример `"//Ключ": "…"` в `appsettings.Local.example.json`, строка в README «Основные
 настройки». Ключ агента — в `ClaudeOptions` и `Gateway:Claude`, ключ канала — в его
-`*Options` и `Gateway:Channel:Settings`.
+`*Options` и `Gateway:Channel:Settings`. Исключение — `DataDirectory`: он нужен раньше
+конфига (в этой папке лежит сам `appsettings.Local.json`), поэтому читается в
+`AppPaths.UseConfiguredDirectory` из `appsettings.json` рядом с exe и окружения.
 
 ## Устройство
 
@@ -106,11 +127,12 @@ src/AgentsTracker.Channels.Telegram/     Telegram за этими контрак
   TelegramChannel       long polling, инлайн-кнопки, HTML; «message is not modified» и retry_after — здесь
   TelegramOptions, TelegramIds, TelegramClientFactory (клиент лениво: конструктор проверяет токен)
 src/AgentsTracker.Gateway/
-  Program.cs            списки агентов (Gateway:Agent) и каналов (Gateway:Channel:Type), список фич
+  Program.cs            папка данных, служебные команды, списки агентов (Gateway:Agent), каналов (Gateway:Channel:Type) и фич
   Domain/               чистые модели: GatewayState (state.json), AuditEvent
   Infrastructure/       Configuration (GatewayOptions, ProjectCatalog), State (SessionStore),
                         Chat (ChatGatewayService, ChatDispatcher, MarkdownRenderer, Dispatch/),
-                        Audit, Monitoring (RunMonitor, RingBufferLog), Security
+                        Audit, Monitoring (RunMonitor, RingBufferLog), Security,
+                        Cli/ (install, uninstall, protect-secrets), Autostart/ (задача Планировщика через schtasks)
   Features/             вертикальные слайсы, у каждого свой *Module:
     Approvals/          карточки подтверждений, ApprovalBroker, /rules
     Chat/               ChatWorker (очередь, запуск, сессии), RunStatusMessage, /new /stop
@@ -239,8 +261,9 @@ src/AgentsTracker.Gateway/
 - Шлюз **не подключается** к сессии VS Code — это параллельная сессия на той же папке: общие
   `CLAUDE.md`, настройки, хуки и MCP, но своя история.
 - `--bare` нельзя: не читает `~/.claude`, ломает OAuth-логин по подписке.
-- Барьеры: `AllowedUsers` канала + только личные чаты; Kestrel только `127.0.0.1`; MCP — токен в
-  заголовке; монитор без токена — поэтому только читает.
+- Барьеры: `AllowedUsers` канала + только личные чаты; MCP — всегда `127.0.0.1` плюс токен в
+  заголовке; монитор без токена — поэтому только читает, а `MonitorBind: any` (нужен
+  в контейнере) публикуют лишь на `127.0.0.1` хоста.
 - Аргументы CLI — через `ProcessStartInfo.ArgumentList`, не склеивайте строку.
 - `HttpClient` — только через `IHttpClientFactory`. `ClaudeLimits.HttpClientName` — один таймаут,
   без ретраев. Telegram-клиент (`TelegramClientFactory`) — синглтон, DNS обновляет
@@ -262,3 +285,42 @@ src/AgentsTracker.Gateway/
 - Комментарии объясняют, какой отказ предотвращает код, а не что он делает.
 - Из сессии через Telegram `AskUserQuestion` и `ExitPlanMode` ждут ≤5 минут: без ответа берите
   рекомендуемый вариант.
+
+## Как работать
+
+Правила от пользователя. Раньше жили в памяти, здесь надёжнее — файл читается каждой сессией.
+
+- **Ответы — коротко и просто.** Сначала результат, потом только то, что нужно для действия.
+  Без пересказа шагов и плана, жаргон — простыми словами. Ошибки, риски и «что дальше»
+  не резать.
+- **Длинные документы — `.md` файлом.** План, отчёт о ревью, разбор, сравнение — всё длиннее
+  пары абзацев: временное в scratchpad, постоянное в `docs/` (только если это явно доки).
+  Имя латиницей, kebab-case. В ответе — суть и ссылка; из Telegram — `SendUserFile`.
+  Из режима плана файл тоже сохранить до `ExitPlanMode`.
+- **Сабагенты только `model: "sonnet"`.** В каждом вызове `Agent` и в `agent()` Workflow.
+  Не наследовать модель родителя, не брать opus/fable — экономия лимитов.
+- **Среда — Windows, русская локаль, Москва (UTC+3).** Вывод консоли может прийти в
+  кракозябрах — ставить UTF-8 (`chcp 65001`, `[Console]::OutputEncoding`). Сообщения
+  Windows и .NET на русском — не искать по английскому тексту. В коде парсить и
+  форматировать через `CultureInfo.InvariantCulture`. «Сегодня» — по Москве.
+- **Коммитить самому, по логическим этапам.** Не ждать отдельной просьбы; файлы группировать
+  по смыслу правки и коммитить по очереди. Заголовок на русском, одна строка, без тела.
+- **Тег задачи в коммитах.** Пока задача ведётся в отдельной ветке или worktree, каждый её
+  коммит начинается с короткого тега: `<тег> сообщение`. Тег произвольный, лишь бы по истории
+  было видно, какие коммиты относятся к задаче.
+- **Крупные задачи — в worktree.** Несколько фаз или перезапуски шлюза по ходу — начать с
+  `git worktree add ..\AgentsTracker-<задача> -b <ветка>` и работать там; из Telegram
+  переключить `/project` на новую папку. Мелкое в один-два коммита — прямо в основной папке.
+  После финального мержа ветки в `master` папку worktree удалить
+  (`git worktree remove ..\AgentsTracker-<задача>`) и ветку тоже.
+- **Ревью в worktree — с именем ветки.** `/code-review` без аргумента берёт незакоммиченный
+  диф основного каталога, а не ветку worktree: 07.09.2026 он так отревьюировал и исправил
+  чужие правки другой сессии в `master`. Вызывать `code-review medium --fix <ветка>`.
+- **После правок — документация.** Проверить CLAUDE.md, README и комментарии к конфигу:
+  новые флаги и команды, изменения контракта с CLI, неочевидные решения и их причины.
+  Не добавлять очевидное из кода и историю правок.
+- **После коммита — перезапуск шлюза.** Иначе в чате работает старый код. Команды и путь
+  через чистый worktree — `docs/operations.md`, «Перезапуск шлюза». Из сессии через Telegram
+  перезапускать самому нельзя: дать пользователю команды оттуда и попросить выполнить руками;
+  временные экземпляры не поднимать без нужды. Из VS Code — можно, но **до** Stop-Process
+  проверить `git status`: чужие незакоммиченные правки ломали сборку уже после остановки.

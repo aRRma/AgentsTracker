@@ -44,16 +44,25 @@ public static class GatewayInfrastructure
             services.AddSingleton<StartupNotice>();
             services.AddHostedService<ChatGatewayService>();
 
-            // Эндпоинт подтверждений и монитор доступны только с этой машины. Монитор — на
-            // отдельном порту: у него нет токена, и его можно выключить, не трогая подтверждения.
+            // Монитор — на отдельном порту: у него нет токена, и его можно выключить, не трогая
+            // подтверждения. Эндпоинт подтверждений всегда на loopback: его зовёт дочерний
+            // процесс агента, и выпускать его дальше машины незачем.
             var defaults = new GatewayOptions();
             var port = configuration.GetValue<int?>($"{GatewayOptions.SectionName}:McpPort") ?? defaults.McpPort;
             var monitorPort = configuration.GetValue<int?>($"{GatewayOptions.SectionName}:MonitorPort") ?? defaults.MonitorPort;
+            var monitorBind = configuration.GetValue<string?>($"{GatewayOptions.SectionName}:MonitorBind") ?? defaults.MonitorBind;
             var proxy = configuration.GetValue<string?>($"{GatewayOptions.SectionName}:Proxy");
+
+            // any нужен в контейнере: порт, привязанный к 127.0.0.1 внутри него, наружу
+            // не опубликовать никаким -p.
+            var monitorAddress = monitorBind.Equals(GatewayOptions.MonitorBindAny, StringComparison.OrdinalIgnoreCase)
+                ? IPAddress.Any
+                : IPAddress.Loopback;
+
             builder.WebHost.ConfigureKestrel(kestrel =>
             {
                 kestrel.Listen(IPAddress.Loopback, port);
-                if (monitorPort > 0 && monitorPort != port) kestrel.Listen(IPAddress.Loopback, monitorPort);
+                if (monitorPort > 0 && monitorPort != port) kestrel.Listen(monitorAddress, monitorPort);
             });
 
             // Бэкенду и каналу — только то, что им нужно от хоста, без доступа к GatewayOptions целиком.
@@ -120,8 +129,7 @@ public static class GatewayInfrastructure
 
             DataDirectoryAcl.Restrict(AppPaths.DataDirectory, logger);
 
-            if (options.MonitorPort > 0)
-                logger.LogInformation("Монитор: http://127.0.0.1:{Port}/", options.MonitorPort);
+            if (options.MonitorPort > 0) ReportMonitor(options, logger);
 
             return 0;
         }
@@ -149,6 +157,32 @@ public static class GatewayInfrastructure
                 .Select(key => $"{GatewayOptions.SectionName}:{key} больше не читается — перенесите его "
                              + $"в {ChannelConfiguration.SettingsSection}:{key}."),
         ];
+    }
+
+    /// <summary>
+    /// Где искать монитор и не открыт ли он лишним. Пароля у страницы нет, поэтому
+    /// <c>any</c> вне контейнера и <c>loopback</c> внутри — оба случая стоят предупреждения:
+    /// первый выпускает монитор в сеть, второй делает его недостижимым снаружи.
+    /// </summary>
+    private static void ReportMonitor(GatewayOptions options, ILogger logger)
+    {
+        var any = options.MonitorBind.Equals(GatewayOptions.MonitorBindAny, StringComparison.OrdinalIgnoreCase);
+
+        logger.LogInformation("Монитор: http://{Host}:{Port}/", any ? "0.0.0.0" : "127.0.0.1", options.MonitorPort);
+
+        if (any && !Container.Detected)
+        {
+            logger.LogWarning(
+                "Gateway:MonitorBind = any вне контейнера: монитор без пароля доступен всем в сети. "
+                + "Верните loopback, если это не то, что нужно.");
+        }
+        else if (!any && Container.Detected)
+        {
+            logger.LogWarning(
+                "Gateway:MonitorBind = loopback в контейнере: снаружи монитор недоступен. "
+                + "Поставьте any и публикуйте порт как {Publish}.",
+                $"127.0.0.1:{options.MonitorPort}:{options.MonitorPort}");
+        }
     }
 
     private static void HideGatewaySettingsFromChildren()

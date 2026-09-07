@@ -23,6 +23,18 @@ public static class ProtectSecretsCommand
     /// </summary>
     public static int Run(string[] args, IReadOnlyList<IChatChannelModule> channels, TextWriter output)
     {
+        // DPAPI есть только на Windows. Промолчать нельзя: человек решит, что токен зашифрован,
+        // а он останется открытым.
+        if (!OperatingSystem.IsWindows())
+        {
+            output.WriteLine(
+                "Шифрование секретов работает только на Windows (DPAPI). На других системах "
+                + "держите секреты канала в переменных окружения "
+                + $"({ChannelConfiguration.SettingsSection.Replace(":", "__")}__BotToken) "
+                + "или в файле, закрытом правами доступа.");
+            return 1;
+        }
+
         var source = args.Length > 1 ? args[1] : FindSource();
         if (source is null || !File.Exists(source))
         {

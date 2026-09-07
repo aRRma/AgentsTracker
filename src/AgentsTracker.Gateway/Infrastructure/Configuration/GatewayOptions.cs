@@ -72,10 +72,31 @@ public sealed class GatewayOptions
     public int McpPort { get; set; } = 5099;
 
     /// <summary>
-    /// Порт веб-монитора (страница состояния и статистики, без авторизации, слушает только
-    /// 127.0.0.1). 0 — монитор выключен.
+    /// Порт веб-монитора (страница состояния и статистики, без авторизации). 0 — монитор
+    /// выключен. Адрес задаёт <see cref="MonitorBind"/>.
     /// </summary>
     public int MonitorPort { get; set; } = 5100;
+
+    /// <summary>
+    /// Где слушать монитор: <c>loopback</c> — только с этой машины, <c>any</c> — на всех
+    /// адресах. <c>any</c> нужен в контейнере: порт, привязанный к 127.0.0.1 внутри него,
+    /// наружу не опубликовать. Пароля у монитора нет, поэтому в Docker его публикуют как
+    /// <c>127.0.0.1:5100:5100</c>. Порт MCP всегда остаётся на loopback: его клиент —
+    /// дочерний процесс агента в том же окружении.
+    /// </summary>
+    public string MonitorBind { get; set; } = MonitorBindLoopback;
+
+    public const string MonitorBindLoopback = "loopback";
+    public const string MonitorBindAny = "any";
+
+    /// <summary>
+    /// Папка данных: state.json, аудит, appsettings.Local.json. null — по умолчанию
+    /// (<c>%LOCALAPPDATA%\AgentsTracker</c>, на Linux и macOS <c>~/.local/share</c>).
+    /// Читается раньше остального конфига, поэтому задаётся только в appsettings.json рядом
+    /// с exe или переменной <c>Gateway__DataDirectory</c>: локальный конфиг сам лежит в этой
+    /// папке. В контейнере сюда монтируют том.
+    /// </summary>
+    public string? DataDirectory { get; set; }
 
     /// <summary>Сколько ждать нажатия кнопки, прежде чем автоматически отклонить.</summary>
     public int ApprovalTimeoutMinutes { get; set; } = 15;
@@ -109,6 +130,12 @@ public sealed class GatewayOptions
         // Один конвейер на оба порта: совпадение открыло бы страницу монитора и на порту MCP.
         else if (MonitorPort != 0 && MonitorPort == McpPort)
             errors.Add($"{SectionName}:MonitorPort совпадает с McpPort: {MonitorPort}");
+
+        if (!MonitorBind.Equals(MonitorBindLoopback, StringComparison.OrdinalIgnoreCase)
+            && !MonitorBind.Equals(MonitorBindAny, StringComparison.OrdinalIgnoreCase))
+        {
+            errors.Add($"{SectionName}:MonitorBind = «{MonitorBind}». Допустимо {MonitorBindLoopback} или {MonitorBindAny}.");
+        }
 
         // Нуль тут выглядит как «без ограничения», а на деле CancellationTokenSource
         // с нулевым интервалом срабатывает сразу и убивает каждый запуск.

@@ -5,11 +5,14 @@ obj/
 *.user
 *.suo
 
-# Публикация, которую делает scripts\install-autostart.ps1
+# Папка публикации по умолчанию.
 publish/
 
 # Токен бота и список разрешённых пользователей — не в репозиторий.
 appsettings.Local.json
+
+# Секреты для docker compose.
+.env
 
 # Скриншоты и след Playwright при проверке монитора
 /*.png
@@ -17,3 +20,6 @@ appsettings.Local.json
 
 # Личные заметки Claude Code
 .claude.local.md
+
+# Личные правила Claude Code для этого проекта; общие — в .claude/settings.json
+.claude/settings.local.json

@@ -6,17 +6,22 @@ using AgentsTracker.Gateway.Features.Chat;
 using AgentsTracker.Gateway.Features.Help;
 using AgentsTracker.Gateway.Features.Monitor;
 using AgentsTracker.Gateway.Features.Settings;
+using AgentsTracker.Gateway.Infrastructure;
+using AgentsTracker.Gateway.Infrastructure.Cli;
 using AgentsTracker.Gateway.Infrastructure.Modules;
-using AgentsTracker.Gateway.Infrastructure.Security;
+
+// Раньше всего: в папке данных лежит сам appsettings.Local.json, поэтому её расположение
+// нельзя взять из конфига — только из appsettings.json рядом с exe или из окружения.
+AppPaths.UseConfiguredDirectory();
 
 // Единственное место, где хост знает конкретные каналы связи. Новый канал — свой проект
-// с IChatChannelModule и строка здесь.
+// с IChatChannelModule и строка здесь. Список нужен уже служебным командам: какие ключи
+// в секции канала секретные, знает только его модуль.
 IReadOnlyList<IChatChannelModule> channels = [new TelegramChannelModule()];
 
-// Служебная команда: зашифровать секреты локального конфига и перенести его в папку данных.
-// Какие ключи в секции канала секретные, знает только его модуль.
-if (args is [ProtectSecretsCommand.Name, ..])
-    return ProtectSecretsCommand.Run(args, channels, Console.Out);
+// Служебные команды (protect-secrets, install, uninstall) отрабатывают до сборки хоста:
+// они работают с файлами и автозапуском, транспорт канала и агент им не нужны.
+if (ConsoleCommands.TryRun(args, channels, Console.Out, out var commandExitCode)) return commandExitCode;
 
 // Единственное место, где хост знает конкретных агентов. Новый агент — свой проект
 // с IAgentBackendModule и строка здесь.
