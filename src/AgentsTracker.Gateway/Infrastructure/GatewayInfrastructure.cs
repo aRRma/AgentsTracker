@@ -79,10 +79,12 @@ public static class GatewayInfrastructure
             var agent = app.Services.GetRequiredService<IAgentBackend>();
             var channel = app.Services.GetRequiredService<IChatChannel>();
 
-            var errors = options.Validate();
+            // Переехавшие ключи — раньше проверки настроек канала: с ними канал видит пустой
+            // токен и говорит «не задан», а человек смотрит на заполненный конфиг.
+            var errors = MovedChannelKeys(app.Services.GetRequiredService<IConfiguration>());
+            if (errors.Count == 0) errors = options.Validate();
             if (errors.Count == 0) errors = options.ValidateFor(agent.Capabilities);
             if (errors.Count == 0) errors = channel.Validate();
-            if (errors.Count == 0) errors = MovedChannelKeys(app.Services.GetRequiredService<IConfiguration>());
             if (errors.Count > 0)
             {
                 foreach (var error in errors) logger.LogCritical("{Error}", error);
