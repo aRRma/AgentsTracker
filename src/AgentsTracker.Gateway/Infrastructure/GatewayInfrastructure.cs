@@ -52,6 +52,8 @@ public static class GatewayInfrastructure
             var monitorPort = configuration.GetValue<int?>($"{GatewayOptions.SectionName}:MonitorPort") ?? defaults.MonitorPort;
             var monitorBind = configuration.GetValue<string?>($"{GatewayOptions.SectionName}:MonitorBind") ?? defaults.MonitorBind;
             var proxy = configuration.GetValue<string?>($"{GatewayOptions.SectionName}:Proxy");
+            var approvalMinutes = configuration.GetValue<int?>($"{GatewayOptions.SectionName}:ApprovalTimeoutMinutes")
+                ?? defaults.ApprovalTimeoutMinutes;
 
             // any нужен в контейнере: порт, привязанный к 127.0.0.1 внутри него, наружу
             // не опубликовать никаким -p.
@@ -66,7 +68,7 @@ public static class GatewayInfrastructure
             });
 
             // Бэкенду и каналу — только то, что им нужно от хоста, без доступа к GatewayOptions целиком.
-            services.AddSingleton(new AgentHost(AppPaths.DataDirectory, port, proxy));
+            services.AddSingleton(new AgentHost(AppPaths.DataDirectory, port, proxy, TimeSpan.FromMinutes(approvalMinutes)));
             services.AddSingleton(new ChannelHost(proxy));
             agent.AddServices(services, configuration);
             channel.AddServices(services, configuration);

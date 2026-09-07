@@ -6,10 +6,16 @@ namespace AgentsTracker.Agents;
 
 /// <summary>
 /// Что хост даёт бэкенду, не раскрывая своего конфига: папка данных (для файлов, которые
-/// должны пережить только процесс), порт локального HTTP (для канала подтверждений) и прокси.
+/// должны пережить только процесс), порт локального HTTP (для канала подтверждений), прокси
+/// и сколько хост держит открытым один запрос подтверждения.
 /// Регистрируется хостом до <see cref="IAgentBackendModule.AddServices"/>.
 /// </summary>
-public sealed record AgentHost(string DataDirectory, int LocalPort, string? Proxy);
+/// <param name="ApprovalTimeout">
+/// Сколько <see cref="IOperatorConsole"/> ждёт ответа человека, прежде чем ответить отказом.
+/// Бэкенд обязан выставить свои таймауты не короче: иначе агент оборвёт ожидание раньше,
+/// чем хост, и нажатая кнопка уйдёт в никуда.
+/// </param>
+public sealed record AgentHost(string DataDirectory, int LocalPort, string? Proxy, TimeSpan ApprovalTimeout);
 
 /// <summary>
 /// Модуль бэкенда: регистрирует <see cref="IAgentBackend"/>, <see cref="IAgentLimits"/>,

@@ -51,6 +51,7 @@ public sealed class McpConfigFile : IDisposable
                     type = "http",
                     url = $"http://127.0.0.1:{host.LocalPort}{RoutePattern}",
                     headers = new Dictionary<string, string> { ["Authorization"] = $"Bearer {Token}" },
+                    timeout = ToolCallTimeoutMs(host.ApprovalTimeout),
                 },
             },
         };
@@ -58,6 +59,17 @@ public sealed class McpConfigFile : IDisposable
         File.WriteAllText(Path, JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true }));
         logger.LogInformation("MCP-конфиг для CLI: {Path}", Path);
     }
+
+    /// <summary>
+    /// Поле <c>timeout</c> сервера в конфиге — предел одного вызова инструмента в мс. Без него CLI
+    /// обрывает вызов, если сервер молчит 5 минут (idle-таймаут MCP, «sent no response or
+    /// progress for 300s»), и <c>ApprovalTimeoutMinutes</c> сверх этого не работал: карточка в
+    /// чате ещё висела, а агент уже получил ошибку, и нажатая кнопка пропадала. Значение не
+    /// ниже 1000 поднимает и порог простоя до себя (CLI ≥ 2.1.203); progress-уведомления его
+    /// не продлевают. Запас поверх таймаута хоста — на отправку карточки и ответ отказом.
+    /// </summary>
+    private static long ToolCallTimeoutMs(TimeSpan approvalTimeout) =>
+        (long)(approvalTimeout + TimeSpan.FromMinutes(1)).TotalMilliseconds;
 
     /// <summary>Секрет, который CLI присылает в заголовке Authorization.</summary>
     public string Token { get; }
