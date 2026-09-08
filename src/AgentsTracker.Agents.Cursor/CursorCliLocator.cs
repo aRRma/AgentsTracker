@@ -97,6 +97,7 @@ public sealed class CursorCliLocator(IOptions<CursorOptions> options, ILogger<Cu
         foreach (var name in ExecutableNames)
         {
             yield return Path.Combine(home, ".local", "bin", name);
+            yield return Path.Combine(home, ".cursor", "bin", name);
             yield return Path.Combine(localApp, "cursor-agent", name);
             yield return Path.Combine(localApp, "Programs", "cursor-agent", name);
         }

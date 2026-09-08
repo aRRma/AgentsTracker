@@ -154,3 +154,25 @@ CLI может читать его в этот момент), комментар
 обновлении — пишется предупреждение). Штатно — отдельный CLI
 (`irm https://claude.ai/install.ps1 | iex`). Путь кешируется, но перепроверяется перед каждым
 запуском. Версию `ValidateStartup` пишет в лог — разбор JSON держится на конкретной версии.
+
+## Cursor CLI (ACP)
+
+Когда читать: правите `CursorBackend` / `CursorAcpClient`. Опора — [официальный ACP](https://cursor.com/docs/cli/acp).
+
+Шлюз поднимает `agent acp` (модель — `--model` до подкоманды; ключ — только `CURSOR_API_KEY` в
+окружении, не в argv). Дальше JSON-RPC по строкам: `initialize` (protocolVersion 1) →
+`authenticate` (`cursor_login`; если уже вошли — продолжаем, иначе просим `agent login`) →
+`session/new` или `session/load` (cwd абсолютный, `mcpServers: []`; нет `load` — `session/resume`) →
+`session/set_mode` (`plan` / `ask` / `agent`) → `session/prompt`.
+
+Текст ответа — куски `agent_message_chunk`. Подтверждения: `session/request_permission` →
+`IOperatorConsole.ApproveAsync` → `allow-once` / `allow-always` / `reject-once`. В `auto` /
+`dontAsk` карточки нет. Вопросы — `cursor/ask_question`, план — `cursor/create_plan`. Неизвестный
+запрос агента — JSON-RPC `-32601`, иначе CLI ждёт ответ вечно. Карточки обрабатываются **не** в
+потоке чтения stdout: иначе пайп заполняется и процесс зависает.
+
+`/stop`: `session/cancel`, затем убийство дерева процесса. Id сессии пишет Cursor
+(`SessionStarted`); хостовый `NewSessionId` ACP не принимает. Неудачный `session/load` —
+`SessionLost`. Effort нет, `acceptEdits` нет, лимиты не шкалами: 429 / usage limit →
+`RateLimited`. Скиллы — `.cursor/skills` и `~/.cursor/skills` (ещё `.agents/skills`), плагины
+из чата не трогаем.

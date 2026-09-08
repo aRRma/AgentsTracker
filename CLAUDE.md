@@ -103,8 +103,8 @@ docker compose up -d --build                    # тот же шлюз в кон
 
 **Ключ конфига.** Свойство в `GatewayOptions` (+ `Validate`), дефолт в `appsettings.json`,
 пример `"//Ключ": "…"` в `appsettings.Local.example.json`, строка в README «Основные
-настройки». Ключ агента — в `ClaudeOptions` и `Gateway:Claude`, ключ канала — в его
-`*Options` и `Gateway:Channel:Settings`. Исключение — `DataDirectory`: он нужен раньше
+настройки». Ключ агента — в `ClaudeOptions`/`Gateway:Claude` или `CursorOptions`/`Gateway:Cursor`,
+ключ канала — в его `*Options` и `Gateway:Channel:Settings`. Исключение — `DataDirectory`: он нужен раньше
 конфига (в этой папке лежит сам `appsettings.Local.json`), поэтому читается в
 `AppPaths.UseConfiguredDirectory` из `appsettings.json` рядом с exe и окружения.
 
@@ -217,8 +217,8 @@ src/AgentsTracker.Gateway/
 ### Сессии и выбор из чата
 
 Сессии ключуются **нормализованным путём проекта** (`ProjectCatalog.Normalize`); id новой
-выдаёт шлюз (`--session-id`), сбрасывается только по `SessionLost` от CLI — подробности в
-`docs/cli-contract.md`.
+у Claude выдаёт шлюз (`--session-id`), у Cursor — сам ACP (`SessionStarted`); сбрасывается
+только по `SessionLost` от CLI — подробности в `docs/cli-contract.md`.
 
 Выбор из чата (`SessionStore`) лежит поверх конфига: `EffectiveModel`,
 `EffectivePermissionMode`, `EffectiveEffort`, `ProjectPath`. Значение, совпадающее с конфигом,
