@@ -6,7 +6,6 @@ using AgentsTracker.Gateway.Features.Chat;
 using AgentsTracker.Gateway.Features.Help;
 using AgentsTracker.Gateway.Features.Monitor;
 using AgentsTracker.Gateway.Features.Settings;
-using AgentsTracker.Gateway.Infrastructure;
 using AgentsTracker.Gateway.Infrastructure.Cli;
 using AgentsTracker.Gateway.Infrastructure.Modules;
 

@@ -1,5 +1,4 @@
 using AgentsTracker.Gateway.Infrastructure.Autostart;
-using AgentsTracker.Gateway.Infrastructure.Configuration;
 using AgentsTracker.Gateway.Infrastructure.Security;
 
 namespace AgentsTracker.Gateway.Infrastructure.Cli;

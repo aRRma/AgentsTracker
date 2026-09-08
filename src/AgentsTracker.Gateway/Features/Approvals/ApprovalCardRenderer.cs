@@ -1,7 +1,6 @@
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using AgentsTracker.Gateway.Infrastructure.Chat;
 
 namespace AgentsTracker.Gateway.Features.Approvals;
 

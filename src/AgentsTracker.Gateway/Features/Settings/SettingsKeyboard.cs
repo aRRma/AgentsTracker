@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using System.Text;
-using AgentsTracker.Gateway.Infrastructure.Chat;
 
 namespace AgentsTracker.Gateway.Features.Settings;
 

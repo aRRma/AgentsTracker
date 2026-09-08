@@ -2,7 +2,6 @@ using System.Text;
 using System.Text.Json;
 using AgentsTracker.Gateway.Infrastructure.Audit;
 using AgentsTracker.Gateway.Infrastructure.Monitoring;
-using AgentsTracker.Gateway.Infrastructure.Chat;
 
 namespace AgentsTracker.Gateway.Features.Approvals;
 

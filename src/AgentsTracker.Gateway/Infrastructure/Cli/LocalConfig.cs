@@ -1,6 +1,3 @@
-using AgentsTracker.Gateway.Infrastructure.Configuration;
-using Microsoft.Extensions.Configuration;
-
 namespace AgentsTracker.Gateway.Infrastructure.Cli;
 
 /// <summary>
