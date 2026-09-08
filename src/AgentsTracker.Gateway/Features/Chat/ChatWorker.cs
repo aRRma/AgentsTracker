@@ -26,9 +26,6 @@ public sealed class ChatWorker(
     // Reader.Count бросает NotSupportedException, и /status падает на QueueLength.
     private readonly Channel<QueuedPrompt> _queue = Channel.CreateUnbounded<QueuedPrompt>();
 
-    /// <summary>Дольше этого «подождите» от канала не ждём: очередь всё это время стоит.</summary>
-    private static readonly TimeSpan RateLimitWaitCeiling = TimeSpan.FromSeconds(30);
-
     private CancellationTokenSource? _runCts;
 
     private sealed record QueuedPrompt(ChatId Chat, UserId User, string Text);
@@ -320,19 +317,11 @@ public sealed class ChatWorker(
     /// Длинный ответ идёт серией сообщений, и канал вправе притормозить посреди неё. Срок
     /// он называет сам: ждём один раз и повторяем ту же часть, иначе она выпала бы из ответа.
     /// </summary>
-    private async Task SendPartAsync(ChatId chat, OutgoingPart part, CancellationToken ct)
-    {
-        try
-        {
-            await SendOnceAsync(chat, part, ct);
-        }
-        catch (ChannelRequestException ex) when (ex is { Kind: ChannelFailure.RateLimited, RetryAfter: { } wait } && wait <= RateLimitWaitCeiling)
-        {
-            logger.LogWarning("Канал просит подождать {Wait}, часть ответа будет отправлена повторно", ex.RetryAfter);
-            await Task.Delay(ex.RetryAfter.Value, ct);
-            await SendOnceAsync(chat, part, ct);
-        }
-    }
+    private Task SendPartAsync(ChatId chat, OutgoingPart part, CancellationToken ct) =>
+        RateLimitRetry.OnceAsync(
+            () => SendOnceAsync(chat, part, ct),
+            wait => logger.LogWarning("Канал просит подождать {Wait}, часть ответа будет отправлена повторно", wait),
+            ct);
 
     private async Task SendOnceAsync(ChatId chat, OutgoingPart part, CancellationToken ct)
     {

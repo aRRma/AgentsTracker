@@ -30,12 +30,6 @@ public sealed class ApprovalBroker(
 
     private static readonly TimeSpan NetworkTimeout = TimeSpan.FromSeconds(15);
 
-    /// <summary>
-    /// Столько готовы ждать retry_after при отправке файла агента. Дольше — отказ: агент
-    /// ждёт ответа инструмента, а не бесконечной паузы.
-    /// </summary>
-    private static readonly TimeSpan RateLimitWaitCeiling = TimeSpan.FromSeconds(30);
-
     private readonly ConcurrentDictionary<string, PendingChoice> _choices = new();
     private readonly TimeSpan _timeout = TimeSpan.FromMinutes(options.Value.ApprovalTimeoutMinutes);
 
@@ -45,9 +39,6 @@ public sealed class ApprovalBroker(
     public ChatId? ActiveChat { get; set; }
 
     public bool HasPending => !_choices.IsEmpty || _textPrompt is not null;
-
-    /// <summary>Пределы канала — для проверки файла до того, как открывать его.</summary>
-    public ChannelLimits ChannelLimits => channel.Limits;
 
     /// <summary>Показывает карточку и ждёт выбора: Key нажатой кнопки и того, кто нажал.</summary>
     /// <exception cref="TimeoutException">Пользователь не ответил за отведённое время.</exception>
@@ -101,34 +92,25 @@ public sealed class ApprovalBroker(
     }
 
     /// <summary>
-    /// Файл агента в активный чат: документом или фото. Один повтор после 429 с коротким
-    /// retry_after — поток перематывается, документ не должен уйти обрезанным.
+    /// Файл агента в активный чат: документом или фото. Перед каждой попыткой поток
+    /// перематывается: после 429 повтор с середины отправил бы обрезанный документ.
     /// </summary>
-    public async Task SendFileAsync(string fileName, Stream content, string? caption, bool asPhoto, CancellationToken ct)
+    public Task SendFileAsync(string fileName, Stream content, string? caption, bool asPhoto, CancellationToken ct)
     {
         var chat = ActiveChat
             ?? throw new InvalidOperationException("Нет активного чата — некому отправить файл.");
 
-        try
-        {
-            await SendOnceAsync(chat, fileName, content, caption, asPhoto, ct);
-            return;
-        }
-        catch (ChannelRequestException ex) when (ex.Kind == ChannelFailure.RateLimited
-                                                 && ex.RetryAfter is { } wait && wait <= RateLimitWaitCeiling)
-        {
-            logger.LogWarning("Канал просит подождать {Wait} перед отправкой файла", wait);
-            await Task.Delay(wait, ct);
-        }
-
-        content.Position = 0;
-        await SendOnceAsync(chat, fileName, content, caption, asPhoto, ct);
+        return RateLimitRetry.OnceAsync(
+            () =>
+            {
+                content.Position = 0;
+                return asPhoto
+                    ? channel.SendPhotoAsync(chat, fileName, content, caption, ct)
+                    : channel.SendDocumentAsync(chat, fileName, content, caption, ct);
+            },
+            wait => logger.LogWarning("Канал просит подождать {Wait} перед отправкой файла", wait),
+            ct);
     }
-
-    private Task SendOnceAsync(ChatId chat, string fileName, Stream content, string? caption, bool asPhoto, CancellationToken ct) =>
-        asPhoto
-            ? channel.SendPhotoAsync(chat, fileName, content, caption, ct)
-            : channel.SendDocumentAsync(chat, fileName, content, caption, ct);
 
     /// <summary>Просит пользователя прислать свободный текст следующим сообщением.</summary>
     public async Task<string> AskTextAsync(string html, CancellationToken ct)
