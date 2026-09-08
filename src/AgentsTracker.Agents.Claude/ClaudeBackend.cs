@@ -214,6 +214,11 @@ public sealed class ClaudeBackend(
         yield return "--mcp-config";
         yield return mcpConfig.Path;
 
+        // Отправка файла без карточки: папку, тип и размер проверяет сам шлюз, а карточка
+        // «разрешить tg:send_file?» лишь дублировала бы его же проверку лишним нажатием.
+        yield return "--allowedTools";
+        yield return McpConfigFile.SendFileToolFullName;
+
         if (request.Model is { Length: > 0 } model)
         {
             yield return "--model";

@@ -77,6 +77,7 @@ public static class ClaudeStreamEvent
             "WebFetch" => String(input, "url"),
             "WebSearch" => String(input, "query"),
             "Skill" => "/" + String(input, "skill"),
+            Mcp.McpConfigFile.SendFileToolFullName => FileName(String(input, "path")),
             _ => null,
         };
 

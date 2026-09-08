@@ -52,7 +52,8 @@ public sealed class ClaudeAgentModule : IAgentBackendModule
         services
             .AddMcpServer()
             .WithHttpTransport()
-            .WithTools<ClaudePermissionTool>();
+            .WithTools<ClaudePermissionTool>()
+            .WithTools<ClaudeSendFileTool>();
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints)
