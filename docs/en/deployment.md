@@ -19,8 +19,10 @@ Three ways to run it:
 
 The [Releases](https://github.com/aRRma/AgentsTracker/releases) page attaches two Windows x64
 archives to each version: `…-win-x64-self-contained.zip` with the runtime included (neither the
-SDK nor the Runtime is needed on the machine) and the smaller `…-win-x64.zip`, which needs .NET
-10 Runtime installed. Inside is the same result as `dotnet publish`, so everything below applies
+SDK nor the Runtime is needed on the machine) and the smaller `…-win-x64.zip`, which needs the
+**ASP.NET Core Runtime 10** installed: the gateway is built with the Web SDK and asks for two
+frameworks, `Microsoft.NETCore.App` and `Microsoft.AspNetCore.App` — the plain .NET Runtime is
+not enough. Inside is the same result as `dotnet publish`, so everything below applies
 the same way: fill in `appsettings.Local.json` next to the exe and run `install --start`.
 A short guide for the user ships in the archive as `УСТАНОВКА.txt` (source —
 `../install-quickstart.txt`).

@@ -20,7 +20,9 @@
 На странице [Releases](https://github.com/aRRma/AgentsTracker/releases) к каждой версии
 приложены два архива под Windows x64: `…-win-x64-self-contained.zip` со средой выполнения
 внутри (на машине не нужен ни SDK, ни Runtime) и `…-win-x64.zip` поменьше, которому нужен
-установленный .NET 10 Runtime. Внутри — тот же результат `dotnet publish`, поэтому дальше
+установленный **ASP.NET Core Runtime 10**: шлюз собран Web SDK и просит два фреймворка,
+`Microsoft.NETCore.App` и `Microsoft.AspNetCore.App`, — обычного .NET Runtime не хватит.
+Внутри — тот же результат `dotnet publish`, поэтому дальше
 всё как ниже: заполнить `appsettings.Local.json` рядом с exe и выполнить `install --start`.
 Короткая инструкция для пользователя лежит в архиве как `УСТАНОВКА.txt` (исходник —
 `docs/install-quickstart.txt`).
