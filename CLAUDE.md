@@ -115,16 +115,20 @@ src/AgentsTracker.Agents.Abstractions/   контракты агента, без
   IAgentBackend         Probe() (бинарник, версия), RunAsync(AgentRunRequest, IAgentRunObserver)
   AgentRun.cs           запрос (промпт, папка, сессия, модель, effort, режим, таймаут), наблюдатель, результат
   AgentCapabilities     какие модели/effort/режимы умеет агент (effort null — не умеет)
-  IOperatorConsole      что агент просит у человека: ApproveAsync, AskAsync; PersistentRule — правило «всегда»
+  IOperatorConsole      что агент просит у человека: ApproveAsync, AskAsync, SendFileAsync; PersistentRule — правило «всегда»
   IAgentLimits          лимиты тарифа; IAgentSkillCatalog — слэш-команды
   IAgentBackendModule   AddServices + MapEndpoints; AgentHost — папка данных, порт, прокси, таймаут карточки от хоста
 src/AgentsTracker.Agents.Claude/         Claude Code за этими контрактами:
   ClaudeBackend         процесс claude -p: аргументы, stream-json, «сессия не найдена», лимит
   ClaudeCapabilities    какие модели, effort и режимы принимает CLI; Selectable — что даётся из чата
   ClaudeLimits, ClaudeSkillCatalog, ClaudePluginRegistry, ClaudeCliLocator, ClaudeStreamEvent
-  Mcp/                  McpConfigFile — mcp-gateway-<pid>.json с токеном; ClaudePermissionTool — payload CLI ↔ IOperatorConsole
+  Mcp/                  McpConfigFile — mcp-gateway-<pid>.json с токеном; ClaudePermissionTool — payload CLI ↔ IOperatorConsole;
+                        ClaudeSendFileTool — файл от агента в чат, политика на стороне хоста
 src/AgentsTracker.Channels.Abstractions/ контракты канала, без конкретного мессенджера:
-  IChatChannel          адреса и лимиты канала, ConnectAsync/ListenAsync, Send/Edit/Delete/Acknowledge
+  IChatChannel          адреса и лимиты канала, ConnectAsync/ListenAsync, Send/Edit/Delete/Acknowledge,
+                        SendDocumentAsync/SendPhotoAsync — файл и картинка потоком
+  ChannelLimits         пределы канала: длина сообщения и подписи, размер документа и фото
+  RateLimitRetry        один повтор после 429 с коротким retry_after — общий для всех отправок
   ChatId, UserId        адрес как значение; Key — «канал:значение» для state.json, аудита и лога
   Messages.cs           OutgoingMessage, Keyboard, MessageRef, IncomingMessage, ButtonPress, ChatCommand
   IChatInbound          куда канал отдаёт входящее; реализует хост (ChatDispatcher)
@@ -255,8 +259,8 @@ symlink/junction на пути), тип (белый список расшире�
 номера разных каналов совпадают. Есть и `NowByKeys` — для записи по готовым ключам из
 `state.json`. Без секретов и полных текстов (≤200 символов; текст пользователя — превью
 `Text.Preview`, 80 символов: туда могли вставить токен). Виды — `AuditKinds`:
-`access.rejected`, `message`, `run.start`/`run.end`, `approval`, `question`, `settings`,
-`rules`, `session.reset`, `limit.refused`, `gateway`. Экраны меню пишут через
+`access.rejected`, `message`, `run.start`/`run.end`, `approval`, `question`, `file.send`,
+`settings`, `rules`, `session.reset`, `limit.refused`, `gateway`. Экраны меню пишут через
 `SettingsAudit.Changed`. Это не замена `ILogger`: в аудит — за что отвечает человек, в лог —
 что нужно для отладки.
 
