@@ -71,7 +71,11 @@ public sealed class CursorSkillCatalog(ILogger<CursorSkillCatalog> logger) : IAg
 
     private static void Add(List<SkillGroup> groups, string name, params List<SkillInfo>[] parts)
     {
-        var skills = parts.SelectMany(p => p).ToList();
+        // Одно имя в .cursor/skills и .agents/skills иначе дало бы две кнопки на одну команду.
+        var skills = parts.SelectMany(p => p)
+            .GroupBy(s => s.Command, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .ToList();
         if (skills.Count == 0) return;
         skills.Sort((a, b) => string.Compare(a.Command, b.Command, StringComparison.OrdinalIgnoreCase));
         groups.Add(new SkillGroup(name, skills));
