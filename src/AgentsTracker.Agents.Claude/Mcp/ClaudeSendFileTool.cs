@@ -14,6 +14,9 @@ namespace AgentsTracker.Agents.Claude.Mcp;
 [McpServerToolType]
 public sealed class ClaudeSendFileTool(IOperatorConsole console, ILogger<ClaudeSendFileTool> logger)
 {
+    // Список расширений повторяет OperatorConsole.AllowedExtensions в шлюзе: атрибут требует
+    // константу, а ссылки на хост отсюда нет. Меняя один — поправьте второй, иначе агент
+    // будет предлагать типы, которые шлюз отвергнет.
     [McpServerTool(Name = McpConfigFile.SendFileToolName)]
     [Description("Sends a file from the current project folder to the user in the chat. "
         + "Use it to deliver reports, documents, source files and screenshots. "

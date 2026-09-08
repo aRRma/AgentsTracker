@@ -204,26 +204,17 @@ public sealed class TelegramChannel(
         }
     }
 
-    public async Task<MessageRef> SendDocumentAsync(ChatId chat, string fileName, Stream content, string? caption, CancellationToken ct)
-    {
-        try
-        {
-            var sent = await Bot.SendDocument(
-                ChatIdOf(chat), InputFile.FromStream(content, fileName), caption ?? "", cancellationToken: ct);
-            return new MessageRef(chat, MessageIdOf(sent.MessageId));
-        }
-        catch (RequestException ex)
-        {
-            throw Translate(ex);
-        }
-    }
+    public Task<MessageRef> SendDocumentAsync(ChatId chat, string fileName, Stream content, string? caption, CancellationToken ct) =>
+        SendMediaAsync(chat, file => Bot.SendDocument(ChatIdOf(chat), file, caption, cancellationToken: ct), fileName, content);
 
-    public async Task<MessageRef> SendPhotoAsync(ChatId chat, string fileName, Stream content, string? caption, CancellationToken ct)
+    public Task<MessageRef> SendPhotoAsync(ChatId chat, string fileName, Stream content, string? caption, CancellationToken ct) =>
+        SendMediaAsync(chat, file => Bot.SendPhoto(ChatIdOf(chat), file, caption, cancellationToken: ct), fileName, content);
+
+    private async Task<MessageRef> SendMediaAsync(ChatId chat, Func<InputFile, Task<Message>> send, string fileName, Stream content)
     {
         try
         {
-            var sent = await Bot.SendPhoto(
-                ChatIdOf(chat), InputFile.FromStream(content, fileName), caption ?? "", cancellationToken: ct);
+            var sent = await send(InputFile.FromStream(content, fileName));
             return new MessageRef(chat, MessageIdOf(sent.MessageId));
         }
         catch (RequestException ex)

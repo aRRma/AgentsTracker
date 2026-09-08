@@ -26,6 +26,15 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
     public static bool Same(string left, string right) =>
         string.Equals(Normalize(left), Normalize(right), StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Путь лежит внутри папки. Сравнение с разделителем, иначе «C:\proj-old» считался бы
+    /// частью «C:\proj». Оба пути уже нормализованы. На Linux регистр значим: «/srv/Proj» —
+    /// другая папка, и для проверки «файл из проекта» это не мелочь.
+    /// </summary>
+    public static bool IsInside(string path, string directory) =>
+        path.StartsWith(directory + Path.DirectorySeparatorChar,
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
     /// <summary>Текущая папка всегда первая в списке, дальше — по алфавиту.</summary>
     public IReadOnlyList<string> List(string current)
     {
@@ -79,7 +88,7 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
             if (string.Equals(parent, root, StringComparison.OrdinalIgnoreCase))
                 return Path.GetFileName(root) is { Length: > 0 } name ? name : root;
 
-            if (parent.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            if (IsInside(parent, root))
                 return Path.GetRelativePath(root, parent);
         }
 

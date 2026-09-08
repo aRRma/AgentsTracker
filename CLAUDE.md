@@ -192,7 +192,8 @@ src/AgentsTracker.Gateway/
 
 Второй инструмент того же сервера — `mcp__tg__send_file` (`ClaudeSendFileTool`): его зовёт
 сам агент, чтобы отправить файл в чат. Путь → `IOperatorConsole.SendFileAsync` →
-`OperatorConsole` проверяет папку (только текущий проект, папка данных запрещена), тип
+`OperatorConsole` проверяет папку (только текущий проект, папка данных запрещена, без
+symlink/junction на пути), тип
 (белый список расширений в коде) и размер (`ChannelLimits`), пишет `file.send` в аудит и шлёт
 через `ApprovalBroker.SendFileAsync` → `IChatChannel.SendDocumentAsync`/`SendPhotoAsync`.
 Инструмент передаётся в `--allowedTools`: карточка «разрешить?» дублировала бы проверку
@@ -278,7 +279,8 @@ src/AgentsTracker.Gateway/
 канал ответил любым 400 (не только «can't parse»: неподдерживаемый тег, «too long» после
 экранирования), он сам повторяет отправку без разметки (`ChatHtml.StripTags`) — иначе часть
 ответа пропадает молча. При 429 посреди многочастного ответа `ChatWorker.SendPartAsync` ждёт
-`RetryAfter` (≤30 с) и повторяет ту же часть. Длину callback_data (64 байта) проверяет
+`RetryAfter` (≤30 с) и повторяет ту же часть; то же для файла агента в `ApprovalBroker` — оба
+через `RateLimitRetry.OnceAsync` (Channels.Abstractions), потолок один. Длину callback_data (64 байта) проверяет
 `TelegramChannel.Markup` и называет кнопку — это ошибка экрана, не транспорта. Суммы, токены
 и время — `DisplayFormat`.
 
