@@ -1,377 +1,394 @@
 # CLAUDE.md
 
-Подсказки для Claude Code при работе с этим репозиторием. Подробности — в `docs/`:
+Notes for Claude Code working in this repository. Details are in `docs/en/`:
 
-- `docs/operations.md` — перезапуск шлюза, пробный экземпляр, worktree, инструменты.
-- `docs/deployment.md` — промышленный запуск: публикация, install/uninstall, Docker, порты, секреты.
-- `docs/cli-contract.md` — контракт с CLI: подтверждения, stream-json, сессии, лимиты, скиллы.
-- `docs/monitor.md` — веб-монитор: эндпоинты, мок, стиль, доступность.
-- `docs/claude-permissions.md` — права Claude Code на машине: `allow`/`ask`/`deny`, пример
-  `docs/examples/claude-settings.example.json`, проектный `.claude/settings.json`.
+- `docs/en/operations.md` — restarting the gateway, scratch instance, worktree, tooling.
+- `docs/en/deployment.md` — production run: publish, install/uninstall, Docker, ports, secrets.
+- `docs/en/cli-contract.md` — the CLI contract: approvals, stream-json, sessions, limits, skills.
+- `docs/en/monitor.md` — web monitor: endpoints, mock, styling, accessibility.
+- `docs/en/claude-permissions.md` — Claude Code permissions on this machine: `allow`/`ask`/`deny`,
+  the `docs/examples/claude-settings.example.json` sample, the project-level `.claude/settings.json`.
 
-## Что это
+Documentation lives in two languages: `docs/en/` is the English original for the agent (linked from
+here), `docs/*.md` is the Russian mirror the GitHub wiki is generated from. `README.md` is always
+Russian. Editing one language and not the other is a bug — see «Как работать» below.
 
-Мостик между Telegram и Claude Code. Одно приложение .NET 10 на всегда включённом ПК:
-сообщение из чата → `claude -p` в папке проекта → вопросы «можно?» кнопками в Telegram → ответ
-агента обратно в чат. Разрабатывается на Windows; в контейнере работает на Linux, отдельной
-установки для macOS и Linux пока нет.
+## What this is
 
-Код, комментарии, лог и тексты в чате — на русском.
+A bridge between Telegram and Claude Code. A single .NET 10 app on an always-on PC: a chat message →
+`claude -p` in the project folder → "may I?" questions as buttons in Telegram → the agent's answer
+back into the chat. Developed on Windows; runs on Linux in a container, there is no separate
+installer for macOS and Linux yet.
 
-## Команды
+Code, comments, logs and chat texts are in Russian.
+
+## Commands
 
 ```powershell
-dotnet build                                    # TreatWarningsAsErrors включён
-dotnet build src\AgentsTracker.Gateway -o $env:TEMP\at-build   # проверить сборку, пока шлюз держит bin\Debug
-dotnet run --project src\AgentsTracker.Gateway  # нужен appsettings.Local.json (рядом или в папке данных)
-dotnet run --project src\AgentsTracker.Gateway -- protect-secrets   # зашифровать секреты канала и Proxy, перенести конфиг в %LOCALAPPDATA%
-pwsh -File scripts\migrate-channel-settings.ps1 # разовый перенос BotToken/AllowedUserIds в Gateway:Channel:Settings
-dotnet publish src\AgentsTracker.Gateway -c Release -o C:\Apps\AgentsTracker   # установка: публикация…
-C:\Apps\AgentsTracker\AgentsTracker.Gateway.exe install --start                # …и автозапуск; снять — uninstall
-docker compose up -d --build                    # тот же шлюз в контейнере, нужен .env
+dotnet build                                    # TreatWarningsAsErrors is on
+dotnet build src\AgentsTracker.Gateway -o $env:TEMP\at-build   # check the build while the gateway holds bin\Debug
+dotnet run --project src\AgentsTracker.Gateway  # needs appsettings.Local.json (next to it or in the data directory)
+dotnet run --project src\AgentsTracker.Gateway -- protect-secrets   # encrypt channel and Proxy secrets, move the config to %LOCALAPPDATA%
+pwsh -File scripts\migrate-channel-settings.ps1 # one-off move of BotToken/AllowedUserIds into Gateway:Channel:Settings
+dotnet publish src\AgentsTracker.Gateway -c Release -o C:\Apps\AgentsTracker   # install: publish…
+C:\Apps\AgentsTracker\AgentsTracker.Gateway.exe install --start                # …and autostart; remove with uninstall
+docker compose up -d --build                    # the same gateway in a container, needs .env
 ```
 
-Тестов нет. Всё, что трогает контракт с CLI, проверяется руками: запустить шлюз и смотреть лог.
+There are no tests. Anything touching the CLI contract is checked by hand: start the gateway and
+watch the log.
 
-**Шлюз запущен из `bin\Debug` основной папки** (`AgentsTracker`, ветка `master`; ветки `main`
-нет). Пока он работает, `dotnet build` падает с `MSB3021`; переключение ветки подменит
-исходники под процессом. Перезапуск, сборка в другую папку и работа в worktree —
-`docs/operations.md`. Из сессии, запущенной из Telegram, перезапускать нельзя — дайте
-пользователю команды оттуда.
+**The gateway runs from `bin\Debug` of the main folder** (`AgentsTracker`, branch `master`; there is
+no `main` branch). While it runs, `dotnet build` fails with `MSB3021`; switching branches would swap
+the sources out from under the process. Restarting, building into another folder and working in a
+worktree — `docs/en/operations.md`. From a session started from Telegram you must not restart it —
+hand the commands to the user instead.
 
-## Как добавить
+## How to add
 
-**Команду чата.** Класс с `IChatCommandHandler` в папке фичи, `AddSingleton` в её
-`*Module`, запись в `ChatCommandCatalog` (подсказка команд канала) и в текст `HelpCommandHandler`.
-Заняты: `/start /help` (Help), `/new /stop` (Chat), `/rules` (Approvals), `/audit` (Audit),
-`/menu /settings /status /sessions /agent /model /effort /mode /skills /project /usage`
-(Settings). Дубликат у двух фич роняет старт. В «Меню» только экраны — `/new /stop /model
-/effort /mode` работают текстом, но в списке их нет. Порядок в списке команд и справке один:
-статус и сессии, агент и скиллы, репозиторий, статистика, правила, журналы. `RootScreen`
-повторяет его до статистики включительно: кнопок на `/rules` и `/audit` в меню нет. Прочие
-слэш-команды уходят в CLI как есть.
+**A chat command.** A class implementing `IChatCommandHandler` in the feature folder, `AddSingleton`
+in its `*Module`, an entry in `ChatCommandCatalog` (the channel's command hints) and in the
+`HelpCommandHandler` text. Taken: `/start /help` (Help), `/new /stop` (Chat), `/rules` (Approvals),
+`/audit` (Audit), `/menu /settings /status /sessions /agent /model /effort /mode /skills /project
+/usage` (Settings). A duplicate across two features kills startup. The «Меню» screen holds screens
+only — `/new /stop /model /effort /mode` work as text but are not in the list. The command list and
+the help share one order: status and sessions, agent and skills, repository, statistics, rules,
+logs. `RootScreen` repeats it up to and including statistics: there are no menu buttons for `/rules`
+and `/audit`. Every other slash command goes to the CLI as-is.
 
-**Экран настроек.** Класс с `ISettingsScreen` в `Features/Settings/Screens/`, регистрация в
-`SettingsModule`, кнопка в `RootScreen`. `RenderAsync` асинхронный ради лимитов;
-`RenderFramesAsync` — необязательные кадры (`StatusScreen` «заполняет» шкалы `LimitBars`: три
-кадра по 350 мс, чаще — 429 от Telegram). Модель, effort и режим — один `AgentScreen` с
-аргументами `model:…`/`effort:…`/`mode:…`. `Apply` получает `ChatId`: экран может ставить
-задачу в очередь `ChatWorker` (`SkillsScreen`), ответ уходит нажавшему. Позиция списка — в
-`ScreenNavigation` на пользователя: экраны синглтоны, пользователей может быть несколько.
-Страницы и ключи callback_data — `SettingsKeyboard.Page`/`Key12`; однобуквенный префикс
-аргумента экрана не должен быть hex-символом, иначе спутается с ключом.
+**A settings screen.** A class implementing `ISettingsScreen` in `Features/Settings/Screens/`,
+registration in `SettingsModule`, a button in `RootScreen`. `RenderAsync` is async because of the
+limits; `RenderFramesAsync` returns optional frames (`StatusScreen` "fills" the `LimitBars` gauges:
+three frames 350 ms apart, more often gets a 429 from Telegram). Model, effort and mode are one
+`AgentScreen` with the arguments `model:…`/`effort:…`/`mode:…`. `Apply` receives the `ChatId`: a
+screen can enqueue work on `ChatWorker` (`SkillsScreen`), the answer goes to whoever pressed the
+button. The list position lives in `ScreenNavigation` per user: screens are singletons, there can be
+several users. Pages and callback_data keys — `SettingsKeyboard.Page`/`Key12`; the one-letter prefix
+of a screen argument must not be a hex character, or it will be confused with a key.
 
-**Фичу.** Папка в `Features/` с `*Module : IFeatureModule` (`Infrastructure/Modules/`) и
-строка в списке модулей в `Program.cs`; `ChatModule` остаётся последним.
+**A feature.** A folder in `Features/` with a `*Module : IFeatureModule` (`Infrastructure/Modules/`)
+and a line in the module list in `Program.cs`; `ChatModule` stays last.
 
-**Агента (Codex, Cursor).** Проект `src/AgentsTracker.Agents.<Имя>` со ссылкой на
-`Agents.Abstractions`: `IAgentBackendModule` регистрирует `IAgentBackend`, `IAgentLimits` (или
-`NoAgentLimits`), `IAgentSkillCatalog` (или `NoAgentSkills`) и свой канал подтверждений через
-`IOperatorConsole`. Строка в списке `agents` в `Program.cs`, ссылка в `Gateway.csproj`
-и строка `COPY` в `Dockerfile`.
-`grep -rn Claude src/AgentsTracker.Gateway --include=*.cs` должен находить только `Program.cs`
-и комментарии. Настройки агента — в `Gateway:<Id>`, хост их не читает.
+**An agent (Codex, Cursor).** A project `src/AgentsTracker.Agents.<Name>` referencing
+`Agents.Abstractions`: an `IAgentBackendModule` registers `IAgentBackend`, `IAgentLimits` (or
+`NoAgentLimits`), `IAgentSkillCatalog` (or `NoAgentSkills`) and its own approval channel through
+`IOperatorConsole`. A line in the `agents` list in `Program.cs`, a reference in `Gateway.csproj` and
+a `COPY` line in the `Dockerfile`.
+`grep -rn Claude src/AgentsTracker.Gateway --include=*.cs` must only find `Program.cs` and comments.
+Agent settings live in `Gateway:<Id>`, the host does not read them.
 
-**Канал чата (Slack, Discord).** Проект `src/AgentsTracker.Channels.<Имя>` со ссылкой на
-`Channels.Abstractions`: `IChatChannelModule` регистрирует `IChatChannel` и всё своё, читает
-настройки из `Gateway:Channel:Settings` и объявляет в `SecretKeys` то, что шифрует
-`protect-secrets`. Свои типы `ChatId`/`UserId` (в `Key` — «канал:значение»), свои
-`ChannelLimits`, отказы транспорта — только `ChannelRequestException`. Строка в списке
-`channels` в `Program.cs` (выбор по `Gateway:Channel:Type`), ссылка в `Gateway.csproj`
-и строка `COPY` в `Dockerfile`.
-`grep -rn Telegram src/AgentsTracker.Gateway --include=*.cs` должен находить только
-`Program.cs` и комментарии. Транспортный клиент канал берёт **лениво**: хост создаёт канал
-раньше, чем печатает ошибки настроек, и падение конструктора на пустом токене подменило бы
-понятную ошибку стектрейсом.
+**A chat channel (Slack, Discord).** A project `src/AgentsTracker.Channels.<Name>` referencing
+`Channels.Abstractions`: an `IChatChannelModule` registers `IChatChannel` and everything of its own,
+reads settings from `Gateway:Channel:Settings` and declares in `SecretKeys` what `protect-secrets`
+encrypts. Its own `ChatId`/`UserId` types (`Key` is "channel:value"), its own `ChannelLimits`,
+transport failures — only `ChannelRequestException`. A line in the `channels` list in `Program.cs`
+(selected by `Gateway:Channel:Type`), a reference in `Gateway.csproj` and a `COPY` line in the
+`Dockerfile`.
+`grep -rn Telegram src/AgentsTracker.Gateway --include=*.cs` must only find `Program.cs` and
+comments. The channel takes its transport client **lazily**: the host creates the channel before it
+prints configuration errors, and a constructor failing on an empty token would replace a readable
+error with a stack trace.
 
-**Эндпоинт монитора.** `api.MapGet` в `MonitorModule.MapEndpoints`, только чтение —
-`docs/monitor.md`.
+**A monitor endpoint.** `api.MapGet` in `MonitorModule.MapEndpoints`, read-only —
+`docs/en/monitor.md`.
 
-**Команду exe.** Класс в `Infrastructure/Cli/` (`protect-secrets` — в `Security/`, рядом с
-`SecretsProtector`) с `public const string Name` и `Run(string[] args, TextWriter output)` —
-плюс `IReadOnlyList<IChatChannelModule> channels`, если команде нужны ключи каналов (так у
-`install` и `protect-secrets`). Строка в `switch` у `ConsoleCommands` и в её справке.
-Команды отрабатывают до сборки хоста: DI и Telegram им недоступны, ответ — только в
-`output`, код возврата 0 или 1. Заняты: `protect-secrets`, `install`, `uninstall`, `help`.
-Всё, что начинается с дефиса, командой не считается — это аргументы конфигурации.
+**An exe command.** A class in `Infrastructure/Cli/` (`protect-secrets` lives in `Security/`, next to
+`SecretsProtector`) with a `public const string Name` and `Run(string[] args, TextWriter output)` —
+plus `IReadOnlyList<IChatChannelModule> channels` if the command needs channel keys (as `install` and
+`protect-secrets` do). A line in the `switch` of `ConsoleCommands` and in its help. Commands run
+before the host is built: DI and Telegram are unavailable to them, the answer goes to `output` only,
+the exit code is 0 or 1. Taken: `protect-secrets`, `install`, `uninstall`, `help`. Anything starting
+with a dash is not a command — those are configuration arguments.
 
-**Способ автозапуска (launchd, systemd).** Реализация `IAutostartInstaller` в
-`Infrastructure/Autostart/` и строка в `AutostartInstaller.ForCurrentOs`. Приём один на все
-ОС: положить файл-описание и позвать штатную утилиту через `ProcessAutostartInstaller.Run` —
-решение по коду возврата, вывод у них локализован. XML для `schtasks` пишется в UTF-16:
-в UTF-8 кириллица в описании задачи превращается в кракозябры.
+**An autostart mechanism (launchd, systemd).** An `IAutostartInstaller` implementation in
+`Infrastructure/Autostart/` and a line in `AutostartInstaller.ForCurrentOs`. The approach is the same
+on every OS: drop a descriptor file and call the platform utility through
+`ProcessAutostartInstaller.Run` — decide by the exit code, their output is localized. The XML for
+`schtasks` is written in UTF-16: in UTF-8 the Cyrillic in the task description turns into mojibake.
 
-**Ключ конфига.** Свойство в `GatewayOptions` (+ `Validate`), дефолт в `appsettings.json`,
-пример `"//Ключ": "…"` в `appsettings.Local.example.json`, строка в README «Основные
-настройки». Ключ агента — в `ClaudeOptions` и `Gateway:Claude`, ключ канала — в его
-`*Options` и `Gateway:Channel:Settings`. Исключение — `DataDirectory`: он нужен раньше
-конфига (в этой папке лежит сам `appsettings.Local.json`), поэтому читается в
-`AppPaths.UseConfiguredDirectory` из `appsettings.json` рядом с exe и окружения.
+**A config key.** A property in `GatewayOptions` (+ `Validate`), a default in `appsettings.json`, a
+`"//Ключ": "…"` sample in `appsettings.Local.example.json`, a line in the README's «Основные
+настройки». An agent key goes into `ClaudeOptions` and `Gateway:Claude`, a channel key into its
+`*Options` and `Gateway:Channel:Settings`. The exception is `DataDirectory`: it is needed before the
+config (that folder holds `appsettings.Local.json` itself), so it is read in
+`AppPaths.UseConfiguredDirectory` from the `appsettings.json` next to the exe and from the
+environment.
 
-## Устройство
+## Layout
 
 ```
-src/AgentsTracker.Agents.Abstractions/   контракты агента, без Telegram и без конкретного CLI:
-  IAgentBackend         Probe() (бинарник, версия), RunAsync(AgentRunRequest, IAgentRunObserver)
-  AgentRun.cs           запрос (промпт, папка, сессия, модель, effort, режим, таймаут), наблюдатель, результат
-  AgentCapabilities     какие модели/effort/режимы умеет агент (effort null — не умеет)
-  IOperatorConsole      что агент просит у человека: ApproveAsync, AskAsync, SendFileAsync; PersistentRule — правило «всегда»
-  IAgentLimits          лимиты тарифа; IAgentSkillCatalog — слэш-команды
-  IAgentBackendModule   AddServices + MapEndpoints; AgentHost — папка данных, порт, прокси, таймаут карточки от хоста
-src/AgentsTracker.Agents.Claude/         Claude Code за этими контрактами:
-  ClaudeBackend         процесс claude -p: аргументы, stream-json, «сессия не найдена», лимит
-  ClaudeCapabilities    какие модели, effort и режимы принимает CLI; Selectable — что даётся из чата
+src/AgentsTracker.Agents.Abstractions/   agent contracts, no Telegram and no specific CLI:
+  IAgentBackend         Probe() (binary, version), RunAsync(AgentRunRequest, IAgentRunObserver)
+  AgentRun.cs           request (prompt, folder, session, model, effort, mode, timeout), observer, result
+  AgentCapabilities     which models/efforts/modes the agent supports (effort null — not supported)
+  IOperatorConsole      what the agent asks a human for: ApproveAsync, AskAsync, SendFileAsync; PersistentRule — an "always" rule
+  IAgentLimits          plan limits; IAgentSkillCatalog — slash commands
+  IAgentBackendModule   AddServices + MapEndpoints; AgentHost — data directory, port, proxy, card timeout from the host
+src/AgentsTracker.Agents.Claude/         Claude Code behind those contracts:
+  ClaudeBackend         the claude -p process: arguments, stream-json, "session not found", limit
+  ClaudeCapabilities    which models, efforts and modes the CLI accepts; Selectable — what is offered from the chat
   ClaudeLimits, ClaudeSkillCatalog, ClaudePluginRegistry, ClaudeCliLocator, ClaudeStreamEvent
-  Mcp/                  McpConfigFile — mcp-gateway-<pid>.json с токеном; ClaudePermissionTool — payload CLI ↔ IOperatorConsole;
-                        ClaudeSendFileTool — файл от агента в чат, политика на стороне хоста
-src/AgentsTracker.Channels.Abstractions/ контракты канала, без конкретного мессенджера:
-  IChatChannel          адреса и лимиты канала, ConnectAsync/ListenAsync, Send/Edit/Delete/Acknowledge,
-                        SendDocumentAsync/SendPhotoAsync — файл и картинка потоком
-  ChannelLimits         пределы канала: длина сообщения и подписи, размер документа и фото
-  RateLimitRetry        один повтор после 429 с коротким retry_after — общий для всех отправок
-  ChatId, UserId        адрес как значение; Key — «канал:значение» для state.json, аудита и лога
+  Mcp/                  McpConfigFile — mcp-gateway-<pid>.json with a token; ClaudePermissionTool — the CLI ↔ IOperatorConsole payload;
+                        ClaudeSendFileTool — a file from the agent into the chat, the policy stays on the host side
+src/AgentsTracker.Channels.Abstractions/ channel contracts, no specific messenger:
+  IChatChannel          channel addresses and limits, ConnectAsync/ListenAsync, Send/Edit/Delete/Acknowledge,
+                        SendDocumentAsync/SendPhotoAsync — a file and a picture as a stream
+  ChannelLimits         channel bounds: message and caption length, document and photo size
+  RateLimitRetry        one retry after a 429 with a short retry_after — shared by every send
+  ChatId, UserId        an address as a value; Key is "channel:value" for state.json, the audit and the log
   Messages.cs           OutgoingMessage, Keyboard, MessageRef, IncomingMessage, ButtonPress, ChatCommand
-  IChatInbound          куда канал отдаёт входящее; реализует хост (ChatDispatcher)
-  ChatHtml              канонический формат текста (b, i, s, code, pre, a, blockquote) и экранирование
-  ChannelRequestException  единственное исключение канала наружу: RateLimited (retry_after), MarkupRejected, CannotReach
-  IChatChannelModule    AddServices + MapEndpoints, SecretKeys; ChannelHost — общий прокси от хоста
-src/AgentsTracker.Channels.Telegram/     Telegram за этими контрактами:
-  TelegramChannel       long polling, инлайн-кнопки, HTML; «message is not modified» и retry_after — здесь
-  TelegramOptions, TelegramIds, TelegramClientFactory (клиент лениво: конструктор проверяет токен)
+  IChatInbound          where the channel hands incoming traffic; implemented by the host (ChatDispatcher)
+  ChatHtml              the canonical text format (b, i, s, code, pre, a, blockquote) and escaping
+  ChannelRequestException  the channel's only outward exception: RateLimited (retry_after), MarkupRejected, CannotReach
+  IChatChannelModule    AddServices + MapEndpoints, SecretKeys; ChannelHost — the shared proxy from the host
+src/AgentsTracker.Channels.Telegram/     Telegram behind those contracts:
+  TelegramChannel       long polling, inline buttons, HTML; "message is not modified" and retry_after live here
+  TelegramOptions, TelegramIds, TelegramClientFactory (client is lazy: the constructor validates the token)
 src/AgentsTracker.Gateway/
-  Program.cs            папка данных, служебные команды, списки агентов (Gateway:Agent), каналов (Gateway:Channel:Type) и фич
-  Domain/               чистые модели: GatewayState (state.json), AuditEvent
+  Program.cs            data directory, service commands, lists of agents (Gateway:Agent), channels (Gateway:Channel:Type) and features
+  Domain/               pure models: GatewayState (state.json), AuditEvent
   Infrastructure/       Configuration (GatewayOptions, ProjectCatalog), State (SessionStore),
                         Chat (ChatGatewayService, ChatDispatcher, MarkdownRenderer, StartupNotice —
-                        «запущен»/«прерван» после перезапуска, Dispatch/ — контракты обработчиков),
-                        Container.Detected — в контейнере автозапуск не ставится, монитор слушает any,
-                        Audit, Monitoring (RunMonitor, RingBufferLog), Security (в т.ч. protect-secrets),
-                        Cli/ (install, uninstall), Autostart/ (задача Планировщика через schtasks)
-  Features/             вертикальные слайсы, у каждого свой *Module:
-    Approvals/          карточки подтверждений, ApprovalBroker, /rules
-    Chat/               ChatWorker (очередь, запуск, сессии), RunStatusMessage, /new /stop
+                        «запущен»/«прерван» after a restart, Dispatch/ — handler contracts),
+                        Container.Detected — in a container no autostart is installed, the monitor listens on any,
+                        Audit, Monitoring (RunMonitor, RingBufferLog), Security (protect-secrets included),
+                        Cli/ (install, uninstall), Autostart/ (a Task Scheduler task via schtasks)
+  Features/             vertical slices, each with its own *Module:
+    Approvals/          approval cards, ApprovalBroker, /rules
+    Chat/               ChatWorker (queue, launch, sessions), RunStatusMessage, /new /stop
     Settings/           SettingsMenuCoordinator + Screens/*, /menu /status /sessions /agent /skills /project /usage
-    Help/ Audit/ Monitor/   /start /help; /audit; веб-страница (index.html — EmbeddedResource) и /api/*
+    Help/ Audit/ Monitor/   /start /help; /audit; the web page (index.html — EmbeddedResource) and /api/*
 ```
 
-Правила слоёв: `Domain` и `Abstractions` не открывают файлы и не ходят по сети; `Gateway` знает
-о конкретном агенте и канале только в `Program.cs`; бэкенд и канал не знают друг о друге и о
-`GatewayOptions`; `Infrastructure` не знает о фичах (кроме контрактов `Dispatch`); фича зависит
-от фичи только через публичный сервис (`Settings` → `ChatWorker.IsBusy`).
+Layering rules: `Domain` and `Abstractions` do not open files and do not go over the network;
+`Gateway` knows about a specific agent and channel only in `Program.cs`; the backend and the channel
+know nothing about each other or about `GatewayOptions`; `Infrastructure` knows nothing about
+features (except the `Dispatch` contracts); a feature depends on a feature only through a public
+service (`Settings` → `ChatWorker.IsBusy`).
 
-### Как ходит сообщение
+### How a message travels
 
-`ChatDispatcher` пускает только `IChatChannel.AllowedUsers` и личные чаты (`ChatKind.Unknown`
-— тоже отказ). Текст обрабатывается по порядку:
+`ChatDispatcher` lets through only `IChatChannel.AllowedUsers` and private chats (`ChatKind.Unknown`
+is a rejection too). Text is processed in order:
 
-1. слэш-команда из `IChatCommandHandler.Commands` — **раньше всего**, иначе `/stop` уйдёт
-   в ожидающий свободный ответ и прервать зависший запуск будет нечем;
-2. цепочка `IChatTextHandler` в порядке модулей: ответ на карточку (`ApprovalTextHandler`)
-   → аргументы скилла (`SkillArgumentsTextHandler`) → в очередь агенту
-   (`ChatEnqueueTextHandler`, всегда `true`). Поэтому `ChatModule` последний. Неизвестные
-   слэш-команды — это команды самого Claude Code, они уходят в CLI.
+1. a slash command from `IChatCommandHandler.Commands` — **first of all**, otherwise `/stop` would go
+   to a waiting free-form answer and there would be nothing left to interrupt a stuck run with;
+2. the `IChatTextHandler` chain in module order: an answer to a card (`ApprovalTextHandler`) → skill
+   arguments (`SkillArgumentsTextHandler`) → into the agent's queue (`ChatEnqueueTextHandler`, always
+   `true`). That is why `ChatModule` is last. Unknown slash commands are Claude Code's own commands,
+   they go to the CLI.
 
-Кнопки: цепочка `IChatButtonHandler` (`Dispatch/`), каждый узнаёт свои по префиксу в
-`CanHandle`: `cfg:` — меню (`SettingsCallbackHandler`), всё остальное (hex-id запроса) —
+Buttons: the `IChatButtonHandler` chain (`Dispatch/`), each recognizing its own by the prefix in
+`CanHandle`: `cfg:` — the menu (`SettingsCallbackHandler`), everything else (a hex request id) —
 `ApprovalCallbackHandler` → `ApprovalBroker`.
-`ActiveChat` брокера ставит `ChatWorker` перед запуском, иначе карточки ушли бы в чат
-другого пользователя.
+The broker's `ActiveChat` is set by `ChatWorker` before a run, otherwise cards would go to another
+user's chat.
 
-### Кольцо «шлюз → CLI → шлюз»
+### The gateway → CLI → gateway loop
 
-Шлюз и запускает агента, и обслуживает его:
+The gateway both launches the agent and serves it:
 
 ```
-канал ──▶ ChatDispatcher ──▶ ChatWorker ──▶ ClaudeBackend ──▶ claude.exe -p
-                    ▲                                                     │ нужно разрешение
+channel ─▶ ChatDispatcher ──▶ ChatWorker ──▶ ClaudeBackend ──▶ claude.exe -p
+                    ▲                                                     │ needs permission
                     └── ApprovalBroker ◀── OperatorConsole ◀── ClaudePermissionTool ◀── MCP http://127.0.0.1:<McpPort>/mcp
-                                                                              Authorization: Bearer <токен>
+                                                                              Authorization: Bearer <token>
 ```
 
-`McpConfigFile` при старте генерирует токен, пишет `mcp-gateway-<pid>.json` и удаляет его при
-остановке (имя с PID: общий файл второй экземпляр перезаписывал и удалял, и рабочий шлюз падал
-на «mcp__tg__approve not found»; файлы мёртвых PID подметаются при старте); `/mcp` монтируется с фильтром `McpConfigFile.Authorizes`; CLI получает
-`--mcp-config` и `--permission-prompt-tool mcp__tg__approve`. Имена сервера и инструментов —
-константы `McpConfigFile`, `[McpServerTool]` берёт ту же константу. README — инструкция для
-пользователя; меняя защиту эндпоинта или папку данных, проверьте раздел «Безопасность».
+At startup `McpConfigFile` generates a token, writes `mcp-gateway-<pid>.json` and deletes it on
+shutdown (the name carries the PID: a shared file was overwritten and deleted by a second instance,
+and the working gateway then died on "mcp__tg__approve not found"; files of dead PIDs are swept at
+startup); `/mcp` is mounted with the `McpConfigFile.Authorizes` filter; the CLI gets `--mcp-config`
+and `--permission-prompt-tool mcp__tg__approve`. The server and tool names are `McpConfigFile`
+constants, `[McpServerTool]` takes the same constant. The README is the user's manual; when changing
+the endpoint protection or the data directory, check its «Безопасность» section.
 
-Второй инструмент того же сервера — `mcp__tg__send_file` (`ClaudeSendFileTool`): его зовёт
-сам агент, чтобы отправить файл в чат. Путь → `IOperatorConsole.SendFileAsync` →
-`OperatorConsole` проверяет папку (только текущий проект, папка данных запрещена, без
-symlink/junction на пути), тип (белый список расширений в коде) и размер (`ChannelLimits`),
-пишет `file.send` в аудит и шлёт через `ApprovalBroker.SendFileAsync` → `IChatChannel.SendDocumentAsync`/`SendPhotoAsync`.
-Инструмент передаётся в `--allowedTools`: карточка «разрешить?» дублировала бы проверку
-шлюза лишним нажатием. Отказ — всегда ответом `{"sent":false,"reason":…}`, не исключением.
+The second tool of the same server is `mcp__tg__send_file` (`ClaudeSendFileTool`): the agent calls it
+itself to send a file into the chat. Path → `IOperatorConsole.SendFileAsync` → `OperatorConsole`
+checks the folder (the current project only, the data directory is forbidden, no symlink/junction on
+the path), the type (an extension allowlist in code) and the size (`ChannelLimits`), writes
+`file.send` into the audit and sends it through `ApprovalBroker.SendFileAsync` →
+`IChatChannel.SendDocumentAsync`/`SendPhotoAsync`. The tool is passed in `--allowedTools`: an
+"allow?" card would duplicate the gateway's own check with an extra button press. A refusal is always
+a `{"sent":false,"reason":…}` answer, never an exception.
 
-**Инструмент MCP.** Класс с `[McpServerToolType]` в `Agents.Claude/Mcp/`, имя — константа в
-`McpConfigFile`, `.WithTools<…>()` в `ClaudeAgentModule`, нужный хосту метод — в
-`IOperatorConsole` (реализация в `OperatorConsole`). Если инструмент должен работать без
-карточки — в `--allowedTools` в `ClaudeBackend.BuildArguments`.
+**An MCP tool.** A class with `[McpServerToolType]` in `Agents.Claude/Mcp/`, the name as a constant in
+`McpConfigFile`, `.WithTools<…>()` in `ClaudeAgentModule`, the method the host needs — in
+`IOperatorConsole` (implemented in `OperatorConsole`). If the tool must work without a card — into
+`--allowedTools` in `ClaudeBackend.BuildArguments`.
 
-Контракт подтверждений проверен на живом CLI 2.1.x и не задокументирован — `docs/cli-contract.md`.
-Главное: в ответе `allow` обязателен `updatedInput`; кнопка «Всегда» либо отдаёт правило CLI
-(`permission_suggestions`), либо шлюз хранит сигнатуру в `state.json` только для своего
-проекта; обрезанный ввод перед карточкой уходит файлом. `ApprovalTimeoutMinutes` попадает в
-`AgentHost` и оттуда в `timeout` MCP-сервера в конфиге: без этого CLI обрывал вызов через
-5 минут молчания, и карточка после этого была мертва.
+The approval contract was verified against a live CLI 2.1.x and is undocumented —
+`docs/en/cli-contract.md`. The essentials: an `allow` answer requires `updatedInput`; the «Всегда»
+button either hands a rule to the CLI (`permission_suggestions`) or the gateway keeps the signature
+in `state.json` for its own project only; input truncated before the card is sent as a file.
+`ApprovalTimeoutMinutes` reaches `AgentHost` and from there the MCP server's `timeout` in the config:
+without it the CLI aborted the call after 5 minutes of silence, and the card was dead afterwards.
 
-### `--permission-mode` передаётся всегда
+### `--permission-mode` is always passed
 
-Без флага действует `permissions.defaultMode` из `~/.claude/settings.json` — у пользователя там
-`auto`, и кнопки в чате не появляются. Не убирайте аргумент из `ClaudeBackend.BuildArguments`.
-Из чата переключаются только `PermissionMode.Selectable` (`plan`/`default`/`acceptEdits`/
-`auto`); `dontAsk` и `bypassPermissions` исключены намеренно — полное снятие подтверждений
-остаётся правкой конфига на машине. Значения проверяет `ValidateFor(capabilities)` в
-`ValidateStartup`, а не `GatewayOptions.Validate` (агент ещё не выбран).
+Without the flag `permissions.defaultMode` from `~/.claude/settings.json` applies — the user has
+`auto` there, and no buttons show up in the chat. Do not remove the argument from
+`ClaudeBackend.BuildArguments`. Only `PermissionMode.Selectable` (`plan`/`default`/`acceptEdits`/
+`auto`) can be switched from the chat; `dontAsk` and `bypassPermissions` are excluded deliberately —
+turning approvals off entirely stays a config edit on the machine. The values are checked by
+`ValidateFor(capabilities)` in `ValidateStartup`, not by `GatewayOptions.Validate` (the agent is not
+chosen yet).
 
-### Сессии и выбор из чата
+### Sessions and chat-side selection
 
-Сессии ключуются **нормализованным путём проекта** (`ProjectCatalog.Normalize`); id новой
-выдаёт шлюз (`--session-id`), сбрасывается только по `SessionLost` от CLI — подробности в
-`docs/cli-contract.md`.
+Sessions are keyed by the **normalized project path** (`ProjectCatalog.Normalize`); the id of a new
+one is issued by the gateway (`--session-id`) and is reset only on `SessionLost` from the CLI —
+details in `docs/en/cli-contract.md`.
 
-Выбор из чата (`SessionStore`) лежит поверх конфига: `EffectiveModel`,
-`EffectivePermissionMode`, `EffectiveEffort`, `ProjectPath`. Значение, совпадающее с конфигом,
-хранится как `null`: иначе правка конфига оказалась бы молча перекрыта старым выбором.
+The chat-side selection (`SessionStore`) sits on top of the config: `EffectiveModel`,
+`EffectivePermissionMode`, `EffectiveEffort`, `ProjectPath`. A value equal to the config is stored as
+`null`: otherwise a config edit would be silently overridden by an old selection.
 
-`ProjectCatalog`: список `Gateway:Projects`, иначе обход `Gateway:ProjectsRoot` до
-`ProjectsRootDepth`, иначе соседи `ProjectPath`. `ProjectScreen` выбирает в два шага (папка →
-репозиторий) страницами по 12. Текущий проект первым в своей группе, после выбора страница
-сбрасывается на первую — иначе отметка `▶` оказывалась бы за пределами экрана.
+`ProjectCatalog`: the `Gateway:Projects` list, otherwise a walk of `Gateway:ProjectsRoot` down to
+`ProjectsRootDepth`, otherwise the neighbours of `ProjectPath`. `ProjectScreen` selects in two steps
+(folder → repository) in pages of 12. The current project comes first in its group, and after a
+selection the page resets to the first one — otherwise the `▶` marker could end up off-screen.
 
-### Состояние, секреты, слои конфига
+### State, secrets, configuration layers
 
-`%LOCALAPPDATA%\AgentsTracker\` (`AppPaths.DataDirectory`, ACL — владелец и SYSTEM):
-`state.json` (атомарно), `mcp-gateway-<pid>.json`, `appsettings.Local.json` с секретами,
+`%LOCALAPPDATA%\AgentsTracker\` (`AppPaths.DataDirectory`, ACL — the owner and SYSTEM):
+`state.json` (atomic), `mcp-gateway-<pid>.json`, `appsettings.Local.json` with the secrets,
 `audit\audit-ГГГГ-ММ.jsonl`.
 
-Конфиг слоями: `appsettings.json` → `appsettings.Local.json` рядом с exe (IDE) → тот же файл в
-папке данных (боевой) → переменные окружения. `dpapi:…` расшифровывается при загрузке
-(`ProtectedJsonConfigurationProvider`); `protect-secrets` шифрует `Gateway:Proxy` и ключи
-`IChatChannelModule.SecretKeys` в `Gateway:Channel:Settings` (у Telegram — `BotToken`, `Proxy`).
-`publish\` секретов не содержит. Переменные `Gateway__*` дочерний `claude` не видит — хост
-удаляет их из окружения в `ValidateStartup`.
+The config comes in layers: `appsettings.json` → `appsettings.Local.json` next to the exe (IDE) → the
+same file in the data directory (production) → environment variables. `dpapi:…` is decrypted on load
+(`ProtectedJsonConfigurationProvider`); `protect-secrets` encrypts `Gateway:Proxy` and the
+`IChatChannelModule.SecretKeys` keys in `Gateway:Channel:Settings` (for Telegram — `BotToken`,
+`Proxy`). `publish\` contains no secrets. `Gateway__*` variables are invisible to the child `claude`
+— the host strips them from the environment in `ValidateStartup`.
 
-### Аудит
+### Audit
 
-`IAuditLog.Write(AuditEvent.Now(kind, summary, user, chat, project, session, outcome))` —
-«кто, куда, что»; адреса ложатся строками `UserKey`/`ChatKey` («канал:значение»), а не числами:
-номера разных каналов совпадают. Есть и `NowByKeys` — для записи по готовым ключам из
-`state.json`. Без секретов и полных текстов (≤200 символов; текст пользователя — превью
-`Text.Preview`, 80 символов: туда могли вставить токен). Виды — `AuditKinds`:
-`access.rejected`, `message`, `run.start`/`run.end`, `approval`, `question`, `file.send`,
-`settings`, `rules`, `session.reset`, `limit.refused`, `gateway`. Экраны меню пишут через
-`SettingsAudit.Changed`. Это не замена `ILogger`: в аудит — за что отвечает человек, в лог —
-что нужно для отладки.
+`IAuditLog.Write(AuditEvent.Now(kind, summary, user, chat, project, session, outcome))` — "who,
+where, what"; addresses are stored as `UserKey`/`ChatKey` strings ("channel:value"), not as numbers:
+ids from different channels collide. There is also `NowByKeys` — for writing by ready-made keys from
+`state.json`. No secrets and no full texts (≤200 characters; the user's text is a `Text.Preview`
+excerpt, 80 characters: a token could have been pasted there). The kinds are in `AuditKinds`:
+`access.rejected`, `message`, `run.start`/`run.end`, `approval`, `question`, `file.send`, `settings`,
+`rules`, `session.reset`, `limit.refused`, `gateway`. Menu screens write through
+`SettingsAudit.Changed`. This is not a replacement for `ILogger`: the audit gets what a human is
+answerable for, the log gets what is needed for debugging.
 
-### Лимиты и деньги
+### Limits and money
 
-Единственный ограничитель — `IAgentLimits` (окна тарифа), проверка в
-`ChatWorker.ProcessAsync` перед запуском; при ошибке опроса запуск **пропускается**. Денег в
-шлюзе нет: `total_cost_usd` не читается, `--max-budget-usd` не передаётся, в статистике —
-только ходы, токены и время. Не возвращайте долларовые оценки. Кредиты («extra usage») агенту
-запрещены. Детали — `docs/cli-contract.md`.
+The only limiter is `IAgentLimits` (the plan windows), checked in `ChatWorker.ProcessAsync` before a
+run; if the poll fails, the run is **skipped**. There is no money in the gateway: `total_cost_usd` is
+not read, `--max-budget-usd` is not passed, the statistics show only turns, tokens and time. Do not
+return dollar estimates. Credits ("extra usage") are forbidden to the agent. Details —
+`docs/en/cli-contract.md`.
 
-### Вывод в чат
+### Chat output
 
-`MarkdownRenderer` переводит markdown в `ChatHtml` и режет под `IChatChannel.Limits`
-(`MessageLength`, у Telegram 3800) — резать **исходный markdown до конвертации**, иначе рвутся
-теги. Списки — `•`/`◦`, таблица — выровненный `<pre>`. Курсив только у `*` вплотную к
-содержимому на границе слова (иначе `*.cs` и `2 * 3` курсивились); `_` не разбирается
-(`snake_case`). Блок кода длиннее лимита уходит файлом. Экранирование под бюджет —
-`ChatHtml.EscapeCapped` (текст, уложившийся целиком, символ под многоточие не тратит). Если
-канал ответил любым 400 (не только «can't parse»: неподдерживаемый тег, «too long» после
-экранирования), он сам повторяет отправку без разметки (`ChatHtml.StripTags`) — иначе часть
-ответа пропадает молча. При 429 посреди многочастного ответа `ChatWorker.SendPartAsync` ждёт
-`RetryAfter` (≤30 с) и повторяет ту же часть; то же для файла агента в `ApprovalBroker` — оба
-через `RateLimitRetry.OnceAsync` (Channels.Abstractions), потолок один. Длину callback_data (64 байта) проверяет
-`TelegramChannel.Markup` и называет кнопку — это ошибка экрана, не транспорта. Суммы, токены
-и время — `DisplayFormat`.
+`MarkdownRenderer` converts markdown into `ChatHtml` and cuts it to `IChatChannel.Limits`
+(`MessageLength`, 3800 for Telegram) — cut the **source markdown before the conversion**, otherwise
+tags get torn apart. Lists use `•`/`◦`, a table is an aligned `<pre>`. Italics only for a `*` tight
+against the content on a word boundary (otherwise `*.cs` and `2 * 3` went italic); `_` is not parsed
+(`snake_case`). A code block longer than the limit is sent as a file. Escaping within the budget —
+`ChatHtml.EscapeCapped` (text that fits whole does not spend a character on the ellipsis). If the
+channel answered with any 400 (not just "can't parse": an unsupported tag, "too long" after
+escaping), it retries the send itself without markup (`ChatHtml.StripTags`) — otherwise part of the
+answer would vanish silently. On a 429 in the middle of a multi-part answer `ChatWorker.SendPartAsync`
+waits `RetryAfter` (≤30 s) and repeats the same part; the same goes for the agent's file in
+`ApprovalBroker` — both through `RateLimitRetry.OnceAsync` (Channels.Abstractions), one shared
+ceiling. The callback_data length (64 bytes) is checked by `TelegramChannel.Markup`, which names the
+button — that is a screen bug, not a transport one. Sums, tokens and time — `DisplayFormat`.
 
-## Помнить
+## Keep in mind
 
-- Шлюз **не подключается** к сессии VS Code — это параллельная сессия на той же папке: общие
-  `CLAUDE.md`, настройки, хуки и MCP, но своя история.
-- `--bare` нельзя: не читает `~/.claude`, ломает OAuth-логин по подписке.
-- `--allowedTools` — только `mcp__tg__send_file`: его политику держит шлюз. Другие
-  инструменты туда не добавлять — это обход карточек мимо конфига на машине.
-- Барьеры: `AllowedUsers` канала + только личные чаты; MCP — всегда `127.0.0.1` плюс токен в
-  заголовке; монитор без токена — поэтому только читает, а `MonitorBind: any` (нужен
-  в контейнере) публикуют лишь на `127.0.0.1` хоста.
-- Аргументы CLI — через `ProcessStartInfo.ArgumentList`, не склеивайте строку.
-- `HttpClient` — только через `IHttpClientFactory`. `ClaudeLimits.HttpClientName` — один таймаут,
-  без ретраев. Telegram-клиент (`TelegramClientFactory`) — синглтон, DNS обновляет
-  `PooledConnectionLifetime`; ретрай только на `HttpRequestException`: методы Bot API — POST без
-  идемпотентности (повтор после 5xx — дубль в чате), а 429 ждёт вызывающий по `retry_after`.
-  `BaseAddress` не задавать. `RemoveAllLoggers()`: токен — часть пути.
-- `Channel.CreateUnbounded` в `ChatWorker` без `SingleReader`: с ним `Reader.Count` бросает, и
-  `/status` падает.
-- `_runCts` в `ChatWorker` ставится прямо перед `agent.RunAsync`, после отправки статусного
-  сообщения: снимает его только `finally` запуска, и сбой выше оставлял бы `IsBusy` до перезапуска.
-- Переехавшие ключи канала — один список `ChannelOptions.MovedKeys`: его читают и проверка при
-  старте, и `protect-secrets`. Проверять на копии старого конфига: `protect-secrets <путь>`
-  должен вернуть 1 с подсказкой, `migrate-channel-settings.ps1 -Path <путь>` не трогает уже
-  заполненное в `Channel:Settings`.
-- `McpConfigFile` и `SessionStore` — единственные с классическим конструктором: побочный эффект
-  (файл) должен случиться один раз до старта.
-- Релиз — пуш тега `v*`, дальше `.github/workflows/release.yml` сам собирает архивы и создаёт
-  релиз. Заметки к версии кладут в `docs/release-notes/<тег>.md` **до** пуша тега, иначе в
-  релиз уйдёт список коммитов. Подробности — `docs/deployment.md`.
-- Вики на GitHub — зеркало `README.md` и `docs/`, руками её не правят: страницы собирает
-  `scripts\sync-wiki.ps1` (workflow `wiki.yml` при пуше в `master`). Новый файл в `docs/`
-  попадёт туда, только если добавить его в таблицу `$pages` скрипта — `docs/operations.md`.
-- Русские тексты и windows-пути правьте Edit/Write, не heredoc из Bash. Исходники — UTF-8
-  **без BOM**. Остальное про инструменты — `docs/operations.md`.
-- Комментарии объясняют, какой отказ предотвращает код, а не что он делает.
-- Из сессии через Telegram `AskUserQuestion` и `ExitPlanMode` ждут `ApprovalTimeoutMinutes`
-  (15 мин): без ответа берите рекомендуемый вариант.
-- Монитор `http://127.0.0.1:5100` из сессии по `curl`/`Invoke-RestMethod` недоступен — они в
-  `deny` для любых адресов, не пробуйте обходить. Снимок и другие `/api/*` —
-  `pwsh -File scripts\monitor-api.ps1 /api/snapshot`.
-- Скриншот монитора — Playwright MCP: `browser_navigate` на `http://127.0.0.1:5100`,
-  `browser_take_screenshot` с `filename` (файл ложится в корень проекта), дальше
-  `mcp__tg__send_file` и удалить файл — в репозиторий он не нужен.
+- The gateway **does not attach** to a VS Code session — it is a parallel session on the same folder:
+  shared `CLAUDE.md`, settings, hooks and MCP, but its own history.
+- `--bare` is not allowed: it does not read `~/.claude` and breaks the subscription OAuth login.
+- `--allowedTools` holds only `mcp__tg__send_file`: its policy belongs to the gateway. Do not add
+  other tools there — that bypasses the cards past the machine's config.
+- Barriers: the channel's `AllowedUsers` plus private chats only; MCP is always `127.0.0.1` plus a
+  token in the header; the monitor has no token — that is why it is read-only, and `MonitorBind: any`
+  (needed in a container) is published only on the host's `127.0.0.1`.
+- CLI arguments go through `ProcessStartInfo.ArgumentList`, do not concatenate a string.
+- `HttpClient` only through `IHttpClientFactory`. `ClaudeLimits.HttpClientName` — one timeout, no
+  retries. The Telegram client (`TelegramClientFactory`) is a singleton, DNS is refreshed by
+  `PooledConnectionLifetime`; retry only on `HttpRequestException`: Bot API methods are POSTs without
+  idempotency (a retry after a 5xx is a duplicate in the chat), and a 429 is waited out by the caller
+  per `retry_after`. Do not set `BaseAddress`. `RemoveAllLoggers()`: the token is part of the path.
+- `Channel.CreateUnbounded` in `ChatWorker` without `SingleReader`: with it `Reader.Count` throws and
+  `/status` falls over.
+- `_runCts` in `ChatWorker` is set right before `agent.RunAsync`, after the status message is sent:
+  only the run's `finally` clears it, and a failure above would leave `IsBusy` set until a restart.
+- Moved channel keys live in one list, `ChannelOptions.MovedKeys`: both the startup check and
+  `protect-secrets` read it. Test on a copy of the old config: `protect-secrets <path>` must return 1
+  with a hint, and `migrate-channel-settings.ps1 -Path <path>` must not touch what is already filled
+  in under `Channel:Settings`.
+- `McpConfigFile` and `SessionStore` are the only ones with a classic constructor: the side effect (a
+  file) must happen exactly once before startup.
+- A release is a `v*` tag push, after which `.github/workflows/release.yml` builds the archives and
+  creates the release itself. Release notes go into `docs/release-notes/<tag>.md` **before** the tag
+  is pushed, otherwise a list of commits ends up in the release. Details — `docs/en/deployment.md`.
+- The GitHub wiki mirrors `README.md` and the Russian `docs/*.md`, it is never edited by hand: the
+  pages are built by `scripts\sync-wiki.ps1` (the `wiki.yml` workflow on a push to `master`). A new
+  file in `docs/` gets there only if it is added to the script's `$pages` table —
+  `docs/en/operations.md`.
+- Edit Russian texts and Windows paths with Edit/Write, not with a heredoc from Bash. Sources are
+  UTF-8 **without a BOM**. The rest about tooling — `docs/en/operations.md`.
+- Comments explain which failure the code prevents, not what it does.
+- From a session over Telegram `AskUserQuestion` and `ExitPlanMode` wait `ApprovalTimeoutMinutes`
+  (15 min): with no answer, take the recommended option.
+- The monitor at `http://127.0.0.1:5100` is unreachable from a session via `curl`/`Invoke-RestMethod`
+  — they are in `deny` for any address, do not try to work around it. A snapshot and the other
+  `/api/*` — `pwsh -File scripts\monitor-api.ps1 /api/snapshot`.
+- A monitor screenshot — Playwright MCP: `browser_navigate` to `http://127.0.0.1:5100`,
+  `browser_take_screenshot` with a `filename` (the file lands in the project root), then
+  `mcp__tg__send_file` and delete the file — the repository does not need it.
 
 ## Как работать
 
-Правила от пользователя. Раньше жили в памяти, здесь надёжнее — файл читается каждой сессией.
+Rules from the user. They used to live in memory, here they are safer — the file is read by every
+session.
 
-- **Ответы — коротко и просто.** Сначала результат, потом только то, что нужно для действия.
-  Без пересказа шагов и плана, жаргон — простыми словами. Ошибки, риски и «что дальше»
-  не резать.
-- **Длинные документы — `.md` файлом.** План, отчёт о ревью, разбор, сравнение — всё длиннее
-  пары абзацев: временное в scratchpad, постоянное в `docs/` (только если это явно доки).
-  Имя латиницей, kebab-case. В ответе — суть и ссылка; из Telegram — файл в чат через
-  `mcp__tg__send_file` (только из папки проекта: `.md .txt .json .cs .js .html`, скриншоты
-  `.png .jpg .jpeg`).
-  Из режима плана файл тоже сохранить до `ExitPlanMode`.
-- **Сабагенты только `model: "sonnet"`.** В каждом вызове `Agent` и в `agent()` Workflow.
-  Не наследовать модель родителя, не брать opus/fable — экономия лимитов.
-- **Среда — Windows, русская локаль, Москва (UTC+3).** Вывод консоли может прийти в
-  кракозябрах — ставить UTF-8 (`chcp 65001`, `[Console]::OutputEncoding`). Сообщения
-  Windows и .NET на русском — не искать по английскому тексту. В коде парсить и
-  форматировать через `CultureInfo.InvariantCulture`. «Сегодня» — по Москве.
-- **Коммитить самому, по логическим этапам.** Не ждать отдельной просьбы; файлы группировать
-  по смыслу правки и коммитить по очереди. Заголовок на русском, одна строка, без тела —
-  в том числе без трейлера `Co-Authored-By`, который харнесс добавляет сам.
-- **Тег задачи в коммитах.** Пока задача ведётся в отдельной ветке или worktree, каждый её
-  коммит начинается с короткого тега: `<тег> сообщение`. Тег произвольный, лишь бы по истории
-  было видно, какие коммиты относятся к задаче.
-- **Крупные задачи — в worktree.** Несколько фаз или перезапуски шлюза по ходу — начать с
-  `git worktree add ..\AgentsTracker-<задача> -b <ветка>` и работать там; из Telegram
-  переключить `/project` на новую папку. Мелкое в один-два коммита — прямо в основной папке.
-  После финального мержа ветки в `master` папку worktree удалить
-  (`git worktree remove ..\AgentsTracker-<задача>`) и ветку тоже.
-- **Ревью в worktree — с именем ветки.** `/code-review` без аргумента берёт незакоммиченный
-  диф основного каталога, а не ветку worktree: 07.09.2026 он так отревьюировал и исправил
-  чужие правки другой сессии в `master`. Вызывать `code-review medium --fix <ветка>`.
-- **После правок — документация.** Проверить CLAUDE.md, README и комментарии к конфигу:
-  новые флаги и команды, изменения контракта с CLI, неочевидные решения и их причины.
-  Не добавлять очевидное из кода и историю правок.
-- **После коммита — перезапуск шлюза.** Иначе в чате работает старый код. Команды и путь
-  через чистый worktree — `docs/operations.md`, «Перезапуск шлюза». Из сессии через Telegram
-  перезапускать самому нельзя: дать пользователю команды оттуда и попросить выполнить руками;
-  временные экземпляры не поднимать без нужды. Из VS Code — можно, но **до** Stop-Process
-  проверить `git status`: чужие незакоммиченные правки ломали сборку уже после остановки.
-- **Термины.** Проверка живым запуском пробного экземпляра — «смоук-тест», не «дымовой
-  прогон» и не «дымовая проверка»: и в чате, и в доках.
+- **Answers stay short and simple.** The result first, then only what is needed to act. No retelling
+  of the steps or the plan, jargon in plain words. Errors, risks and "what's next" are never cut.
+- **Long documents go into an `.md` file.** A plan, a review report, an analysis, a comparison —
+  anything longer than a couple of paragraphs: temporary in the scratchpad, permanent in `docs/`
+  (only if it really is documentation). A Latin, kebab-case name. The answer carries the gist and the
+  link; from Telegram — the file into the chat through `mcp__tg__send_file` (from the project folder
+  only: `.md .txt .json .cs .js .html`, screenshots `.png .jpg .jpeg`).
+  From plan mode the file is saved before `ExitPlanMode` as well.
+- **Subagents only with `model: "sonnet"`.** In every `Agent` call and in a Workflow `agent()`. Do not
+  inherit the parent's model, do not take opus/fable — it saves the plan limits.
+- **The environment is Windows, Russian locale, Moscow (UTC+3).** Console output can arrive as
+  mojibake — set UTF-8 (`chcp 65001`, `[Console]::OutputEncoding`). Windows and .NET messages are in
+  Russian — do not search them by their English text. In code, parse and format through
+  `CultureInfo.InvariantCulture`. "Today" is by Moscow time.
+- **Commit on your own, in logical stages.** Do not wait to be asked; group files by the meaning of
+  the change and commit them one batch at a time. The subject is in Russian, one line, no body —
+  including no `Co-Authored-By` trailer, which the harness adds by itself.
+- **A task tag in the commits.** While a task is being carried in a separate branch or worktree, each
+  of its commits starts with a short tag: `<tag> message`. The tag is arbitrary, as long as the
+  history shows which commits belong to the task.
+- **Big tasks go into a worktree.** Several phases or gateway restarts along the way — start with
+  `git worktree add ..\AgentsTracker-<task> -b <branch>` and work there; from Telegram switch
+  `/project` to the new folder. Something small in one or two commits goes straight into the main
+  folder. After the branch is finally merged into `master`, remove the worktree folder
+  (`git worktree remove ..\AgentsTracker-<task>`) and the branch too.
+- **A review in a worktree needs the branch name.** `/code-review` without an argument takes the
+  uncommitted diff of the main folder, not the worktree branch: on 07.09.2026 it reviewed and fixed
+  another session's changes in `master` that way. Call `code-review medium --fix <branch>`.
+- **After changes — the documentation.** Check CLAUDE.md, the README and the config comments: new
+  flags and commands, changes to the CLI contract, non-obvious decisions and their reasons. Do not
+  add what is obvious from the code, or a history of the edits.
+- **Documentation is edited in both languages.** `docs/en/*.md` is the English original the agent
+  reads (and the only thing CLAUDE.md links to), `docs/*.md` is the Russian mirror the GitHub wiki is
+  built from. A change to one file goes into its twin in the same commit — the two must not drift
+  apart. A new document is added in both languages at once, plus a `$pages` line in
+  `scripts\sync-wiki.ps1` for the Russian one. CLAUDE.md is English only, the README is Russian only.
+- **After a commit — restart the gateway.** Otherwise the chat runs old code. The commands and the
+  path through a clean worktree — `docs/en/operations.md`, "Restarting the gateway". From a session
+  over Telegram you must not restart it yourself: give the user the commands and ask them to run them
+  by hand; do not raise temporary instances without a reason. From VS Code you may, but **before**
+  Stop-Process check `git status`: someone else's uncommitted changes have broken the build right
+  after the process was stopped.
+- **Terminology.** Checking by a live run of a scratch instance is «смоук-тест», not «дымовой прогон»
+  and not «дымовая проверка»: in the chat and in the docs alike.
