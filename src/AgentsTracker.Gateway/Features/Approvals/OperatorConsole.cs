@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using AgentsTracker.Gateway.Infrastructure.Audit;
+using AgentsTracker.Gateway.Infrastructure.Chat;
 using AgentsTracker.Gateway.Infrastructure.Monitoring;
 
 namespace AgentsTracker.Gateway.Features.Approvals;
@@ -169,6 +170,105 @@ public sealed class OperatorConsole(
             key == "free" ? "free" : "option", user);
 
         return new QuestionAnswer(question.Text, answer);
+    }
+
+    // ---- файлы от агента ----
+
+    /// <summary>
+    /// Что агент может отправить в чат. Список в коде, а не в конфиге: расширять его —
+    /// решение с последствиями (архив или exe из проекта уйдут наружу одним вызовом).
+    /// Картинки уходят фото, остальное — документом.
+    /// </summary>
+    private static readonly Dictionary<string, bool> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".md"] = false,
+        [".txt"] = false,
+        [".json"] = false,
+        [".cs"] = false,
+        [".js"] = false,
+        [".html"] = false,
+        [".png"] = true,
+        [".jpg"] = true,
+        [".jpeg"] = true,
+    };
+
+    public async Task<FileSendResult> SendFileAsync(FileSendRequest request, CancellationToken ct)
+    {
+        var (path, caption, asDocument) = request;
+        var project = store.ProjectPath;
+
+        if (string.IsNullOrWhiteSpace(path))
+            return Refuse(path, "Путь к файлу пуст.");
+
+        string full;
+        try
+        {
+            full = ProjectCatalog.Normalize(Path.GetFullPath(path, project));
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return Refuse(path, "Путь к файлу некорректен.");
+        }
+
+        // Только папка текущего проекта: агент работает в ней, а шлюз читает файл сам, в обход
+        // запретов Claude на чтение. Папка данных шлюза исключена отдельно — она вне проекта,
+        // но пусть отказ не зависит от того, куда её перенесли.
+        if (!IsInside(full, ProjectCatalog.Normalize(project)) || IsInside(full, ProjectCatalog.Normalize(AppPaths.DataDirectory)))
+            return Refuse(full, $"Файл вне папки текущего проекта ({project}). Отправлять можно только файлы из неё.");
+
+        var extension = Path.GetExtension(full);
+        if (!AllowedExtensions.TryGetValue(extension, out var isImage))
+            return Refuse(full, $"Тип файла «{extension}» не разрешён. Допустимы: {string.Join(", ", AllowedExtensions.Keys)}.");
+
+        var file = new FileInfo(full);
+        if (!file.Exists)
+            return Refuse(full, "Файл не найден.");
+
+        var asPhoto = isImage && !asDocument;
+        var limits = broker.ChannelLimits;
+        var limit = asPhoto ? limits.PhotoBytes : limits.DocumentBytes;
+        if (file.Length > limit)
+            return Refuse(full, $"Файл слишком большой: {file.Length.Bytes}, предел канала — {limit.Bytes}.");
+
+        var trimmedCaption = caption is { Length: > 0 } ? Text.Clip(caption.Trim(), limits.CaptionLength) : null;
+
+        logger.LogInformation("Агент отправляет файл: {Path} ({Size})", full, file.Length.Bytes);
+
+        try
+        {
+            await using var content = new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            await broker.SendFileAsync(file.Name, content, trimmedCaption, asPhoto, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return Refuse(full, "Запрос отменён пользователем.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ChannelRequestException or InvalidOperationException)
+        {
+            logger.LogWarning(ex, "Не удалось отправить файл {Path}", full);
+            return Refuse(full, $"Не удалось отправить файл: {ex.Message}");
+        }
+
+        Audit(AuditKinds.FileSend, $"{Path.GetFileName(full)} ({file.Length.Bytes})", asPhoto ? "photo" : "document");
+        return FileSendResult.Ok();
+    }
+
+    /// <summary>Отказ — тоже в журнал: попытка выслать чужой файл важнее удачной отправки.</summary>
+    private FileSendResult Refuse(string path, string reason)
+    {
+        logger.LogWarning("Отказ в отправке файла {Path}: {Reason}", path, reason);
+        Audit(AuditKinds.FileSend, $"{Text.Preview(path, 120)}: {reason}", "refused");
+        return FileSendResult.Refused(reason);
+    }
+
+    /// <summary>
+    /// Путь внутри папки: сравнение с разделителем, иначе «C:\proj-old» считался бы частью
+    /// «C:\proj». Оба пути уже нормализованы.
+    /// </summary>
+    private static bool IsInside(string path, string directory)
+    {
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        return path.StartsWith(directory + Path.DirectorySeparatorChar, comparison);
     }
 
     /// <summary>Самое важное поле инструмента — команда или путь к файлу.</summary>

@@ -9,6 +9,7 @@ public static class AuditKinds
     public const string RunEnd = "run.end";
     public const string Approval = "approval";
     public const string Question = "question";
+    public const string FileSend = "file.send";
     public const string Settings = "settings";
     public const string Rules = "rules";
     public const string SessionReset = "session.reset";

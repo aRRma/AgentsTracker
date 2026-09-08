@@ -25,6 +25,14 @@ public static class DisplayFormat
             < 1_000_000 => (count / 1_000d).ToString("0.#", CultureInfo.InvariantCulture) + "k",
             _ => (count / 1_000_000d).ToString("0.##", CultureInfo.InvariantCulture) + "M",
         };
+
+        /// <summary>Размер файла: «512 Б», «3,4 КБ», «12 МБ».</summary>
+        public string Bytes => count switch
+        {
+            < 1024 => $"{count} Б",
+            < 1024 * 1024 => (count / 1024d).ToString("0.#", CultureInfo.InvariantCulture) + " КБ",
+            _ => (count / (1024d * 1024)).ToString("0.#", CultureInfo.InvariantCulture) + " МБ",
+        };
     }
 
     extension(TimeSpan span)

@@ -8,4 +8,13 @@ namespace AgentsTracker.Channels;
 /// <param name="MessageLength">Сколько символов готового текста влезает в одно сообщение.</param>
 /// <param name="ButtonLabelLength">Предел подписи на кнопке.</param>
 /// <param name="ButtonDataBytes">Предел данных кнопки в байтах UTF-8.</param>
-public sealed record ChannelLimits(int MessageLength, int ButtonLabelLength, int ButtonDataBytes);
+/// <param name="DocumentBytes">Предел размера файла-документа в байтах.</param>
+/// <param name="PhotoBytes">Предел размера фото в байтах.</param>
+/// <param name="CaptionLength">Предел подписи к файлу или фото в символах.</param>
+public sealed record ChannelLimits(
+    int MessageLength,
+    int ButtonLabelLength,
+    int ButtonDataBytes,
+    long DocumentBytes,
+    long PhotoBytes,
+    int CaptionLength);

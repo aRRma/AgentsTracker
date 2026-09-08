@@ -46,6 +46,15 @@ public interface IChatChannel
     /// <summary>Текст файлом: то, что в сообщение не влезает (длинный код, полный ввод инструмента).</summary>
     Task<MessageRef> SendFileAsync(ChatId chat, string fileName, string text, CancellationToken ct);
 
+    /// <summary>
+    /// Файл как есть, документом. Поток, а не путь: файлы открывает хост, канал только
+    /// передаёт. Размер и подпись — под <see cref="ChannelLimits"/>, проверяет вызывающий.
+    /// </summary>
+    Task<MessageRef> SendDocumentAsync(ChatId chat, string fileName, Stream content, string? caption, CancellationToken ct);
+
+    /// <summary>Картинка фотографией: мессенджер покажет её в ленте, но может сжать.</summary>
+    Task<MessageRef> SendPhotoAsync(ChatId chat, string fileName, Stream content, string? caption, CancellationToken ct);
+
     Task EditAsync(MessageRef message, OutgoingMessage content, CancellationToken ct);
 
     Task DeleteAsync(MessageRef message, CancellationToken ct);
