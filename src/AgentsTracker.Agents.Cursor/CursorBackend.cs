@@ -170,7 +170,7 @@ public sealed class CursorBackend(
 
         string[] markers =
         [
-            "usage limit", "usage limit exceeded", "rate limit", "rate_limit",
+            "429", "usage limit", "usage limit exceeded", "rate limit", "rate_limit",
             "too many requests", "quota",
         ];
 

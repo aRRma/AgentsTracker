@@ -660,6 +660,27 @@ internal sealed class CursorAcpClient : IAsyncDisposable
         _ => id.ToString(),
     };
 
+    private void WriteMethodNotFound(JsonElement id, string method) =>
+        TryWrite(new
+        {
+            jsonrpc = "2.0",
+            id = RawId(id),
+            error = new { code = -32601, message = $"Method not found: {method}" },
+        });
+
+    private void TryWrite(object payload)
+    {
+        try { Write(payload); }
+        catch (Exception ex) { _logger.LogDebug(ex, "Ответ ACP не ушёл: процесс уже мёртв"); }
+    }
+
+    /// <summary>Не путать с «not authenticated»: там тоже есть слово authenticated.</summary>
+    private static bool AlreadyLoggedIn(string text)
+    {
+        string[] markers = ["already authenticated", "already logged in", "not required", "no authentication"];
+        return markers.Any(marker => text.Contains(marker, StringComparison.OrdinalIgnoreCase));
+    }
+
     private static bool LooksUnsupported(string text, string method) =>
         text.Contains(method, StringComparison.OrdinalIgnoreCase)
         && (text.Contains("not found", StringComparison.OrdinalIgnoreCase)
