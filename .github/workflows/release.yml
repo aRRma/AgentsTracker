@@ -1,0 +1,84 @@
+name: Релиз
+
+# Публикация по тегу: git tag v0.1.0 && git push origin v0.1.0.
+on:
+  push:
+    tags: [ 'v*' ]
+
+# Единственное право, которое нужно шагу gh release create.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Версия из тега
+        id: version
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          # Version в сборке — без буквы v: 1.2.3, а не v1.2.3.
+          "tag=$tag"                     >> $env:GITHUB_OUTPUT
+          "number=$($tag -replace '^v')" >> $env:GITHUB_OUTPUT
+
+      - name: Публикация (со средой выполнения)
+        run: >
+          dotnet publish src/AgentsTracker.Gateway -c Release
+          -r win-x64 --self-contained true
+          -p:Version=${{ steps.version.outputs.number }}
+          -o publish/self-contained
+
+      - name: Публикация (нужен .NET 10)
+        run: >
+          dotnet publish src/AgentsTracker.Gateway -c Release
+          -r win-x64 --self-contained false
+          -p:Version=${{ steps.version.outputs.number }}
+          -o publish/framework-dependent
+
+      - name: Упаковать
+        shell: pwsh
+        run: |
+          $tag = '${{ steps.version.outputs.tag }}'
+          New-Item -ItemType Directory assets | Out-Null
+
+          foreach ($kind in 'self-contained', 'framework-dependent') {
+            $dir = "publish/$kind"
+
+            # Страховка: dotnet publish кладёт рядом с exe appsettings.Local.json с открытым
+            # токеном, если он есть у сборщика. В репозитории его нет, но в архив релиза
+            # такой файл не должен попасть ни при каких условиях.
+            Remove-Item "$dir/appsettings.Local.json" -ErrorAction SilentlyContinue
+            Remove-Item "$dir/appsettings.Development.json" -ErrorAction SilentlyContinue
+
+            # Инструкция в корне архива: Блокнот открывает txt по двойному щелчку,
+            # а BOM спасает кириллицу от кракозябр в старых сборках Windows.
+            Get-Content docs/install-quickstart.txt -Raw |
+              Set-Content "$dir/УСТАНОВКА.txt" -Encoding utf8BOM
+
+            $suffix = if ($kind -eq 'self-contained') { 'win-x64-self-contained' } else { 'win-x64' }
+            Compress-Archive "$dir/*" "assets/AgentsTracker-$tag-$suffix.zip"
+          }
+
+          Get-ChildItem assets | Select-Object Name, @{ n = 'МБ'; e = { [math]::Round($_.Length / 1MB, 1) } }
+
+      - name: Создать релиз
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ steps.version.outputs.tag }}'
+          $notes = "docs/release-notes/$tag.md"
+
+          # Заметки к версии лежат в репозитории; если файла нет — GitHub соберёт список коммитов.
+          $source = if (Test-Path $notes) { @('--notes-file', $notes) } else { @('--generate-notes') }
+
+          gh release create $tag (Get-ChildItem assets | ForEach-Object FullName) `
+            --title $tag @source

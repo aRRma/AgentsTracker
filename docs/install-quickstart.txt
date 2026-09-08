@@ -1,0 +1,50 @@
+AgentsTracker — мостик между Telegram и Claude Code.
+Пишете боту → агент работает в папке проекта на этом ПК → вопросы «можно?» приходят кнопками.
+
+ЧТО НУЖНО НА МАШИНЕ
+  • Windows 10/11.
+  • Claude Code: проверка «claude --version». Если нет — в PowerShell:
+      irm https://claude.ai/install.ps1 | iex
+    затем откройте новое окно, запустите «claude» и войдите по подписке.
+  • Бот в Telegram: у @BotFather команда /newbot, скопируйте токен.
+  • Только для архива AgentsTracker-<версия>-win-x64.zip — .NET 10 Runtime
+    (ASP.NET Core Runtime): https://dotnet.microsoft.com/download/dotnet/10.0
+    В архиве ...-win-x64-self-contained.zip среда выполнения уже внутри.
+
+УСТАНОВКА
+  1. Распакуйте архив в постоянную папку вне репозиториев, например C:\Apps\AgentsTracker.
+
+  2. Скопируйте рядом appsettings.Local.example.json как appsettings.Local.json
+     и заполните три значения:
+       Gateway:Channel:Settings:BotToken — токен от @BotFather
+       Gateway:ProjectPath              — папка проекта, в которой будет работать агент
+       Gateway:Channel:Settings:AllowedUserIds — ваш числовой id, его узнаем на шаге 3
+
+  3. Узнайте свой id. Запустите exe в консоли и напишите боту что угодно:
+       .\AgentsTracker.Gateway.exe
+     В консоли появится строка «Отклонено сообщение от постороннего пользователя.
+     Пользователь: telegram:123456789». Номер (без «telegram:») впишите в AllowedUserIds:
+       "AllowedUserIds": [ 123456789 ]
+     Закройте консоль по Ctrl+C. Кроме вас в бота никто не попадёт.
+
+  4. Поставьте на автозапуск:
+       .\AgentsTracker.Gateway.exe install --start
+
+     Команда зарегистрирует задачу Планировщика (запуск при входе в Windows), перенесёт
+     настройки в %LOCALAPPDATA%\AgentsTracker и зашифрует токен через DPAPI: расшифровать
+     его сможет только ваша учётная запись.
+
+ПРОВЕРКА
+  В Telegram придёт «🔌 Шлюз запущен». Напишите боту /help — там весь список команд.
+  Веб-монитор: http://127.0.0.1:5100 (только с этой машины, пароля у него нет).
+
+ОБНОВЛЕНИЕ И УДАЛЕНИЕ
+  Обновить: uninstall → распаковать новый архив поверх → install --start.
+  Снять:    .\AgentsTracker.Gateway.exe uninstall   — данные и настройки остаются.
+
+ЕСЛИ НЕ ЗАПУСКАЕТСЯ
+  Шлюз намеренно завершается с ошибкой, когда настройки неполные, — причина печатается
+  первой строкой. Задача Планировщика работает, пока вы вошли в Windows: под SYSTEM
+  Claude Code не видит вашего входа в аккаунт.
+
+Полная документация: https://github.com/aRRma/AgentsTracker
