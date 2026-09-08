@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\AgentsTracker.Agents.Abstractions\AgentsTracker.Agents.Abstractions.csproj" />
     <ProjectReference Include="..\AgentsTracker.Agents.Claude\AgentsTracker.Agents.Claude.csproj" />
+    <ProjectReference Include="..\AgentsTracker.Agents.Cursor\AgentsTracker.Agents.Cursor.csproj" />
     <ProjectReference Include="..\AgentsTracker.Channels.Abstractions\AgentsTracker.Channels.Abstractions.csproj" />
     <ProjectReference Include="..\AgentsTracker.Channels.Telegram\AgentsTracker.Channels.Telegram.csproj" />
   </ItemGroup>

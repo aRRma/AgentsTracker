@@ -1,4 +1,5 @@
 using AgentsTracker.Agents.Claude;
+using AgentsTracker.Agents.Cursor;
 using AgentsTracker.Channels.Telegram;
 using AgentsTracker.Gateway.Features.Approvals;
 using AgentsTracker.Gateway.Features.Audit;
@@ -24,7 +25,7 @@ if (ConsoleCommands.TryRun(args, channels, Console.Out, out var commandExitCode)
 
 // Единственное место, где хост знает конкретных агентов. Новый агент — свой проект
 // с IAgentBackendModule и строка здесь.
-IReadOnlyList<IAgentBackendModule> agents = [new ClaudeAgentModule()];
+IReadOnlyList<IAgentBackendModule> agents = [new ClaudeAgentModule(), new CursorAgentModule()];
 
 // Порядок важен: текстовые обработчики опрашиваются в порядке регистрации, а ChatModule
 // ловит всё — ему место последним.

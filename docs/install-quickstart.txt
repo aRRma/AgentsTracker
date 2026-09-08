@@ -1,11 +1,14 @@
-AgentsTracker — мостик между Telegram и Claude Code.
+AgentsTracker — мостик между Telegram и агентом (Claude Code или Cursor CLI).
 Пишете боту → агент работает в папке проекта на этом ПК → вопросы «можно?» приходят кнопками.
 
 ЧТО НУЖНО НА МАШИНЕ
   • Windows 10/11.
-  • Claude Code: проверка «claude --version». Если нет — в PowerShell:
+  • Агент. Claude Code: «claude --version»; если нет —
       irm https://claude.ai/install.ps1 | iex
-    затем откройте новое окно, запустите «claude» и войдите по подписке.
+    затем в новом окне «claude» и вход по подписке.
+    Cursor CLI: «agent --version»; если нет —
+      irm 'https://cursor.com/install?win32=true' | iex
+    затем «agent login». В appsettings.Local.json поставьте Gateway:Agent = cursor.
   • Бот в Telegram: у @BotFather команда /newbot, скопируйте токен.
   • Только для архива AgentsTracker-<версия>-win-x64.zip — .NET 10 Runtime
     (ASP.NET Core Runtime): https://dotnet.microsoft.com/download/dotnet/10.0

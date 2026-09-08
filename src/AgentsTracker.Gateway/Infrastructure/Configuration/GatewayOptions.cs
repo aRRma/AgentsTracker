@@ -47,8 +47,8 @@ public sealed class GatewayOptions
     public int ProjectsRootDepth { get; set; } = 3;
 
     /// <summary>
-    /// Какой агент стоит за шлюзом: ключ модуля бэкенда (<c>claude</c>). Настройки самого
-    /// агента — в одноимённой подсекции (<c>Gateway:Claude</c>), хост их не читает.
+    /// Какой агент стоит за шлюзом: ключ модуля бэкенда (<c>claude</c> или <c>cursor</c>).
+    /// Настройки самого агента — в одноимённой подсекции, хост их не читает.
     /// </summary>
     public string Agent { get; set; } = "claude";
 

@@ -5,19 +5,21 @@
 </p>
 
 <p align="center">
-  Telegram-бот, через который вы ставите задачи Claude Code на своём компьютере.<br>
-  Пишете боту — на ПК запускается <code>claude</code> в папке проекта — ответ приходит в чат.
+  Telegram-бот, через который вы ставите задачи агенту на своём компьютере.<br>
+  Пишете боту — на ПК запускается Claude Code или Cursor CLI в папке проекта — ответ приходит в чат.
 </p>
 
 <p align="center">
   <img alt=".NET 10" src="https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white">
   <img alt="Windows" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white">
   <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-CLI-D97757">
+  <img alt="Cursor" src="https://img.shields.io/badge/Cursor-CLI-000000">
   <img alt="Telegram" src="https://img.shields.io/badge/Telegram-Bot%20API-26A5E4?logo=telegram&logoColor=white">
 </p>
 
 Каждое опасное действие агент подтверждает у вас кнопкой. Разговор не теряется между
 сообщениями и перезапусками. Компьютер должен быть включён, белый IP не нужен.
+Агент выбирается ключом `Gateway:Agent`: `claude` или `cursor`.
 
 ## Как это выглядит
 
@@ -88,8 +90,8 @@
 |---|---|---|
 | Windows 10/11 | — | на macOS и Linux пока только Docker |
 | .NET 10 SDK | `dotnet --list-sdks` → строка `10.x` | [скачать SDK](https://dotnet.microsoft.com/download/dotnet/10.0) (не Runtime) |
-| Claude Code | `claude --version` | `irm https://claude.ai/install.ps1 \| iex`, открыть новое окно |
-| Вход в Claude | `claude` стартует без просьбы войти | запустить `claude` и войти по подписке |
+| Агент | для Claude: `claude --version`; для Cursor: `agent --version` | Claude: `irm https://claude.ai/install.ps1 \| iex`. Cursor: `irm 'https://cursor.com/install?win32=true' \| iex` |
+| Вход в агента | CLI стартует без просьбы войти | `claude` или `agent login` |
 | Telegram доступен | `curl.exe -sI https://api.telegram.org` | указать `Proxy` в настройках |
 
 Node.js не нужен. Git — по желанию: меню проектов ищет папки с `.git`.
@@ -208,15 +210,17 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 | `Channel:Settings:Proxy` | прокси только для этого канала; нет — берётся общий `Proxy` |
 | `ProjectPath` | папка проекта по умолчанию |
 | `Projects` / `ProjectsRoot` | какие папки показывать в меню выбора проекта |
-| `Agent` | какой агент за шлюзом; пока только `claude` |
+| `Agent` | какой агент за шлюзом: `claude` или `cursor` |
 | `Claude:Executable` | путь к `claude.exe`, если автопоиск не нашёл |
 | `Claude:BuiltInSkills` | встроенные скиллы для `/skills`, строки `"/команда \| описание \| подсказка аргументов"` |
-| `Model`, `Effort` | модель и глубина размышлений по умолчанию |
-| `PermissionMode` | что можно без спроса. Из чата переключаются `plan`, `default`, `acceptEdits`, `auto`; полное снятие подтверждений (`dontAsk`, `bypassPermissions`) — только здесь, в файле |
+| `Cursor:Executable` | путь к `agent`, если автопоиск не нашёл |
+| `Cursor:ApiKey` | необязательно; лучше `agent login` |
+| `Model`, `Effort` | модель и глубина размышлений по умолчанию. У Cursor `Effort` нет — кнопка в меню скрыта |
+| `PermissionMode` | что можно без спроса. У Claude из чата: `plan`, `default`, `acceptEdits`, `auto`. У Cursor: `plan`, `ask`, `default`, `auto`. Полное снятие (`dontAsk`, у Claude ещё `bypassPermissions`) — только здесь, в файле |
 | `Proxy` | общий прокси машины: агент и канал, у которого нет своего |
 | `MonitorPort` | порт веб-монитора (5100), `0` — выключить |
 | `MonitorBind` | где слушать монитор: `loopback` (по умолчанию) или `any` для контейнера |
-| `McpPort` | порт, по которому `claude` спрашивает разрешения у бота (5099) |
+| `McpPort` | порт, по которому Claude спрашивает разрешения у бота (5099). Cursor спрашивает по stdin ACP, этот порт ему не нужен |
 | `DataDirectory` | где хранить состояние и аудит; задаётся до остального конфига — в `appsettings.json` рядом с exe или переменной `Gateway__DataDirectory` |
 | `ApprovalTimeoutMinutes`, `RunTimeoutMinutes` | сколько минут ждать ответа на карточку (15) и всю задачу (60). Первое шлюз передаёт и самому агенту — иначе тот бросит ждать через 5 минут |
 
@@ -266,8 +270,8 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 | `Gateway:BotToken больше не читается` | настройки канала переехали в `Gateway:Channel:Settings`; перенести — `pwsh -File scripts\migrate-channel-settings.ps1` (рядом останется `.backup`) |
 | Правка настроек не подействовала | нужен перезапуск |
 | В меню не все репозитории | не задан `ProjectsRoot`; список листается `◀ ▶` |
-| `claude` не найден | не поставлен CLI или не открыто новое окно PowerShell; крайний случай — `Claude:Executable` |
-| Агент просит войти в аккаунт | запустите `claude` в PowerShell и войдите; бот использует этот вход |
+| `claude` / `agent` не найден | не поставлен CLI или не открыто новое окно PowerShell; крайний случай — `Claude:Executable` / `Cursor:Executable` |
+| Агент просит войти в аккаунт | запустите `claude` или `agent login` в PowerShell; бот использует этот вход |
 | Сборка падает с `MSB3021` | шлюз запущен и держит файлы. Установленный — `AgentsTracker.Gateway.exe uninstall` (снимает и останавливает), запущенный вручную — `Get-Process AgentsTracker.Gateway \| Stop-Process -Force` |
 | Кнопки не приходят | `PermissionMode` стоит `auto` — поставьте `default` |
 | В логе кракозябры | консоль в cp866; смотрите лог в PowerShell |

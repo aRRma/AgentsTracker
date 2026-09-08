@@ -14,6 +14,7 @@ WORKDIR /src
 COPY AgentsTracker.slnx ./
 COPY src/AgentsTracker.Agents.Abstractions/*.csproj src/AgentsTracker.Agents.Abstractions/
 COPY src/AgentsTracker.Agents.Claude/*.csproj src/AgentsTracker.Agents.Claude/
+COPY src/AgentsTracker.Agents.Cursor/*.csproj src/AgentsTracker.Agents.Cursor/
 COPY src/AgentsTracker.Channels.Abstractions/*.csproj src/AgentsTracker.Channels.Abstractions/
 COPY src/AgentsTracker.Channels.Telegram/*.csproj src/AgentsTracker.Channels.Telegram/
 COPY src/AgentsTracker.Gateway/*.csproj src/AgentsTracker.Gateway/

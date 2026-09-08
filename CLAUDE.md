@@ -11,10 +11,11 @@
 
 ## Что это
 
-Мостик между Telegram и Claude Code. Одно приложение .NET 10 на всегда включённом ПК:
-сообщение из чата → `claude -p` в папке проекта → вопросы «можно?» кнопками в Telegram → ответ
-агента обратно в чат. Разрабатывается на Windows; в контейнере работает на Linux, отдельной
-установки для macOS и Linux пока нет.
+Мостик между Telegram и агентом (Claude Code или Cursor CLI). Одно приложение .NET 10 на
+всегда включённом ПК: сообщение из чата → процесс агента в папке проекта → вопросы «можно?»
+кнопками в Telegram → ответ обратно в чат. Агент выбирается ключом `Gateway:Agent`.
+Разрабатывается на Windows; в контейнере работает на Linux, отдельной установки для macOS
+и Linux пока нет.
 
 Код, комментарии, лог и тексты в чате — на русском.
 
@@ -122,6 +123,12 @@ src/AgentsTracker.Agents.Claude/         Claude Code за этими контр�
   ClaudeCapabilities    какие модели, effort и режимы принимает CLI; Selectable — что даётся из чата
   ClaudeLimits, ClaudeSkillCatalog, ClaudePluginRegistry, ClaudeCliLocator, ClaudeStreamEvent
   Mcp/                  McpConfigFile — mcp-gateway-<pid>.json с токеном; ClaudePermissionTool — payload CLI ↔ IOperatorConsole
+src/AgentsTracker.Agents.Cursor/         Cursor CLI за теми же контрактами:
+  CursorBackend         процесс agent acp (JSON-RPC по stdin/stdout)
+  CursorCapabilities    модели auto/composer-2.5; effort нет; режимы plan/ask/default/auto
+  CursorSkillCatalog    .cursor/skills и .agents/skills; плагины из чата не переключаются
+  CursorAcpClient       session/new|load|prompt, request_permission → IOperatorConsole
+  NoAgentLimits         остатка тарифа Cursor не опрашиваем; 429/usage limit → RateLimited
 src/AgentsTracker.Channels.Abstractions/ контракты канала, без конкретного мессенджера:
   IChatChannel          адреса и лимиты канала, ConnectAsync/ListenAsync, Send/Edit/Delete/Acknowledge
   ChatId, UserId        адрес как значение; Key — «канал:значение» для state.json, аудита и лога
@@ -177,10 +184,11 @@ src/AgentsTracker.Gateway/
 Шлюз и запускает агента, и обслуживает его:
 
 ```
-канал ──▶ ChatDispatcher ──▶ ChatWorker ──▶ ClaudeBackend ──▶ claude.exe -p
-                    ▲                                                     │ нужно разрешение
-                    └── ApprovalBroker ◀── OperatorConsole ◀── ClaudePermissionTool ◀── MCP http://127.0.0.1:<McpPort>/mcp
-                                                                              Authorization: Bearer <токен>
+канал ──▶ ChatDispatcher ──▶ ChatWorker ──▶ IAgentBackend
+                    ▲                         │ claude -p  или  agent acp
+                    └── ApprovalBroker ◀── OperatorConsole
+                           Claude: ClaudePermissionTool ◀── MCP 127.0.0.1:<McpPort>/mcp
+                           Cursor: CursorAcpClient     ◀── session/request_permission
 ```
 
 `McpConfigFile` при старте генерирует токен, пишет `mcp-gateway-<pid>.json` и удаляет его при
