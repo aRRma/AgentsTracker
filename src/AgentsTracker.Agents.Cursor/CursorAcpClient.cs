@@ -76,12 +76,9 @@ internal sealed class CursorAcpClient : IAsyncDisposable
             StandardErrorEncoding = new UTF8Encoding(false),
         };
 
-        // Ключ только аргументом: в лог командной строки его не пишем.
+        // Ключ только в окружении: в списке процессов и в логе командной строки его не видно.
         if (apiKey is { Length: > 0 })
-        {
-            psi.ArgumentList.Add("--api-key");
-            psi.ArgumentList.Add(apiKey);
-        }
+            psi.Environment["CURSOR_API_KEY"] = apiKey;
 
         if (model is { Length: > 0 })
         {
@@ -132,11 +129,23 @@ internal sealed class CursorAcpClient : IAsyncDisposable
 
         try
         {
-            await SendAsync("authenticate", new { methodId = "cursor_login" }, ct);
+            // Браузерный login из headless зависает навсегда — 20 с хватит понять, что входа нет.
+            using var authCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            authCts.CancelAfter(TimeSpan.FromSeconds(20));
+            await SendAsync("authenticate", new { methodId = "cursor_login" }, authCts.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new CursorAcpException(
+                "Cursor CLI не ответил на вход. В PowerShell выполните «agent login» "
+                + "или задайте Gateway:Cursor:ApiKey / CURSOR_API_KEY.");
+        }
+        catch (CursorAcpException ex) when (AlreadyLoggedIn(ex.Message))
+        {
+            // Повторный authenticate на уже вошедшем CLI не должен валить запуск.
         }
         catch (CursorAcpException ex)
         {
-            // Без входа дальше session/new всё равно отвалится — сразу понятный текст.
             throw new CursorAcpException(
                 "Cursor CLI не вошёл в аккаунт. В PowerShell выполните «agent login» "
                 + "или задайте Gateway:Cursor:ApiKey / CURSOR_API_KEY.",
@@ -156,23 +165,20 @@ internal sealed class CursorAcpClient : IAsyncDisposable
     {
         try
         {
-            await SendAsync("session/load", new { sessionId, cwd, mcpServers = Array.Empty<object>() }, ct);
-        }
-        catch (CursorAcpException ex) when (LooksLost(ex.Message, sessionId))
-        {
-            throw new CursorSessionLostException(sessionId, ex);
-        }
-        catch (CursorAcpException ex) when (LooksUnsupported(ex.Message, "session/load"))
-        {
-            // Часть CLI отдаёт только session/resume без переигрывания истории.
             try
             {
+                await SendAsync("session/load", new { sessionId, cwd, mcpServers = Array.Empty<object>() }, ct);
+            }
+            catch (CursorAcpException ex) when (LooksUnsupported(ex.Message, "session/load"))
+            {
+                // Часть CLI отдаёт только session/resume без переигрывания истории.
                 await SendAsync("session/resume", new { sessionId, cwd, mcpServers = Array.Empty<object>() }, ct);
             }
-            catch (CursorAcpException resumeEx) when (LooksLost(resumeEx.Message, sessionId))
-            {
-                throw new CursorSessionLostException(sessionId, resumeEx);
-            }
+        }
+        catch (CursorAcpException ex)
+        {
+            // Любой отказ — битый id: иначе он переживёт перезапуск и будет валить каждый запуск.
+            throw new CursorSessionLostException(sessionId, ex);
         }
 
         await TrySetModeAsync(sessionId, permissionMode, ct);
@@ -180,6 +186,9 @@ internal sealed class CursorAcpClient : IAsyncDisposable
 
     public async Task<CursorPromptResult> PromptAsync(string sessionId, string text, CancellationToken ct)
     {
+        _answer.Clear();
+        _turns = 0;
+        _usedTokens = 0;
         _collectText = true;
         try
         {
@@ -354,8 +363,15 @@ internal sealed class CursorAcpClient : IAsyncDisposable
             var method = methodEl.GetString()!;
             var id = idEl.Clone();
             var parameters = root.TryGetProperty("params", out var p) ? p.Clone() : default;
-            // Ответ с карточки не должен стопорить разбор stdout: иначе пайп заполнится.
-            _ = HandleRequestAsync(method, id, parameters);
+
+            // Без ответа CLI ждёт вечно. Неизвестное — сразу -32601; карточки — не в этом потоке.
+            if (method is not ("session/request_permission" or "cursor/ask_question" or "cursor/create_plan"))
+            {
+                WriteMethodNotFound(id, method);
+                return;
+            }
+
+            _ = Task.Run(() => HandleRequestAsync(method, id, parameters));
             return;
         }
 
@@ -394,16 +410,16 @@ internal sealed class CursorAcpClient : IAsyncDisposable
                 _ => throw new CursorAcpException($"неизвестный метод {method}"),
             };
 
-            Write(new { jsonrpc = "2.0", id = RawId(id), result });
+            TryWrite(new { jsonrpc = "2.0", id = RawId(id), result });
         }
         catch (OperationCanceledException)
         {
-            Write(new { jsonrpc = "2.0", id = RawId(id), result = new { outcome = new { outcome = "cancelled" } } });
+            TryWrite(new { jsonrpc = "2.0", id = RawId(id), result = new { outcome = new { outcome = "cancelled" } } });
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "ACP-запрос {Method} не обработан", method);
-            Write(new
+            TryWrite(new
             {
                 jsonrpc = "2.0",
                 id = RawId(id),
@@ -429,7 +445,7 @@ internal sealed class CursorAcpClient : IAsyncDisposable
                 if (TryText(update, out var chunk)) _answer.Append(chunk);
                 break;
 
-            case "tool_call":
+            case "tool_call" when _collectText:
                 _turns++;
                 Report(DescribeTool(update));
                 break;
@@ -633,7 +649,7 @@ internal sealed class CursorAcpClient : IAsyncDisposable
     private static long? IdKey(JsonElement id) => id.ValueKind switch
     {
         JsonValueKind.Number when id.TryGetInt64(out var n) => n,
-        JsonValueKind.String when long.TryParse(id.GetString(), out var n) => n,
+        JsonValueKind.String when long.TryParse(id.GetString(), CultureInfo.InvariantCulture, out var n) => n,
         _ => null,
     };
 
