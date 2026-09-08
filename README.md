@@ -37,15 +37,22 @@
 > **Бот:** Причина — `First()` на пустой коллекции. Заменил на `FirstOrDefault` с проверкой,
 > тесты зелёные: 42 passed.
 
+**Живой чат:**
+
+<table align="center">
+  <tr>
+    <td align="center" width="50%"><img src="docs/images/bot-4.png" width="320" alt="Ответ агента в чате"><br><sub><b>Задача и ответ.</b> Спросили — агент прочитал проект и ответил</sub></td>
+    <td align="center" width="50%"><img src="docs/images/bot-1.png" width="320" alt="Меню настроек бота"><br><sub><b><code>/menu</code>.</b> Проект, модель, effort, режим и сессия — кнопками</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="docs/images/bot-3.png" width="320" alt="Экран скиллов"><br><sub><b><code>/skills</code>.</b> Скиллы по источникам и плагины Claude Code</sub></td>
+    <td align="center" width="50%"><img src="docs/images/bot-2.png" width="320" alt="Экран расхода и лимитов"><br><sub><b><code>/usage</code>.</b> Остаток тарифа, расход по дням и моделям</sub></td>
+  </tr>
+</table>
+
 <p align="center">
   <img src="docs/images/architecture.png" alt="Архитектура AgentsTracker">
 </p>
-
-**Переключение из чата:**
-
-> `/project` → выбрать репозиторий кнопками
-> `/model opus` · `/effort high` · `/mode plan`
-> `/status` → что делает агент сейчас и сколько осталось по тарифу
 
 **Веб-монитор** на этом же ПК (<http://127.0.0.1:5100/>): текущая задача, очередь,
 история, статистика, аудит и лог.
@@ -236,7 +243,7 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 | В меню не все репозитории | не задан `ProjectsRoot`; список листается `◀ ▶` |
 | `claude` не найден | не поставлен CLI или не открыто новое окно PowerShell; крайний случай — `Claude:Executable` |
 | Агент просит войти в аккаунт | запустите `claude` в PowerShell и войдите; бот использует этот вход |
-| Сборка падает с `MSB3021` | шлюз запущен — остановите его: `AgentsTracker.Gateway.exe uninstall` |
+| Сборка падает с `MSB3021` | шлюз запущен и держит файлы. Установленный — `AgentsTracker.Gateway.exe uninstall` (снимает и останавливает), запущенный вручную — `Get-Process AgentsTracker.Gateway \| Stop-Process -Force` |
 | Кнопки не приходят | `PermissionMode` стоит `auto` — поставьте `default` |
 | В логе кракозябры | консоль в cp866; смотрите лог в PowerShell |
 | Монитор из контейнера не открывается | порт опубликован? внутри нужен `Gateway__MonitorBind=any` |
