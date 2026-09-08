@@ -113,7 +113,13 @@ Node.js не нужен. Git — по желанию: меню проектов 
 
 ## Постоянная установка
 
-Публикация и автозапуск при входе в Windows — две команды:
+Без сборки из исходников: на странице [Releases](https://github.com/aRRma/AgentsTracker/releases)
+лежит готовый архив под Windows x64 — `…-self-contained.zip` со средой выполнения внутри
+(.NET на машине не нужен) и обычный, которому нужен установленный .NET 10 Runtime. Распакуйте
+вне репозитория, заполните `appsettings.Local.json` и выполните `install --start`; короткая
+инструкция — в `УСТАНОВКА.txt` внутри архива.
+
+Из исходников публикация и автозапуск при входе в Windows — две команды:
 
 ```powershell
 dotnet publish src\AgentsTracker.Gateway -c Release -o C:\Apps\AgentsTracker
