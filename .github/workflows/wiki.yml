@@ -11,6 +11,12 @@ on:
       - '.github/workflows/wiki.yml'
   workflow_dispatch:
 
+# Два пуша в master подряд — два запуска на один репозиторий вики: второй получил бы
+# non-fast-forward. Очередь из одного, отменять начатый нельзя — он уже мог запушить.
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+
 permissions:
   contents: write
 

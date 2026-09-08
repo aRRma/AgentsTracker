@@ -84,13 +84,21 @@ function Write-Page {
 
 # --- куда собираем ---------------------------------------------------------
 
+# Путь уходит и в [IO.File] (считает относительный от каталога процесса), и в git -C (от
+# каталога PowerShell): разойдясь, они разложат страницы мимо клона, и синхронизация молча
+# закончится словами «коммитить нечего». Поэтому приводим к абсолютному сразу.
 $cloned = $false
 if ($OutDir) {
-    $target = $OutDir
+    $target = [IO.Path]::GetFullPath($OutDir, $PWD.Path)
+    # Папку предпросмотра называет человек, а скрипт удаляет в ней страницы: -OutDir docs
+    # или -OutDir . стёр бы исходную документацию.
+    if ($target -eq $root -or $target.StartsWith($root + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Папка предпросмотра лежит внутри репозитория ($target). Укажите -OutDir вне него."
+    }
     New-Item -ItemType Directory $target -Force | Out-Null
 }
 elseif ($WikiPath) {
-    $target = $WikiPath
+    $target = [IO.Path]::GetFullPath($WikiPath, $PWD.Path)
 }
 else {
     $target = Join-Path ([IO.Path]::GetTempPath()) "AgentsTracker.wiki-$(Get-Random)"
@@ -102,8 +110,17 @@ else {
     $cloned = $true
 }
 
-# Страницы пересобираются целиком: правки прямо в вики не переживут синхронизацию.
-Get-ChildItem $target -Filter *.md -File | Remove-Item
+$names = @('Home.md', '_Sidebar.md', '_Footer.md') + @($pages.Values | ForEach-Object { "$_.md" })
+
+if ($OutDir) {
+    # Папка предпросмотра чужая: чистим только свои страницы, соседние .md не наши.
+    foreach ($name in $names) { Remove-Item (Join-Path $target $name) -ErrorAction Ignore }
+}
+else {
+    # Клон вики пересобираем целиком: правки прямо в вики не переживут синхронизацию, а
+    # страница, исчезнувшая из docs/, должна исчезнуть и здесь.
+    Get-ChildItem $target -Filter *.md -File | Remove-Item
+}
 
 # --- страницы --------------------------------------------------------------
 
@@ -149,13 +166,27 @@ if (-not (git -C $target status --porcelain)) {
 }
 
 git -C $target commit -q -m "Синхронизация с репозиторием"
+# Без проверки отказ коммита (нет user.email, подпись, hook) утёк бы в пустой пуш, и скрипт
+# отрапортовал бы «Вики обновлена», ничего не отправив.
+if ($LASTEXITCODE -ne 0) { throw "Не удалось закоммитить страницы (клон остался в $target)" }
+
 if ($NoPush) {
     Write-Host "Коммит готов, пуш пропущен: $target"
     return
 }
 
 git -C $target push
-if ($LASTEXITCODE -ne 0) { throw "Не удалось отправить вики (клон остался в $target)" }
+if ($LASTEXITCODE -ne 0) {
+    # Между клоном и пушем в вики успели записать (соседний запуск workflow или правка руками).
+    # Наш набор страниц полный, поэтому просто подкладываемся под чужой коммит и пушим ещё раз.
+    Write-Host 'Пуш отклонён, повторяю после rebase.'
+    $wikiBranch = git -C $target rev-parse --abbrev-ref HEAD
+    git -C $target pull --rebase origin $wikiBranch
+    if ($LASTEXITCODE -ne 0) { throw "Вики изменилась, rebase не прошёл (клон остался в $target)" }
+
+    git -C $target push
+    if ($LASTEXITCODE -ne 0) { throw "Не удалось отправить вики (клон остался в $target)" }
+}
 
 Write-Host "Вики обновлена: https://github.com/$Repository/wiki"
 if ($cloned) { Remove-Item $target -Recurse -Force }
