@@ -13,6 +13,7 @@ namespace AgentsTracker.Gateway.Features.Approvals;
 /// </summary>
 public sealed class OperatorConsole(
     ApprovalBroker broker,
+    IChatChannel channel,
     SessionStore store,
     IAuditLog audit,
     RunMonitor monitor,
@@ -177,7 +178,8 @@ public sealed class OperatorConsole(
     /// <summary>
     /// Что агент может отправить в чат. Список в коде, а не в конфиге: расширять его —
     /// решение с последствиями (архив или exe из проекта уйдут наружу одним вызовом).
-    /// Картинки уходят фото, остальное — документом.
+    /// Картинки уходят фото, остальное — документом. Тот же список продублирован словами
+    /// в описании инструмента (ClaudeSendFileTool): меняя здесь — поправьте там.
     /// </summary>
     private static readonly Dictionary<string, bool> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -195,10 +197,11 @@ public sealed class OperatorConsole(
     public async Task<FileSendResult> SendFileAsync(FileSendRequest request, CancellationToken ct)
     {
         var (path, caption, asDocument) = request;
-        var project = store.ProjectPath;
+        var project = ProjectCatalog.Normalize(store.ProjectPath);
 
+        // Аргумент MCP может прийти null: в отказ идёт строка, а не NRE в превью.
         if (string.IsNullOrWhiteSpace(path))
-            return Refuse(path, "Путь к файлу пуст.");
+            return Refuse(path ?? "", "Путь к файлу пуст.");
 
         string full;
         try
@@ -213,7 +216,7 @@ public sealed class OperatorConsole(
         // Только папка текущего проекта: агент работает в ней, а шлюз читает файл сам, в обход
         // запретов Claude на чтение. Папка данных шлюза исключена отдельно — она вне проекта,
         // но пусть отказ не зависит от того, куда её перенесли.
-        if (!IsInside(full, ProjectCatalog.Normalize(project)) || IsInside(full, ProjectCatalog.Normalize(AppPaths.DataDirectory)))
+        if (!ProjectCatalog.IsInside(full, project) || ProjectCatalog.IsInside(full, DataDirectory))
             return Refuse(full, $"Файл вне папки текущего проекта ({project}). Отправлять можно только файлы из неё.");
 
         var extension = Path.GetExtension(full);
@@ -224,8 +227,13 @@ public sealed class OperatorConsole(
         if (!file.Exists)
             return Refuse(full, "Файл не найден.");
 
+        // Путь проверен как строка, а открывать файл будет ОС по ссылкам: symlink или junction
+        // внутри проекта, ведущие наружу, обошли бы проверку выше и отдали бы чужой файл.
+        if (CrossesLink(file, project))
+            return Refuse(full, "Путь проходит через символическую ссылку или junction — отправлять можно только сами файлы проекта.");
+
         var asPhoto = isImage && !asDocument;
-        var limits = broker.ChannelLimits;
+        var limits = channel.Limits;
         var limit = asPhoto ? limits.PhotoBytes : limits.DocumentBytes;
         if (file.Length > limit)
             return Refuse(full, $"Файл слишком большой: {file.Length.Bytes}, предел канала — {limit.Bytes}.");
@@ -236,15 +244,25 @@ public sealed class OperatorConsole(
 
         try
         {
-            await using var content = new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            // ReadWrite: файл может дописывать сборка или сам агент. Asynchronous — иначе на
+            // Windows ReadAsync читает синхронно и держит поток пула на всё время загрузки.
+            await using var content = new FileStream(full, new FileStreamOptions
+            {
+                Mode = FileMode.Open,
+                Access = FileAccess.Read,
+                Share = FileShare.ReadWrite,
+                Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
+            });
             await broker.SendFileAsync(file.Name, content, trimmedCaption, asPhoto, ct);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             return Refuse(full, "Запрос отменён пользователем.");
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ChannelRequestException or InvalidOperationException)
+        catch (Exception ex)
         {
+            // Любой сбой — отказом с записью в аудит: попытка отправки должна остаться в журнале,
+            // а таймаут клиента без отмены пользователем — не «отменено пользователем».
             logger.LogWarning(ex, "Не удалось отправить файл {Path}", full);
             return Refuse(full, $"Не удалось отправить файл: {ex.Message}");
         }
@@ -261,14 +279,20 @@ public sealed class OperatorConsole(
         return FileSendResult.Refused(reason);
     }
 
+    private static readonly string DataDirectory = ProjectCatalog.Normalize(AppPaths.DataDirectory);
+
     /// <summary>
-    /// Путь внутри папки: сравнение с разделителем, иначе «C:\proj-old» считался бы частью
-    /// «C:\proj». Оба пути уже нормализованы.
+    /// Сам файл или любая папка между ним и корнем проекта — точка повторного разбора.
+    /// Корень не проверяется: проект по ссылке — выбор пользователя, а не агента.
     /// </summary>
-    private static bool IsInside(string path, string directory)
+    private static bool CrossesLink(FileInfo file, string project)
     {
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        return path.StartsWith(directory + Path.DirectorySeparatorChar, comparison);
+        if (file.Attributes.HasFlag(FileAttributes.ReparsePoint)) return true;
+
+        for (var dir = file.Directory; dir is not null && !ProjectCatalog.Same(dir.FullName, project); dir = dir.Parent)
+            if (dir.Attributes.HasFlag(FileAttributes.ReparsePoint)) return true;
+
+        return false;
     }
 
     /// <summary>Самое важное поле инструмента — команда или путь к файлу.</summary>
