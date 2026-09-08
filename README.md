@@ -83,44 +83,65 @@
 
 ## Быстрый старт
 
+Готовое приложение со страницы [Releases](https://github.com/aRRma/AgentsTracker/releases):
+скачать, заполнить три значения, поставить на автозапуск. Ни SDK, ни клона репозитория не нужно.
+
 ### Что нужно
 
 | | Проверка | Если нет |
 |---|---|---|
 | Windows 10/11 | — | на macOS и Linux пока только Docker |
-| .NET 10 SDK | `dotnet --list-sdks` → строка `10.x` | [скачать SDK](https://dotnet.microsoft.com/download/dotnet/10.0) (не Runtime) |
 | Claude Code | `claude --version` | `irm https://claude.ai/install.ps1 \| iex`, открыть новое окно |
 | Вход в Claude | `claude` стартует без просьбы войти | запустить `claude` и войти по подписке |
+| Бот в Telegram | — | у [@BotFather](https://t.me/BotFather) команда `/newbot`, скопировать токен |
 | Telegram доступен | `curl.exe -sI https://api.telegram.org` | указать `Proxy` в настройках |
 
 Node.js не нужен. Git — по желанию: меню проектов ищет папки с `.git`.
 
+### Какой архив взять
+
+| Архив | Кому | Что нужно на машине |
+|---|---|---|
+| `AgentsTracker-<версия>-win-x64-self-contained.zip` (~50 МБ) | если сомневаетесь — этот | ничего, среда выполнения внутри |
+| `AgentsTracker-<версия>-win-x64.zip` (~3 МБ) | если .NET уже стоит | [ASP.NET Core Runtime 10](https://dotnet.microsoft.com/download/dotnet/10.0) — именно ASP.NET Core, обычного .NET Runtime не хватит |
+
 ### Пять шагов
 
-1. **Бот.** У [@BotFather](https://t.me/BotFather) команда `/newbot`, скопируйте токен.
-2. **Настройки.** Скопируйте `src/AgentsTracker.Gateway/appsettings.Local.example.json`
-   рядом как `appsettings.Local.json`, впишите `Channel:Settings:BotToken` и `ProjectPath`.
-3. **Запуск:**
-   ```powershell
-   dotnet run --project src\AgentsTracker.Gateway
-   ```
-4. **Ваш id.** Напишите боту что угодно — в консоли появится
-   `Отклонено сообщение от постороннего пользователя. Пользователь: telegram:123456789`.
+1. **Распакуйте** архив в постоянную папку вне репозиториев, например `C:\Apps\AgentsTracker`:
+   внутри репозитория её снесёт `git clean`.
+2. **Настройки.** Рядом с exe скопируйте `appsettings.Local.example.json` как
+   `appsettings.Local.json`, впишите `Channel:Settings:BotToken` и `ProjectPath`.
+3. **Ваш id.** Запустите `.\AgentsTracker.Gateway.exe` в консоли и напишите боту что угодно —
+   появится `Отклонено сообщение от постороннего пользователя. Пользователь: telegram:123456789`.
    Впишите номер (без имени канала) в `"AllowedUserIds": [ 123456789 ]` внутри
-   `Channel:Settings`.
-5. **Перезапустите** той же командой. Бот напишет «🔌 Шлюз запущен».
+   `Channel:Settings` и закройте консоль по Ctrl+C.
+4. **Поставьте на автозапуск:**
+   ```powershell
+   .\AgentsTracker.Gateway.exe install --start
+   ```
+   Задача Планировщика поднимет шлюз при входе в Windows, настройки переедут
+   в `%LOCALAPPDATA%\AgentsTracker\`, токен зашифруется.
+5. **Проверьте.** В чат придёт «🔌 Шлюз запущен», `/help` покажет команды, веб-монитор —
+   <http://127.0.0.1:5100>.
 
-Это запуск «попробовать». Для постоянной работы — следующий раздел.
+Обновление: `uninstall` → распаковать новый архив поверх → `install --start`. Снять всё —
+`uninstall`, настройки и история останутся. Та же инструкция лежит в архиве как
+`УСТАНОВКА.txt`, подробности — [docs/deployment.md](docs/deployment.md).
 
-## Постоянная установка
+## Сборка из исходников
 
-Без сборки из исходников: на странице [Releases](https://github.com/aRRma/AgentsTracker/releases)
-лежит готовый архив под Windows x64 — `…-self-contained.zip` со средой выполнения внутри
-(.NET на машине не нужен) и обычный, которому нужен установленный .NET 10 Runtime. Распакуйте
-вне репозитория, заполните `appsettings.Local.json` и выполните `install --start`; короткая
-инструкция — в `УСТАНОВКА.txt` внутри архива.
+Нужен **.NET 10 SDK** (`dotnet --list-sdks` → строка `10.x`;
+[скачать](https://dotnet.microsoft.com/download/dotnet/10.0) — именно SDK, не Runtime).
+Остальное из «Что нужно» — так же.
 
-Из исходников публикация и автозапуск при входе в Windows — две команды:
+Запуск для отладки: скопируйте `src/AgentsTracker.Gateway/appsettings.Local.example.json`
+рядом как `appsettings.Local.json`, заполните его (шаги 2 и 3 выше) и запустите:
+
+```powershell
+dotnet run --project src\AgentsTracker.Gateway
+```
+
+Постоянная установка из исходников — публикация и автозапуск при входе в Windows:
 
 ```powershell
 dotnet publish src\AgentsTracker.Gateway -c Release -o C:\Apps\AgentsTracker
@@ -266,7 +287,8 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 
 | Симптом | Причина |
 |---|---|
-| `dotnet` не найден или «SDK 10.0 не установлен» | нет .NET 10 SDK — см. «Что нужно» |
+| Скачанный exe не запускается, просит установить .NET | архив `…-win-x64.zip` работает только с ASP.NET Core Runtime 10 — поставьте его или возьмите `…-self-contained.zip` |
+| `dotnet` не найден или «SDK 10.0 не установлен» | нет .NET 10 SDK; он нужен только при сборке из исходников |
 | Бот молчит | не заполнен `Channel:Settings:AllowedUserIds`, неверный токен или Telegram недоступен без прокси |
 | `Gateway:BotToken больше не читается` | настройки канала переехали в `Gateway:Channel:Settings`; перенести — `pwsh -File scripts\migrate-channel-settings.ps1` (рядом останется `.backup`) |
 | Правка настроек не подействовала | нужен перезапуск |
