@@ -186,9 +186,22 @@ src/AgentsTracker.Gateway/
 `McpConfigFile` при старте генерирует токен, пишет `mcp-gateway-<pid>.json` и удаляет его при
 остановке (имя с PID: общий файл второй экземпляр перезаписывал и удалял, и рабочий шлюз падал
 на «mcp__tg__approve not found»; файлы мёртвых PID подметаются при старте); `/mcp` монтируется с фильтром `McpConfigFile.Authorizes`; CLI получает
-`--mcp-config` и `--permission-prompt-tool mcp__tg__approve`. Имя сервера и инструмента —
+`--mcp-config` и `--permission-prompt-tool mcp__tg__approve`. Имена сервера и инструментов —
 константы `McpConfigFile`, `[McpServerTool]` берёт ту же константу. README — инструкция для
 пользователя; меняя защиту эндпоинта или папку данных, проверьте раздел «Безопасность».
+
+Второй инструмент того же сервера — `mcp__tg__send_file` (`ClaudeSendFileTool`): его зовёт
+сам агент, чтобы отправить файл в чат. Путь → `IOperatorConsole.SendFileAsync` →
+`OperatorConsole` проверяет папку (только текущий проект, папка данных запрещена), тип
+(белый список расширений в коде) и размер (`ChannelLimits`), пишет `file.send` в аудит и шлёт
+через `ApprovalBroker.SendFileAsync` → `IChatChannel.SendDocumentAsync`/`SendPhotoAsync`.
+Инструмент передаётся в `--allowedTools`: карточка «разрешить?» дублировала бы проверку
+шлюза лишним нажатием. Отказ — всегда ответом `{"sent":false,"reason":…}`, не исключением.
+
+**Инструмент MCP.** Класс с `[McpServerToolType]` в `Agents.Claude/Mcp/`, имя — константа в
+`McpConfigFile`, `.WithTools<…>()` в `ClaudeAgentModule`, нужный хосту метод — в
+`IOperatorConsole` (реализация в `OperatorConsole`). Если инструмент должен работать без
+карточки — в `--allowedTools` в `ClaudeBackend.BuildArguments`.
 
 Контракт подтверждений проверен на живом CLI 2.1.x и не задокументирован — `docs/cli-contract.md`.
 Главное: в ответе `allow` обязателен `updatedInput`; кнопка «Всегда» либо отдаёт правило CLI
@@ -274,6 +287,8 @@ src/AgentsTracker.Gateway/
 - Шлюз **не подключается** к сессии VS Code — это параллельная сессия на той же папке: общие
   `CLAUDE.md`, настройки, хуки и MCP, но своя история.
 - `--bare` нельзя: не читает `~/.claude`, ломает OAuth-логин по подписке.
+- `--allowedTools` — только `mcp__tg__send_file`: его политику держит шлюз. Другие
+  инструменты туда не добавлять — это обход карточек мимо конфига на машине.
 - Барьеры: `AllowedUsers` канала + только личные чаты; MCP — всегда `127.0.0.1` плюс токен в
   заголовке; монитор без токена — поэтому только читает, а `MonitorBind: any` (нужен
   в контейнере) публикуют лишь на `127.0.0.1` хоста.
@@ -317,7 +332,9 @@ src/AgentsTracker.Gateway/
   не резать.
 - **Длинные документы — `.md` файлом.** План, отчёт о ревью, разбор, сравнение — всё длиннее
   пары абзацев: временное в scratchpad, постоянное в `docs/` (только если это явно доки).
-  Имя латиницей, kebab-case. В ответе — суть и ссылка; из Telegram — `SendUserFile`.
+  Имя латиницей, kebab-case. В ответе — суть и ссылка; из Telegram — файл в чат через
+  `mcp__tg__send_file` (только из папки проекта: `.md .txt .json .cs .js .html`, скриншоты
+  `.png .jpg .jpeg`).
   Из режима плана файл тоже сохранить до `ExitPlanMode`.
 - **Сабагенты только `model: "sonnet"`.** В каждом вызове `Agent` и в `agent()` Workflow.
   Не наследовать модель родителя, не брать opus/fable — экономия лимитов.
