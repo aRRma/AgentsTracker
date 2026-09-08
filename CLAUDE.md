@@ -22,6 +22,7 @@
 
 ```powershell
 dotnet build                                    # TreatWarningsAsErrors включён
+dotnet build src\AgentsTracker.Gateway -o $env:TEMP\at-build   # проверить сборку, пока шлюз держит bin\Debug
 dotnet run --project src\AgentsTracker.Gateway  # нужен appsettings.Local.json (рядом или в папке данных)
 dotnet run --project src\AgentsTracker.Gateway -- protect-secrets   # зашифровать секреты канала и Proxy, перенести конфиг в %LOCALAPPDATA%
 pwsh -File scripts\migrate-channel-settings.ps1 # разовый перенос BotToken/AllowedUserIds в Gateway:Channel:Settings
@@ -193,9 +194,8 @@ src/AgentsTracker.Gateway/
 Второй инструмент того же сервера — `mcp__tg__send_file` (`ClaudeSendFileTool`): его зовёт
 сам агент, чтобы отправить файл в чат. Путь → `IOperatorConsole.SendFileAsync` →
 `OperatorConsole` проверяет папку (только текущий проект, папка данных запрещена, без
-symlink/junction на пути), тип
-(белый список расширений в коде) и размер (`ChannelLimits`), пишет `file.send` в аудит и шлёт
-через `ApprovalBroker.SendFileAsync` → `IChatChannel.SendDocumentAsync`/`SendPhotoAsync`.
+symlink/junction на пути), тип (белый список расширений в коде) и размер (`ChannelLimits`),
+пишет `file.send` в аудит и шлёт через `ApprovalBroker.SendFileAsync` → `IChatChannel.SendDocumentAsync`/`SendPhotoAsync`.
 Инструмент передаётся в `--allowedTools`: карточка «разрешить?» дублировала бы проверку
 шлюза лишним нажатием. Отказ — всегда ответом `{"sent":false,"reason":…}`, не исключением.
 
