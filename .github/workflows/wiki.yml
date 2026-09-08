@@ -1,12 +1,14 @@
 name: Вики
 
-# Вики — зеркало README и docs/, поэтому обновляется вместе с ними.
+# Вики — зеркало README и русских docs/*.md, поэтому обновляется вместе с ними. Английский
+# docs/en/ в вики не попадает: запуск на нём закончился бы «коммитить нечего».
 on:
   push:
     branches: [ master ]
     paths:
       - 'README.md'
       - 'docs/**'
+      - '!docs/en/**'
       - 'scripts/sync-wiki.ps1'
       - '.github/workflows/wiki.yml'
   workflow_dispatch:

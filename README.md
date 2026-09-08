@@ -282,5 +282,5 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 
 ---
 
-Устройство проекта — [CLAUDE.md](CLAUDE.md), детали эксплуатации, контракта с CLI и
-монитора — [docs/](docs/).
+Детали эксплуатации, контракта с CLI и монитора — [docs/](docs/). Устройство проекта и
+инструкции для самого агента — [CLAUDE.md](CLAUDE.md) и `docs/en/`, они на английском.
