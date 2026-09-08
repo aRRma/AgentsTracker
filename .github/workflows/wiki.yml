@@ -1,0 +1,39 @@
+name: Вики
+
+# Вики — зеркало README и docs/, поэтому обновляется вместе с ними.
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - 'README.md'
+      - 'docs/**'
+      - 'scripts/sync-wiki.ps1'
+      - '.github/workflows/wiki.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Вики живёт в отдельном репозитории <репозиторий>.wiki. Встроенного github.token
+      # для пуша в неё может не хватить: тогда заведите секрет WIKI_TOKEN — personal access
+      # token с правом на содержимое репозитория, остальное менять не нужно.
+      - name: Клон вики
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}.wiki
+          token: ${{ secrets.WIKI_TOKEN || github.token }}
+          path: wiki
+
+      - name: Собрать и отправить
+        shell: pwsh
+        run: |
+          git -C wiki config user.name  'github-actions[bot]'
+          git -C wiki config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          ./scripts/sync-wiki.ps1 -Repository '${{ github.repository }}' -WikiPath wiki

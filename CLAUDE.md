@@ -296,6 +296,9 @@ src/AgentsTracker.Gateway/
 - Релиз — пуш тега `v*`, дальше `.github/workflows/release.yml` сам собирает архивы и создаёт
   релиз. Заметки к версии кладут в `docs/release-notes/<тег>.md` **до** пуша тега, иначе в
   релиз уйдёт список коммитов. Подробности — `docs/deployment.md`.
+- Вики на GitHub — зеркало `README.md` и `docs/`, руками её не правят: страницы собирает
+  `scripts\sync-wiki.ps1` (workflow `wiki.yml` при пуше в `master`). Новый файл в `docs/`
+  попадёт туда, только если добавить его в таблицу `$pages` скрипта — `docs/operations.md`.
 - Русские тексты и windows-пути правьте Edit/Write, не heredoc из Bash. Исходники — UTF-8
   **без BOM**. Остальное про инструменты — `docs/operations.md`.
 - Комментарии объясняют, какой отказ предотвращает код, а не что он делает.
