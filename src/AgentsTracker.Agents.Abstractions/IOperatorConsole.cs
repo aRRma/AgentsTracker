@@ -55,10 +55,24 @@ public sealed record QuestionResult(IReadOnlyList<QuestionAnswer>? Answers, stri
     public static QuestionResult Refused(string reason) => new(null, reason);
 }
 
+/// <summary>Просьба агента отправить человеку файл с диска.</summary>
+/// <param name="Path">Абсолютный или относительно папки проекта — разрешает хост.</param>
+/// <param name="Caption">Подпись под файлом, без разметки.</param>
+/// <param name="AsDocument">Картинку — документом, без сжатия мессенджером.</param>
+public sealed record FileSendRequest(string Path, string? Caption, bool AsDocument);
+
+/// <summary>Отправлено или нет; при отказе <see cref="Reason"/> — текст для агента.</summary>
+public sealed record FileSendResult(bool Sent, string? Reason)
+{
+    public static FileSendResult Ok() => new(true, null);
+
+    public static FileSendResult Refused(string reason) => new(false, reason);
+}
+
 /// <summary>
-/// Человек по ту сторону шлюза: у него агент просит разрешения и ему задаёт вопросы.
-/// Реализует хост (карточки, правила «всегда», аудит), а зовут бэкенды — каждый из своего
-/// канала подтверждений; у Claude это MCP-инструмент.
+/// Человек по ту сторону шлюза: у него агент просит разрешения, ему задаёт вопросы и
+/// отправляет файлы. Реализует хост (карточки, правила «всегда», аудит), а зовут бэкенды —
+/// каждый из своего канала подтверждений; у Claude это MCP-инструменты.
 ///
 /// Таймаут и отмена не бросают, а приходят отказом с текстом для агента: бэкенду незачем
 /// знать, как хост различает «не ответил» и «/stop».
@@ -68,4 +82,10 @@ public interface IOperatorConsole
     Task<ApprovalDecision> ApproveAsync(ApprovalRequest request, CancellationToken ct);
 
     Task<QuestionResult> AskAsync(IReadOnlyList<AgentQuestion> questions, CancellationToken ct);
+
+    /// <summary>
+    /// Что можно отправить (папка, тип, размер), решает хост: агент сам путь не проверяет,
+    /// а отказ получает текстом.
+    /// </summary>
+    Task<FileSendResult> SendFileAsync(FileSendRequest request, CancellationToken ct);
 }

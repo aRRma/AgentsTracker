@@ -21,8 +21,18 @@ public sealed class TelegramChannel(
 {
     public const string ChannelId = "telegram";
 
-    /// <summary>Сообщение до 4096 символов, подпись кнопки до 64 символов, callback_data до 64 байт.</summary>
-    private static readonly ChannelLimits TelegramLimits = new(MessageLength: 3800, ButtonLabelLength: 64, ButtonDataBytes: 64);
+    /// <summary>
+    /// Сообщение до 4096 символов, подпись кнопки до 64 символов, callback_data до 64 байт.
+    /// Файлы: документ до 50 МБ и фото до 10 МБ (пределы загрузки через Bot API), подпись до
+    /// 1024 символов — здесь с запасом на экранирование, как у сообщения.
+    /// </summary>
+    private static readonly ChannelLimits TelegramLimits = new(
+        MessageLength: 3800,
+        ButtonLabelLength: 64,
+        ButtonDataBytes: 64,
+        DocumentBytes: 50L * 1024 * 1024,
+        PhotoBytes: 10L * 1024 * 1024,
+        CaptionLength: 1000);
 
     /// <summary>
     /// Кадры шкал идут чаще, чем Telegram позволяет править сообщение. Подождав не дольше
@@ -186,6 +196,25 @@ public sealed class TelegramChannel(
         try
         {
             var sent = await Bot.SendDocument(ChatIdOf(chat), InputFile.FromStream(stream, fileName), cancellationToken: ct);
+            return new MessageRef(chat, MessageIdOf(sent.MessageId));
+        }
+        catch (RequestException ex)
+        {
+            throw Translate(ex);
+        }
+    }
+
+    public Task<MessageRef> SendDocumentAsync(ChatId chat, string fileName, Stream content, string? caption, CancellationToken ct) =>
+        SendMediaAsync(chat, file => Bot.SendDocument(ChatIdOf(chat), file, caption, cancellationToken: ct), fileName, content);
+
+    public Task<MessageRef> SendPhotoAsync(ChatId chat, string fileName, Stream content, string? caption, CancellationToken ct) =>
+        SendMediaAsync(chat, file => Bot.SendPhoto(ChatIdOf(chat), file, caption, cancellationToken: ct), fileName, content);
+
+    private async Task<MessageRef> SendMediaAsync(ChatId chat, Func<InputFile, Task<Message>> send, string fileName, Stream content)
+    {
+        try
+        {
+            var sent = await send(InputFile.FromStream(content, fileName));
             return new MessageRef(chat, MessageIdOf(sent.MessageId));
         }
         catch (RequestException ex)

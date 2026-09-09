@@ -91,6 +91,27 @@ public sealed class ApprovalBroker(
         await channel.SendFileAsync(chat, fileName, content, ct);
     }
 
+    /// <summary>
+    /// Файл агента в активный чат: документом или фото. Перед каждой попыткой поток
+    /// перематывается: после 429 повтор с середины отправил бы обрезанный документ.
+    /// </summary>
+    public Task SendFileAsync(string fileName, Stream content, string? caption, bool asPhoto, CancellationToken ct)
+    {
+        var chat = ActiveChat
+            ?? throw new InvalidOperationException("Нет активного чата — некому отправить файл.");
+
+        return RateLimitRetry.OnceAsync(
+            () =>
+            {
+                content.Position = 0;
+                return asPhoto
+                    ? channel.SendPhotoAsync(chat, fileName, content, caption, ct)
+                    : channel.SendDocumentAsync(chat, fileName, content, caption, ct);
+            },
+            wait => logger.LogWarning("Канал просит подождать {Wait} перед отправкой файла", wait),
+            ct);
+    }
+
     /// <summary>Просит пользователя прислать свободный текст следующим сообщением.</summary>
     public async Task<string> AskTextAsync(string html, CancellationToken ct)
     {

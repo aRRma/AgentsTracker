@@ -7,7 +7,8 @@ using Microsoft.AspNetCore.Http;
 namespace AgentsTracker.Agents.Claude.Mcp;
 
 /// <summary>
-/// Пишет --mcp-config для CLI: один HTTP-сервер «tg» с инструментом подтверждений. Токен
+/// Пишет --mcp-config для CLI: один HTTP-сервер «tg» с инструментами подтверждений и
+/// отправки файлов. Токен
 /// генерируется при старте и уходит заголовком Authorization — посторонний процесс на той же
 /// машине в эндпоинт не постучится, а токен не светится в URL и логах запросов.
 ///
@@ -23,6 +24,10 @@ public sealed class McpConfigFile : IDisposable
     public const string ServerName = "tg";
     public const string ToolName = "approve";
     public const string PermissionToolName = $"mcp__{ServerName}__{ToolName}";
+
+    /// <summary>Инструмент, которым агент шлёт файл в чат; зовёт его сам агент, а не CLI.</summary>
+    public const string SendFileToolName = "send_file";
+    public const string SendFileToolFullName = $"mcp__{ServerName}__{SendFileToolName}";
 
     /// <summary>Путь эндпоинта. Статичный: секрет теперь в заголовке, а не в URL.</summary>
     public const string RoutePattern = "/mcp";

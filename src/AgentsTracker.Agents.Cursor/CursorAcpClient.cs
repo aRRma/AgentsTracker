@@ -365,7 +365,8 @@ internal sealed class CursorAcpClient : IAsyncDisposable
             var parameters = root.TryGetProperty("params", out var p) ? p.Clone() : default;
 
             // Без ответа CLI ждёт вечно. Неизвестное — сразу -32601; карточки — не в этом потоке.
-            if (method is not ("session/request_permission" or "cursor/ask_question" or "cursor/create_plan"))
+            if (method is not ("session/request_permission" or "cursor/ask_question"
+                or "cursor/create_plan" or "cursor/generate_image"))
             {
                 WriteMethodNotFound(id, method);
                 return;
@@ -407,6 +408,7 @@ internal sealed class CursorAcpClient : IAsyncDisposable
                 "session/request_permission" => await DecidePermissionAsync(parameters),
                 "cursor/ask_question" => await AnswerQuestionAsync(parameters),
                 "cursor/create_plan" => await DecidePlanAsync(parameters),
+                "cursor/generate_image" => await SendGeneratedFileAsync(parameters),
                 _ => throw new CursorAcpException($"неизвестный метод {method}"),
             };
 
@@ -430,6 +432,14 @@ internal sealed class CursorAcpClient : IAsyncDisposable
 
     private void HandleNotification(string method, JsonElement parameters)
     {
+        // generate_image в доке Cursor то запрос, то уведомление: без ответа на запрос CLI
+        // блокируется, уведомление уходит в чат тем же SendFileAsync, ответа не ждёт.
+        if (method is "cursor/generate_image")
+        {
+            _ = Task.Run(() => SendGeneratedFileAsync(parameters));
+            return;
+        }
+
         if (method is not "session/update") return;
         if (parameters.ValueKind != JsonValueKind.Object) return;
         if (!parameters.TryGetProperty("update", out var update) || update.ValueKind != JsonValueKind.Object)
@@ -557,6 +567,35 @@ internal sealed class CursorAcpClient : IAsyncDisposable
         return decision.Allowed
             ? new { outcome = new { outcome = "accepted" } }
             : new { outcome = new { outcome = "rejected", reason = decision.Reason ?? "отклонено" } };
+    }
+
+    /// <summary>
+    /// Картинка или файл из ACP — тот же <see cref="IOperatorConsole.SendFileAsync"/>, что
+    /// Claude зовёт через MCP: политику папки и типа хост уже знает, дублировать её здесь нельзя.
+    /// </summary>
+    private async Task<object> SendGeneratedFileAsync(JsonElement parameters)
+    {
+        var path = StringProp(parameters, "filePath");
+        var caption = StringProp(parameters, "description");
+        if (path is not { Length: > 0 })
+            return new { outcome = new { outcome = "rejected", reason = "нет filePath" } };
+
+        try
+        {
+            var result = await _console.SendFileAsync(new FileSendRequest(path, caption, AsDocument: false), CancellationToken.None);
+            if (!result.Sent)
+            {
+                _logger.LogWarning("Cursor не отправил файл {Path}: {Reason}", path, result.Reason);
+                return new { outcome = new { outcome = "rejected", reason = result.Reason } };
+            }
+
+            return new { outcome = new { outcome = "generated", filePath = path } };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Cursor не отправил файл {Path}", path);
+            return new { outcome = new { outcome = "rejected", reason = ex.Message } };
+        }
     }
 
     private void Report(string description)
