@@ -146,6 +146,13 @@ public sealed class ApprovalBroker(
         return prompt is not null && prompt.Chat == chat && prompt.Completion.TrySetResult(text);
     }
 
+    /// <summary>
+    /// Ждёт ли карточка свободного ответа из этого чата. Нужно тому, кто разбирает сообщение
+    /// до <see cref="TryConsumeText"/>: картинку в ответ агенту не передать, но и пропускать
+    /// её дальше нельзя — карточка осталась бы висеть, а запуск стоять.
+    /// </summary>
+    public bool IsAwaitingText(ChatId chat) => _textPrompt is { } prompt && prompt.Chat == chat;
+
     public async Task HandlePressAsync(ButtonPress press, CancellationToken ct)
     {
         var data = press.Data;

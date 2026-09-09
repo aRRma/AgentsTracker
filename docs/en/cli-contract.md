@@ -124,8 +124,10 @@ Both the accepted file and every refusal go into the `file.receive` audit.
 
 Cleanup: everything older than `RetentionHours` (24) is swept at gateway startup and before
 each new attachment, and the project subfolder is deleted when the session is closed (`/new`,
-the «Новая» button, a session lost by the CLI). So a picture from a previous session may be
-gone by the time the agent tries to `Read` it again — it gets a read error and says so.
+the «Новая» button, a session lost by the CLI). The folder is per project, not per session:
+`/new` also takes away the pictures of the project's other sessions, the ones `/sessions` can
+switch back to. So a picture may be gone by the time the agent tries to `Read` it again — it
+gets a read error and says so.
 
 Verified on CLI 2.1.261: `claude -p … --add-dir <folder> --permission-mode default` reads a PNG
 from that folder **without** an `mcp__tg__approve` card (`permission_denials` is empty) and

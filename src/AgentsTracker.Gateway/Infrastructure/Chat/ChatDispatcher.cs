@@ -35,13 +35,24 @@ public sealed class ChatDispatcher(
 
         // Команды шлюза разбираем раньше текстовых обработчиков: иначе /stop уйдёт
         // в ожидающий свободный ответ, и прервать зависший запуск будет нечем. Подпись
-        // к вложению командой не считаем: команда выполнилась бы, а картинка пропала.
-        if (command is not null && message.Attachments.Count == 0 && _commands.TryGetValue(command, out var handler))
+        // к картинке — тоже команда: /stop обязан работать и с ней.
+        if (command is not null && _commands.TryGetValue(command, out var handler))
         {
             audit.Write(AuditEvent.Now(
                 AuditKinds.Message, argument.Length > 0 ? $"{command} {Text.Preview(argument)}" : command,
                 message.User, message.Chat, store.ProjectPath, store.SessionId));
             await handler.HandleAsync(new ChatCommandContext(message.Chat, message.User, command, argument), ct);
+
+            // Картинку команда не берёт, а молча терять её нельзя: она не скачана и агенту
+            // не уйдёт, а пользователь ждёт, что её посмотрят.
+            if (message.Attachments.Count > 0)
+            {
+                await channel.SendAsync(
+                    message.Chat,
+                    new OutgoingMessage($"⚠️ Подпись выполнена как команда {command}, картинка не сохранена — пришлите её отдельным сообщением.", Rich: false),
+                    ct);
+            }
+
             return;
         }
 

@@ -183,14 +183,16 @@ service (`Settings` → `ChatWorker.IsBusy`).
 is a rejection too). Text is processed in order:
 
 1. a slash command from `IChatCommandHandler.Commands` — **first of all**, otherwise `/stop` would go
-   to a waiting free-form answer and there would be nothing left to interrupt a stuck run with. A
-   message carrying an attachment is never a command: the command would run and the picture would
-   be lost;
+   to a waiting free-form answer and there would be nothing left to interrupt a stuck run with. That
+   holds for a caption too — `/stop` must work with a picture attached; the picture is not saved and
+   the dispatcher says so instead of dropping it silently;
 2. the `IChatTextHandler` chain in module order: an answer to a card (`ApprovalTextHandler`) → skill
    arguments (`SkillArgumentsTextHandler`) → into the agent's queue (`ChatEnqueueTextHandler`, always
    `true`). That is why `ChatModule` is last. Unknown slash commands are Claude Code's own commands,
-   they go to the CLI. A message with an attachment is not skill arguments either, for the same
-   reason as with a command: `SkillArgumentsTextHandler` lets it through and keeps waiting.
+   they go to the CLI. A message with an attachment is not skill arguments:
+   `SkillArgumentsTextHandler` lets it through and keeps waiting. `ApprovalTextHandler`, on the
+   contrary, keeps it — a card left hanging would freeze the run — and warns that the picture did
+   not go anywhere.
 
 A handler receives the whole `IncomingMessage`: besides the text it may carry attachments.
 Pictures are taken by `ChatEnqueueTextHandler` through `AttachmentInbox` — it downloads them into
