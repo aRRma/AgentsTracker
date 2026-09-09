@@ -5,7 +5,7 @@ using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
 
 /// <summary>
-/// Остаток тарифных окон и расход шлюза: запуски, ходы, токены — всего, по дням и по моделям.
+/// Расход тарифных окон и расход шлюза: запуски, ходы, токены — всего, по дням и по моделям.
 /// Стоимость намеренно не показывается: на подписке она ни во что не превращается, а кредиты
 /// шлюз не тратит — упереться можно только в окно лимита, его и показываем первым.
 /// </summary>
@@ -46,7 +46,7 @@ public sealed class UsageScreen(SessionStore store, IAgentLimits limits, IAuditL
         var html = $"""
             📊 <b>Использование</b>
 
-            <b>Остаток тарифа</b>
+            <b>Расход тарифа</b>
             {LimitBars.Render(plan, 1.0)}
 
             <i>Расход шлюза с {E(since)}</i>

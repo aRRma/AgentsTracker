@@ -134,8 +134,11 @@ Id новой сессии выдаёт **шлюз** (`NewSessionId` → `--sess
 ## Лимиты тарифа
 
 Единственный ограничитель — `IAgentLimits`, окна `five_hour`, `seven_day`,
-`seven_day_<модель>`; проверяется в `ChatWorker.ProcessAsync` перед запуском. Остаток —
-`ShortSummaryAsync` (сводка меню) и `ViewAsync` (окна 0..1 — шкалы `LimitBars` на `/status`).
+`seven_day_<модель>`; проверяется в `ChatWorker.ProcessAsync` перед запуском. Остаток одной
+строкой — `ShortSummaryAsync` (сводка меню), окна для шкал — `ViewAsync`. `LimitGauge.Used` —
+это **израсходованная** доля 0..1: шкалы `LimitBars` на `/status` и полосы в мониторе
+заполняются расходом, полная шкала — окно исчерпано. Расход округляется вверх, остаток вниз,
+чтобы обе цифры не обнадёживали и вместе давали 100%.
 
 `ClaudeLimits` ходит в **недокументированный** `api.anthropic.com/api/oauth/usage` с токеном из
 `~/.claude/.credentials.json`: требует правдоподобный User-Agent, отвечает 429 на частый опрос

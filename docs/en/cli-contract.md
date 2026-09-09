@@ -149,9 +149,12 @@ numbers.
 ## Plan limits
 
 The only limiter is `IAgentLimits`, with windows `five_hour`, `seven_day`,
-`seven_day_<model>`; checked in `ChatWorker.ProcessAsync` before starting a run. Remaining
-budget — `ShortSummaryAsync` (menu summary) and `ViewAsync` (windows 0..1 — `LimitBars` gauges
-on `/status`).
+`seven_day_<model>`; checked in `ChatWorker.ProcessAsync` before starting a run. The remaining
+budget on one line — `ShortSummaryAsync` (menu summary); the windows for the gauges —
+`ViewAsync`. `LimitGauge.Used` is the **consumed** fraction 0..1: the `LimitBars` gauges on
+`/status` and the meters in the monitor fill with consumption, a full bar means the window is
+exhausted. Consumption is rounded up and the remainder down, so neither number flatters and the
+two always add up to 100%.
 
 `ClaudeLimits` calls the **undocumented** `api.anthropic.com/api/oauth/usage` with the token
 from `~/.claude/.credentials.json`: it requires a plausible User-Agent, responds 429 on

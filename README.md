@@ -47,7 +47,7 @@
   </tr>
   <tr>
     <td align="center" width="50%"><img src="docs/images/bot-3.png" width="320" alt="Экран скиллов"><br><sub><b><code>/skills</code>.</b> Скиллы по источникам и плагины Claude Code</sub></td>
-    <td align="center" width="50%"><img src="docs/images/bot-2.png" width="320" alt="Экран расхода и лимитов"><br><sub><b><code>/usage</code>.</b> Остаток тарифа, расход по дням и моделям</sub></td>
+    <td align="center" width="50%"><img src="docs/images/bot-2.png" width="320" alt="Экран расхода и лимитов"><br><sub><b><code>/usage</code>.</b> Расход тарифа, расход по дням и моделям</sub></td>
   </tr>
 </table>
 
@@ -75,7 +75,7 @@
 | Работа по дням | запуски, ходы, токены, время в CLI; график и выгрузка CSV |
 | Запуски · Сессии | история последних запусков с исходом и расходом; сессии по проектам |
 | Аудит · Лог | кто что разрешил и подробный лог шлюза |
-| Слева на рейке | занят или свободен, остаток тарифа, версия шлюза и CLI, модель и режим |
+| Слева на рейке | занят или свободен, расход тарифа шкалами, версия шлюза и CLI, модель и режим |
 
 <p align="center">
   <img src="docs/images/monitor.png" width="900" alt="Веб-монитор AgentsTracker">

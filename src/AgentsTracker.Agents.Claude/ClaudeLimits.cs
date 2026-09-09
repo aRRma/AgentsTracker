@@ -120,7 +120,7 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
     }
 
     /// <summary>
-    /// Окна для шкал: остаток и подпись сброса. Подпись собирает агент, а не хост — формат
+    /// Окна для шкал: расход и подпись сброса. Подпись собирает агент, а не хост — формат
     /// времени тут такая же часть представления, как и названия окон.
     /// </summary>
     public async Task<LimitsView> ViewAsync(string? model, CancellationToken ct)
@@ -132,7 +132,7 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
         [
             .. Live(snapshot, model).Select(w => new LimitGauge(
                 Describe(w.Key),
-                Math.Clamp(1.0 - w.Used, 0.0, 1.0),
+                Math.Clamp(w.Used, 0.0, 1.0),
                 w.ResetsAt,
                 w.ResetsAt is { } at ? Moment(at) : null))
         ], null);

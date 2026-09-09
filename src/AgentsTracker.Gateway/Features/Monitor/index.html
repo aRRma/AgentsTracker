@@ -523,10 +523,14 @@
     if (l.error) { $('limits-body').innerHTML = `<span class="muted">${esc(l.error)}</span>`; return; }
     const live = l.windows.filter(w => !w.resetsAt || new Date(w.resetsAt) > new Date());
     $('limits-body').innerHTML = live.map(w => {
-      const left = Math.max(0, Math.floor((1 - w.used) * 100)), cls = left < 15 ? 'bad' : left < 40 ? 'warn' : '';
-      return `<div class="gauge"><span class="name">${esc(windowName(w.key))}</span><span class="val ${cls}">${left}%</span>
-        <div class="meter"><i class="${cls}" style="width:${left}%"></i></div>
-        <span class="sub" title="${w.resetsAt ? 'сброс ' + esc(fmtWhen(w.resetsAt)) : ''}">осталось${w.resetsAt ? `, сброс ${fmtUntil(w.resetsAt)}` : ''}</span></div>`;
+      // Шкала показывает расход, а не остаток: полная полоса — окно исчерпано. Расход округляем
+      // вверх, остаток вниз — как LimitBars в чате, иначе цифры на странице и в чате разойдутся.
+      const u = Math.min(1, Math.max(0, w.used));
+      const used = Math.ceil(u * 100), left = Math.floor((1 - u) * 100);
+      const cls = left < 15 ? 'bad' : left < 40 ? 'warn' : '';
+      return `<div class="gauge"><span class="name">${esc(windowName(w.key))}</span><span class="val ${cls}">${used}%</span>
+        <div class="meter"><i class="${cls}" style="width:${used}%"></i></div>
+        <span class="sub" title="${w.resetsAt ? 'сброс ' + esc(fmtWhen(w.resetsAt)) : ''}">израсходовано, осталось ${left}%${w.resetsAt ? `, сброс ${fmtUntil(w.resetsAt)}` : ''}</span></div>`;
     }).join('') || '<span class="empty">окон нет</span>';
     if (l.extraUsageEnabled) $('limits-body').innerHTML += '<div class="mark Warning">на аккаунте включены кредиты (extra usage)</div>';
   }

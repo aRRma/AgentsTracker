@@ -5,9 +5,9 @@ using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 namespace AgentsTracker.Gateway.Features.Settings;
 
 /// <summary>
-/// Шкалы остатка тарифных окон. Графиков в чате нет, поэтому шкала — строка сегментов
+/// Шкалы расхода тарифных окон. Графиков в чате нет, поэтому шкала — строка сегментов
 /// в <c>&lt;code&gt;</c> (моноширинный шрифт держит одну ширину), а «анимация» — несколько
-/// правок сообщения, на каждой шкала заполнена на долю <c>progress</c> от остатка.
+/// правок сообщения, на каждой шкала заполнена на долю <c>progress</c> от расхода.
 /// </summary>
 internal static class LimitBars
 {
@@ -23,7 +23,7 @@ internal static class LimitBars
     public static double Progress(int frame) => (double)(frame + 1) / Frames;
 
     /// <summary>
-    /// Блок «Остаток тарифа» построчно, уже в HTML. Ошибку опроса пишем курсивом, а вместо
+    /// Блок «Расход тарифа» построчно, уже в HTML. Ошибку опроса пишем курсивом, а вместо
     /// пустого блока — «окон нет»: пустота выглядела бы как сломанный экран.
     /// </summary>
     public static string Render(LimitsView view, double progress)
@@ -36,7 +36,8 @@ internal static class LimitBars
 
     private static string Line(LimitGauge gauge, double progress)
     {
-        var shown = Math.Clamp(gauge.Remaining * Math.Clamp(progress, 0.0, 1.0), 0.0, 1.0);
+        var used = Math.Clamp(gauge.Used, 0.0, 1.0);
+        var shown = used * Math.Clamp(progress, 0.0, 1.0);
         var filled = (int)Math.Round(shown * Cells, MidpointRounding.AwayFromZero);
 
         var bar = new StringBuilder(Cells)
@@ -44,15 +45,19 @@ internal static class LimitBars
             .Append('▱', Cells - filled)
             .ToString();
 
-        // Округляем вниз, как и в сводке: чтобы не обнадёживать.
-        var percent = ((int)Math.Floor(shown * 100)).ToString(CultureInfo.InvariantCulture);
+        // Цифры сразу итоговые, кадрами двигается только полоса: пара «расход · остаток» посреди
+        // анимации не должна складываться во что-то кроме 100%.
+        // Расход округляем вверх, остаток — вниз (как в сводке меню): обе цифры смотрят в сторону
+        // «хуже, чем кажется».
+        var percent = ((int)Math.Ceiling(used * 100)).ToString(CultureInfo.InvariantCulture);
+        var left = ((int)Math.Floor((1.0 - used) * 100)).ToString(CultureInfo.InvariantCulture);
         var reset = gauge.ResetLabel is { } label ? $", сброс {E(label)}" : "";
 
-        return $"{Lamp(gauge.Remaining)} <code>{bar}</code> {percent}% осталось · {E(gauge.Title)}{reset}";
+        return $"{Lamp(used)} <code>{bar}</code> {percent}% · осталось {left}% · {E(gauge.Title)}{reset}";
     }
 
     /// <summary>Цвет по итоговому остатку, а не по кадру: лампочка не должна мигать при заполнении.</summary>
-    private static string Lamp(double remaining) => remaining switch
+    private static string Lamp(double used) => (1.0 - used) switch
     {
         <= 0.0 => "⛔",
         < 0.15 => "🔴",

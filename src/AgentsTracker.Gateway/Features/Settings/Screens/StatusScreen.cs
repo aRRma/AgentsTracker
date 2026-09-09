@@ -7,8 +7,8 @@ using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
 
 /// <summary>
-/// Статус: где работаем, что происходит и сколько осталось тарифа — шкалами. Шкалы
-/// заполняются за несколько кадров (<see cref="LimitBars"/>): так остаток виден с одного
+/// Статус: где работаем, что происходит и сколько тарифа уже израсходовано — шкалами. Шкалы
+/// заполняются за несколько кадров (<see cref="LimitBars"/>): так расход виден с одного
 /// взгляда, а движение показывает, что шлюз жив. «Обновить» перерисовывает тем же способом.
 /// </summary>
 public sealed class StatusScreen(
@@ -78,7 +78,7 @@ public sealed class StatusScreen(
             🧠 {E(store.EffectiveModel ?? "модель по умолчанию")}{effort} · 🔐 {E(store.EffectivePermissionMode)}
             ♾ Правил «всегда» в проекте: {store.AlwaysAllowRules().Count}
 
-            🚦 <b>Остаток тарифа</b>
+            🚦 <b>Расход тарифа</b>
             {LimitBars.Render(view, progress)}
             """;
 
