@@ -16,6 +16,7 @@ public sealed class ChatWorker(
     IAgentBackend agent,
     IAgentLimits limits,
     ApprovalBroker broker,
+    AttachmentInbox inbox,
     SessionStore store,
     IOptions<GatewayOptions> options,
     IAuditLog audit,
@@ -133,7 +134,10 @@ public sealed class ChatWorker(
             Model: model,
             Effort: store.EffectiveEffort,
             PermissionMode: PermissionMode(),
-            Timeout: TimeSpan.FromMinutes(options.Value.RunTimeoutMinutes));
+            Timeout: TimeSpan.FromMinutes(options.Value.RunTimeoutMinutes),
+            // Папка чата, а не проекта: пока сообщение ждало очереди, /project мог смениться,
+            // а путь к картинке в промпте уже записан.
+            AttachmentsPath: inbox.ChatDirectory(prompt.Chat));
 
         // Тот же id нужен после запуска: активной станет только сессия, с которой он шёл,
         // иначе итог перетёр бы /new или смену сессии по ходу работы.
