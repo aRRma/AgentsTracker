@@ -75,7 +75,7 @@ public sealed class StatusScreen(
             📁 <b>{E(Path.GetFileName(project))}</b>
             <code>{E(project)}</code>
             🧵 Сессия: {(session is null ? "<i>новая</i>" : $"<b>{E(session.Title)}</b> · {session.Turns} х")}
-            🧠 {E(store.EffectiveModel ?? "модель по умолчанию")}{effort} · 🔐 {E(store.EffectivePermissionMode)}
+            🧠 {E(store.EffectiveModel is { } selected ? agent.Capabilities.Model.Describe(selected) : "модель по умолчанию")}{effort} · 🔐 {E(store.EffectivePermissionMode)}
             ♾ Правил «всегда» в проекте: {store.AlwaysAllowRules().Count}
 
             🚦 <b>Остаток тарифа</b>

@@ -3,19 +3,40 @@ namespace AgentsTracker.Agents.Cursor;
 /// <summary>Что принимает Cursor CLI через ACP: по этим значениям хост строит меню и проверяет конфиг.</summary>
 public static class CursorCapabilities
 {
-    /// <summary>Короткие id для кнопок; полное имя модели вводится текстом.</summary>
-    private static readonly string[] ModelAliases = ["auto", "composer-2.5"];
+    /// <summary>Id из <c>agent --list-models</c> для кнопок; любое другое имя — текстом <c>/model</c>.</summary>
+    private static readonly string[] ModelAliases = ["cursor-grok-4.6-xhigh-fast", "composer-2.5"];
 
     public static readonly AgentCapabilities Instance = new(
-        Model: new AgentSetting(ModelAliases, ModelAliases, ResolveModel, model => model),
+        Model: new AgentSetting(ModelAliases, ModelAliases, ResolveModel, DescribeModel),
         Effort: null,
         PermissionMode: new AgentSetting(
             CursorPermissionModes.All, CursorPermissionModes.Selectable,
             CursorPermissionModes.Resolve, CursorPermissionModes.Describe));
 
+    private static readonly Dictionary<string, string> ModelIds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["cursor-grok-4.6-xhigh-fast"] = "cursor-grok-4.6-xhigh-fast",
+        ["grok"] = "cursor-grok-4.6-xhigh-fast",
+        ["grok-4.6-xhigh-fast"] = "cursor-grok-4.6-xhigh-fast",
+        ["grok 4.6 extra high fast"] = "cursor-grok-4.6-xhigh-fast",
+        ["composer-2.5"] = "composer-2.5",
+        ["composer"] = "composer-2.5",
+    };
+
     /// <summary>Модель — любая непустая строка: CLI сам скажет, если такой нет.</summary>
-    private static string? ResolveModel(string value) =>
-        value.Trim() is { Length: > 0 } model ? model : null;
+    private static string? ResolveModel(string value)
+    {
+        var model = value.Trim();
+        if (model.Length == 0) return null;
+        return ModelIds.GetValueOrDefault(model) ?? model;
+    }
+
+    private static string DescribeModel(string model) => model switch
+    {
+        "cursor-grok-4.6-xhigh-fast" => "Grok 4.6 Extra High Fast",
+        "composer-2.5" => "Composer 2.5",
+        _ => model,
+    };
 }
 
 /// <summary>

@@ -748,7 +748,7 @@ internal sealed class CursorAcpClient : IAsyncDisposable
 internal sealed record CursorPromptResult(
     string StopReason, string Text, int Turns, long UsedTokens, string Stderr);
 
-internal sealed class CursorAcpException : Exception
+internal class CursorAcpException : Exception
 {
     public CursorAcpException(string message) : base(message) { }
 

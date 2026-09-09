@@ -133,7 +133,7 @@ src/AgentsTracker.Agents.Claude/         Claude Code behind those contracts:
                         ClaudeSendFileTool — a file from the agent into the chat, the policy stays on the host side
 src/AgentsTracker.Agents.Cursor/         Cursor CLI behind the same contracts:
   CursorBackend         the agent acp process (JSON-RPC on stdin/stdout)
-  CursorCapabilities    models auto/composer-2.5; no effort; modes plan/ask/default/auto
+  CursorCapabilities    models cursor-grok-4.6-xhigh-fast/composer-2.5; no effort; modes plan/ask/default/auto
   CursorSkillCatalog    .cursor/skills and .agents/skills; plugins are not toggled from chat
   CursorAcpClient       session/new|load|prompt, request_permission → IOperatorConsole,
                         cursor/generate_image → SendFileAsync

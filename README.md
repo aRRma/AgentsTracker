@@ -237,7 +237,7 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 | `Claude:BuiltInSkills` | встроенные скиллы для `/skills`, строки `"/команда \| описание \| подсказка аргументов"` |
 | `Cursor:Executable` | путь к `agent`, если автопоиск не нашёл |
 | `Cursor:ApiKey` | необязательно; лучше `agent login` |
-| `Model`, `Effort` | модель и глубина размышлений по умолчанию. У Cursor `Effort` нет — кнопка в меню скрыта |
+| `Model`, `Effort` | модель и глубина размышлений по умолчанию. У Cursor `Effort` нет — кнопка в меню скрыта; модели в меню — Grok 4.6 Extra High Fast и Composer 2.5 |
 | `PermissionMode` | что можно без спроса. У Claude из чата: `plan`, `default`, `acceptEdits`, `auto`. У Cursor: `plan`, `ask`, `default`, `auto`. Полное снятие (`dontAsk`, у Claude ещё `bypassPermissions`) — только здесь, в файле |
 | `Proxy` | общий прокси машины: агент и канал, у которого нет своего |
 | `MonitorPort` | порт веб-монитора (5100), `0` — выключить |

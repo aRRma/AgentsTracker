@@ -102,7 +102,7 @@ public sealed class AgentScreen(
         var html = $"""
             🤖 <b>Агент</b> — {E(agent.DisplayName)}
 
-            🧠 Модель: <b>{E(model ?? "по умолчанию")}</b>{effortLine}
+            🧠 Модель: <b>{E(model is null ? "по умолчанию" : caps.Model.Describe(model))}</b>{effortLine}
             🔐 Режим: <b>{E(caps.PermissionMode.Describe(mode))}</b>
 
             <i>Кнопки модели задают алиас последней модели семейства; полное имя —
@@ -113,7 +113,7 @@ public sealed class AgentScreen(
 
         var rows = new List<KeyboardButton[]>();
 
-        rows.AddRange(Group("🧠", caps.Model, model, "model", 3));
+        rows.AddRange(Group("🧠", caps.Model, model, "model", 3, caps.Model.Describe));
         rows.Add([Button($"🧠 {Marker(model is null)} по умолчанию", "agent:model:reset")]);
 
         if (caps.Effort is { } effortSetting)
@@ -132,8 +132,11 @@ public sealed class AgentScreen(
 
     /// <summary>Ряды кнопок одной настройки; эмодзи группы на каждой кнопке — иначе в общей клавиатуре ряды не различить.</summary>
     private static IEnumerable<KeyboardButton[]> Group(
-        string icon, AgentSetting setting, string? current, string kind, int perRow) =>
+        string icon, AgentSetting setting, string? current, string kind, int perRow,
+        Func<string, string>? label = null) =>
         setting.Selectable
-            .Select(value => Button($"{icon} {Marker(value == current)} {value}", $"agent:{kind}:{value}"))
+            .Select(value => Button(
+                $"{icon} {Marker(value == current || setting.Resolve(value) == current)} {label?.Invoke(value) ?? value}",
+                $"agent:{kind}:{value}"))
             .Chunk(perRow);
 }

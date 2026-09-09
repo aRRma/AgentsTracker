@@ -33,7 +33,7 @@ public sealed class RootScreen(SessionStore store, IAgentBackend agent, ChatWork
 
             📁 <b>{E(Path.GetFileName(project))}</b>
             <code>{E(project)}</code>
-            🧠 Модель: <b>{E(store.EffectiveModel ?? "по умолчанию")}</b>{effort}
+            🧠 Модель: <b>{E(store.EffectiveModel is { } selected ? agent.Capabilities.Model.Describe(selected) : "по умолчанию")}</b>{effort}
             🔐 Режим: <b>{E(store.EffectivePermissionMode)}</b>
             🧵 Сессия: {(session is null ? "<i>новая</i>" : $"<b>{E(session.Title)}</b>")}
             🚦 Осталось: <b>{E(plan.Length > 0 ? plan : "—")}</b>
