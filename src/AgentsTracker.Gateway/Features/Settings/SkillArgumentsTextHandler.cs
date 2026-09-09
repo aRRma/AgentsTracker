@@ -10,11 +10,18 @@ public sealed class SkillArgumentsTextHandler(IChatChannel channel, SkillLaunche
 {
     private static readonly string[] CancelWords = ["отмена", "-", "cancel"];
 
-    public async Task<bool> TryHandleAsync(ChatId chat, UserId user, string text, CancellationToken ct)
+    public async Task<bool> TryHandleAsync(IncomingMessage message, CancellationToken ct)
     {
+        var (chat, user) = (message.Chat, message.User);
+
+        // Сообщение с вложением аргументами скилла не считаем: скилл запустился бы (без
+        // подписи — вовсе без аргументов), а картинка пропала бы молча. Ожидание аргументов
+        // остаётся — их пришлют следующим сообщением.
+        if (message.Attachments.Count > 0) return false;
+
         if (!launcher.TryTake(user, out var command)) return false;
 
-        var trimmed = text.Trim();
+        var trimmed = message.Text.Trim();
 
         if (CancelWords.Contains(trimmed, StringComparer.OrdinalIgnoreCase))
         {

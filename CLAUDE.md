@@ -88,7 +88,13 @@ would go to a waiting free-form answer and there would be nothing left to interr
 with. Then the `IChatTextHandler` chain in module order: an answer to a card → skill arguments →
 into the agent's queue (always `true`, hence `ChatModule` last). Unknown slash commands are Claude
 Code's own, they go to the CLI. Buttons: the `IChatButtonHandler` chain, `cfg:` — the menu,
-everything else — approvals. Details — `docs/en/architecture.md`.
+everything else — approvals.
+
+A handler receives the whole `IncomingMessage`: besides the text it may carry attachments. Pictures
+go through `AttachmentInbox` into `<data directory>\inbox\<chat>\<project>\`, and the run gets that
+chat folder in `--add-dir`. A command wins over a picture — `/stop` must work with a picture
+attached, and then the picture is not saved and the user is told so rather than left guessing.
+Details — `docs/en/architecture.md`.
 
 ### The gateway → CLI → gateway loop
 
@@ -102,6 +108,9 @@ undocumented parts of the contract (`updatedInput`, «Всегда», the trunca
 - `--bare` is not allowed: it does not read `~/.claude` and breaks the subscription OAuth login.
 - `--allowedTools` holds only `mcp__tg__send_file`: its policy belongs to the gateway. Do not add
   other tools there — that bypasses the cards past the machine's config.
+- `--add-dir` carries exactly one folder — the chat's `inbox`. Never the data directory itself
+  (`state.json`, `appsettings.Local.json` with the secrets, the MCP token) and never the project
+  subfolder: `/project` may change while the message waits in the queue.
 - CLI arguments go through `ProcessStartInfo.ArgumentList`, do not concatenate a string.
 
 ### `--permission-mode` is always passed

@@ -15,6 +15,8 @@ public sealed class ChatModule : IFeatureModule
         services.AddSingleton<ChatWorker>();
         services.AddHostedService(sp => sp.GetRequiredService<ChatWorker>());
 
+        services.AddSingleton<AttachmentInbox>();
+
         services.AddSingleton<IChatCommandHandler, ChatCommandHandler>();
         services.AddSingleton<IChatTextHandler, ChatEnqueueTextHandler>();
     }

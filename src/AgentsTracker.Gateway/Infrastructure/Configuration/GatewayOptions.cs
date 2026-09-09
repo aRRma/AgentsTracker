@@ -18,6 +18,41 @@ public sealed class ChannelOptions
     public string Type { get; set; } = DefaultType;
 }
 
+/// <summary>
+/// Картинки, присланные в чат. Шлюз кладёт их в <c>inbox</c> папки данных и открывает агенту
+/// доступ только к папке текущего чата.
+/// </summary>
+public sealed class AttachmentOptions
+{
+    /// <summary>Принимать ли вложения. false — на картинку приходит тот же отказ, что на видео.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Предел размера скачиваемой картинки. Больше предела канала не поднять: Telegram
+    /// отдаёт боту файлы до 20 МБ.
+    /// </summary>
+    public long MaxBytes { get; set; } = 10L * 1024 * 1024;
+
+    /// <summary>
+    /// Сколько часов хранить скачанное. Чистка идёт при старте шлюза и перед каждым новым
+    /// вложением — фонового таймера ради этого не заводим.
+    /// </summary>
+    public int RetentionHours { get; set; } = 24;
+
+    public IReadOnlyList<string> Validate()
+    {
+        var errors = new List<string>();
+
+        if (MaxBytes < 1)
+            errors.Add($"{GatewayOptions.SectionName}:Attachments:MaxBytes = {MaxBytes}. Ожидается размер в байтах.");
+
+        if (RetentionHours is < 1 or > 8760)
+            errors.Add($"{GatewayOptions.SectionName}:Attachments:RetentionHours = {RetentionHours}. Допустимо 1..8760 часов.");
+
+        return errors;
+    }
+}
+
 public sealed class GatewayOptions
 {
     public const string SectionName = "Gateway";
@@ -108,9 +143,14 @@ public sealed class GatewayOptions
     /// </summary>
     public string? Proxy { get; set; }
 
+    /// <summary>Приём картинок из чата.</summary>
+    public AttachmentOptions Attachments { get; set; } = new();
+
     public IReadOnlyList<string> Validate()
     {
         var errors = new List<string>();
+
+        errors.AddRange(Attachments.Validate());
 
         if (string.IsNullOrWhiteSpace(Channel.Type))
             errors.Add($"{SectionName}:Channel:Type не задан.");

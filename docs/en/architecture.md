@@ -9,7 +9,7 @@ it is. The checklists for adding a command, a screen, an agent or a channel are 
 ```
 src/AgentsTracker.Agents.Abstractions/   agent contracts, no Telegram and no specific CLI:
   IAgentBackend         Probe() (binary, version), RunAsync(AgentRunRequest, IAgentRunObserver)
-  AgentRun.cs           request (prompt, folder, session, model, effort, mode, timeout), observer, result
+  AgentRun.cs           request (prompt, folder, session, model, effort, mode, timeout, attachments folder), observer, result
   AgentCapabilities     which models/efforts/modes the agent supports (effort null — not supported)
   IOperatorConsole      what the agent asks a human for: ApproveAsync, AskAsync, SendFileAsync; PersistentRule — an "always" rule
   IAgentLimits          plan limits; IAgentSkillCatalog — slash commands
@@ -22,11 +22,13 @@ src/AgentsTracker.Agents.Claude/         Claude Code behind those contracts:
                         ClaudeSendFileTool — a file from the agent into the chat, the policy stays on the host side
 src/AgentsTracker.Channels.Abstractions/ channel contracts, no specific messenger:
   IChatChannel          channel addresses and limits, ConnectAsync/ListenAsync, Send/Edit/Delete/Acknowledge,
-                        SendDocumentAsync/SendPhotoAsync — a file and a picture as a stream
-  ChannelLimits         channel bounds: message and caption length, document and photo size
+                        SendDocumentAsync/SendPhotoAsync — a file and a picture as a stream,
+                        DownloadAttachmentAsync — the body of an incoming attachment into a stream
+  ChannelLimits         channel bounds: message and caption length, document, photo and download size
   RateLimitRetry        one retry after a 429 with a short retry_after — shared by every send
   ChatId, UserId        an address as a value; Key is "channel:value" for state.json, the audit and the log
-  Messages.cs           OutgoingMessage, Keyboard, MessageRef, IncomingMessage, ButtonPress, ChatCommand
+  Messages.cs           OutgoingMessage, Keyboard, MessageRef, IncomingMessage (text + attachments),
+                        IncomingAttachment/AttachmentKind, ButtonPress, ChatCommand
   IChatInbound          where the channel hands incoming traffic; implemented by the host (ChatDispatcher)
   ChatHtml              the canonical text format (b, i, s, code, pre, a, blockquote) and escaping
   ChannelRequestException  the channel's only outward exception: RateLimited (retry_after), MarkupRejected, CannotReach
@@ -46,7 +48,8 @@ src/AgentsTracker.Gateway/
                         Cli/ (install, uninstall), Autostart/ (a Task Scheduler task via schtasks)
   Features/             vertical slices, each with its own *Module:
     Approvals/          approval cards, ApprovalBroker, /rules
-    Chat/               ChatWorker (queue, launch, sessions), RunStatusMessage, /new /stop
+    Chat/               ChatWorker (queue, launch, sessions), RunStatusMessage, /new /stop,
+                        AttachmentInbox — pictures from the chat: download, checks, inbox folder, cleanup
     Settings/           SettingsMenuCoordinator + Screens/*, /menu /status /sessions /agent /skills /project /usage
     Help/ Audit/ Monitor/   /start /help; /audit; the web page (index.html — EmbeddedResource) and /api/*
 ```
@@ -69,6 +72,18 @@ is a rejection too). Text is processed in order:
    skill arguments (`SkillArgumentsTextHandler`) → into the agent's queue (`ChatEnqueueTextHandler`,
    always `true`). That is why `ChatModule` is last. Unknown slash commands are Claude Code's own
    commands, they go to the CLI.
+
+The order holds for a caption too: `/stop` must work with a picture attached, and then the picture
+is not saved and the dispatcher says so instead of dropping it silently. A message with an
+attachment is not skill arguments — `SkillArgumentsTextHandler` lets it through and keeps waiting.
+`ApprovalTextHandler`, on the contrary, keeps it (a card left hanging would freeze the run) and
+warns that the picture did not go anywhere.
+
+A handler receives the whole `IncomingMessage`: besides the text it may carry attachments. Pictures
+are taken by `ChatEnqueueTextHandler` through `AttachmentInbox` — it downloads them into
+`<data directory>\inbox\<chat>\<project>\`, checks the type by the signature bytes and puts the
+absolute paths into the prompt; the run then gets that chat folder in `--add-dir`, and nothing else.
+Details — `cli-contract.md`.
 
 Buttons: the `IChatButtonHandler` chain (`Dispatch/`), each recognizing its own by the prefix in
 `CanHandle`: `cfg:` — the menu (`SettingsCallbackHandler`), everything else (a hex request id) —

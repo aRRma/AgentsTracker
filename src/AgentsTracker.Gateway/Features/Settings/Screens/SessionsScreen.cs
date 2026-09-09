@@ -10,7 +10,8 @@ namespace AgentsTracker.Gateway.Features.Settings.Screens;
 /// очистка списка. «Остановить» здесь же: запуск и сессия — одна рабочая единица,
 /// и прерывать его удобнее там, где видно, в какой ветке он идёт.
 /// </summary>
-public sealed class SessionsScreen(SessionStore store, IAgentBackend agent, ChatWorker worker, IAuditLog audit) : ISettingsScreen
+public sealed class SessionsScreen(
+    SessionStore store, IAgentBackend agent, ChatWorker worker, AttachmentInbox inbox, IAuditLog audit) : ISettingsScreen
 {
     private const int MaxShown = 8;
 
@@ -24,6 +25,10 @@ public sealed class SessionsScreen(SessionStore store, IAgentBackend agent, Chat
         if (argument == "new")
         {
             store.SetSessionId(null);
+
+            // Как и /new: прошлый контекст забыт, картинки к нему больше не нужны.
+            inbox.ClearSession(chat, project);
+
             audit.Changed(store, user, "session", previous, "новая");
             return "Следующее сообщение начнёт новую сессию";
         }

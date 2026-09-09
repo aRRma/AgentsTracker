@@ -55,6 +55,13 @@ public interface IChatChannel
     /// <summary>Картинка фотографией: мессенджер покажет её в ленте, но может сжать.</summary>
     Task<MessageRef> SendPhotoAsync(ChatId chat, string fileName, Stream content, string? caption, CancellationToken ct);
 
+    /// <summary>
+    /// Тело вложения в переданный поток. Поток, а не путь, — как и у отправки: куда положить
+    /// файл и сколько его хранить, решает хост. Размер сверх <see cref="ChannelLimits"/>
+    /// вызывающий обязан отсечь сам: канал не знает, зачем файл нужен.
+    /// </summary>
+    Task DownloadAttachmentAsync(IncomingAttachment attachment, Stream destination, CancellationToken ct);
+
     Task EditAsync(MessageRef message, OutgoingMessage content, CancellationToken ct);
 
     Task DeleteAsync(MessageRef message, CancellationToken ct);

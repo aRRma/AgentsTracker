@@ -9,7 +9,7 @@
 ```
 src/AgentsTracker.Agents.Abstractions/   контракты агента, без Telegram и без конкретного CLI:
   IAgentBackend         Probe() (бинарник, версия), RunAsync(AgentRunRequest, IAgentRunObserver)
-  AgentRun.cs           запрос (промпт, папка, сессия, модель, усилие, режим, таймаут), наблюдатель, результат
+  AgentRun.cs           запрос (промпт, папка, сессия, модель, усилие, режим, таймаут, папка вложений), наблюдатель, результат
   AgentCapabilities     какие модели/усилия/режимы агент поддерживает (усилие null — не поддерживает)
   IOperatorConsole      что агент просит у человека: ApproveAsync, AskAsync, SendFileAsync; PersistentRule — правило «всегда»
   IAgentLimits          лимиты плана; IAgentSkillCatalog — слэш-команды
@@ -22,11 +22,13 @@ src/AgentsTracker.Agents.Claude/         Claude Code за этими контр�
                         ClaudeSendFileTool — файл от агента в чат, политика остаётся на стороне хоста
 src/AgentsTracker.Channels.Abstractions/ контракты канала, без конкретного мессенджера:
   IChatChannel          адреса и пределы канала, ConnectAsync/ListenAsync, Send/Edit/Delete/Acknowledge,
-                        SendDocumentAsync/SendPhotoAsync — файл и картинка потоком
-  ChannelLimits         границы канала: длина сообщения и подписи, размер документа и фото
+                        SendDocumentAsync/SendPhotoAsync — файл и картинка потоком,
+                        DownloadAttachmentAsync — тело присланного вложения потоком
+  ChannelLimits         границы канала: длина сообщения и подписи, размер документа, фото и скачивания
   RateLimitRetry        одна повторная попытка после 429 с коротким retry_after — общая для всех отправок
   ChatId, UserId        адрес как значение; Key — «канал:значение» для state.json, аудита и лога
-  Messages.cs           OutgoingMessage, Keyboard, MessageRef, IncomingMessage, ButtonPress, ChatCommand
+  Messages.cs           OutgoingMessage, Keyboard, MessageRef, IncomingMessage (текст + вложения),
+                        IncomingAttachment/AttachmentKind, ButtonPress, ChatCommand
   IChatInbound          куда канал отдаёт входящее; реализует хост (ChatDispatcher)
   ChatHtml              канонический формат текста (b, i, s, code, pre, a, blockquote) и экранирование
   ChannelRequestException  единственное исключение канала наружу: RateLimited (retry_after), MarkupRejected, CannotReach
@@ -46,7 +48,8 @@ src/AgentsTracker.Gateway/
                         Cli/ (install, uninstall), Autostart/ (задача Планировщика через schtasks)
   Features/             вертикальные срезы, у каждого свой *Module:
     Approvals/          карточки согласований, ApprovalBroker, /rules
-    Chat/               ChatWorker (очередь, запуск, сессии), RunStatusMessage, /new /stop
+    Chat/               ChatWorker (очередь, запуск, сессии), RunStatusMessage, /new /stop,
+                        AttachmentInbox — картинки из чата: скачивание, проверки, папка inbox, чистка
     Settings/           SettingsMenuCoordinator + Screens/*, /menu /status /sessions /agent /skills /project /usage
     Help/ Audit/ Monitor/   /start /help; /audit; веб-страница (index.html — EmbeddedResource) и /api/*
 ```
@@ -68,6 +71,18 @@ src/AgentsTracker.Gateway/
    аргументы скилла (`SkillArgumentsTextHandler`) → в очередь агента (`ChatEnqueueTextHandler`,
    всегда `true`). Поэтому `ChatModule` последний. Незнакомые слэш-команды — команды самого Claude
    Code, они уходят в CLI.
+
+Порядок держится и для подписи к картинке: `/stop` должен работать с приложенной картинкой, и тогда
+картинка не сохраняется, а диспетчер об этом говорит, а не молча её теряет. Сообщение с вложением —
+не аргументы скилла: `SkillArgumentsTextHandler` пропускает его дальше и продолжает ждать.
+`ApprovalTextHandler`, наоборот, забирает его себе (повисшая карточка заморозила бы прогон) и
+предупреждает, что картинка никуда не пошла.
+
+В обработчик приходит целиком `IncomingMessage`: кроме текста в нём могут быть вложения. Картинки
+забирает `ChatEnqueueTextHandler` через `AttachmentInbox` — скачивает в
+`<папка данных>\inbox\<чат>\<проект>\`, проверяет тип по сигнатурным байтам и подставляет абсолютные
+пути в промпт; прогон получает эту папку чата в `--add-dir`, и ничего больше. Подробности —
+[cli-contract.md](cli-contract.md).
 
 Кнопки: цепочка `IChatButtonHandler` (`Dispatch/`), каждый узнаёт своё по префиксу в `CanHandle`:
 `cfg:` — меню (`SettingsCallbackHandler`), всё остальное (шестнадцатеричный id запроса) —
