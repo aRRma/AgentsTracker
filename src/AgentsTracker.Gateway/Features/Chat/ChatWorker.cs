@@ -57,6 +57,9 @@ public sealed class ChatWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Картинки прошлых суток переживают перезапуск: чистим их до первого сообщения.
+        inbox.SweepStale();
+
         await foreach (var prompt in _queue.Reader.ReadAllAsync(stoppingToken))
         {
             try
@@ -168,7 +171,7 @@ public sealed class ChatWorker(
         if (result.Usage is { } usage)
             store.RecordRun(project, prompt.Text, result.SessionId, usage);
 
-        var note = SettleSession(project, session, runSessionId, result);
+        var note = SettleSession(prompt.Chat, project, session, runSessionId, result);
 
         var outcome = result switch
         {
@@ -218,11 +221,14 @@ public sealed class ChatWorker(
     /// в state.json и будет валить каждый запуск. Пишем в проект запуска и только когда
     /// сессия там не менялась по ходу — /new и выбор из меню важнее.
     /// </summary>
-    private string SettleSession(string project, string? resumed, string runSessionId, AgentRunResult result)
+    private string SettleSession(ChatId chat, string project, string? resumed, string runSessionId, AgentRunResult result)
     {
         if (result.SessionLost && resumed is { Length: > 0 })
         {
             if (!store.TrySetSessionId(project, null, onlyIfActive: resumed)) return "";
+
+            // Контекст потерян — картинки той сессии агенту больше не понадобятся.
+            inbox.ClearSession(chat, project);
 
             logger.LogWarning("Сессия {SessionId} сброшена: агент не нашёл её", resumed);
             audit.Write(AuditEvent.Now(AuditKinds.SessionReset, "агент не нашёл сессию", project: project, session: resumed));

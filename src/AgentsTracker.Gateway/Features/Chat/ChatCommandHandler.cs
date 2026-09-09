@@ -7,6 +7,7 @@ namespace AgentsTracker.Gateway.Features.Chat;
 public sealed class ChatCommandHandler(
     IChatChannel channel,
     ChatWorker worker,
+    AttachmentInbox inbox,
     SessionStore store,
     IAuditLog audit) : IChatCommandHandler
 {
@@ -23,6 +24,10 @@ public sealed class ChatCommandHandler(
     {
         var previous = store.SessionId;
         store.SetSessionId(null);
+
+        // Прошлый контекст забыт вместе с картинками, которые обсуждались в нём.
+        inbox.ClearSession(context.Chat, store.ProjectPath);
+
         audit.Write(AuditEvent.Now(AuditKinds.Settings, "session: новая", context.User, context.Chat, store.ProjectPath, previous));
         return "🆕 Начата новая сессия — прошлый контекст забыт.";
     }
