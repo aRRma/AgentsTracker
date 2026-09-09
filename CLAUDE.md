@@ -30,7 +30,7 @@ dotnet build src\AgentsTracker.Gateway -o $env:TEMP\at-build   # check the build
 dotnet run --project src\AgentsTracker.Gateway  # needs appsettings.Local.json (next to it or in the data directory)
 dotnet run --project src\AgentsTracker.Gateway -- protect-secrets   # encrypt channel and Proxy secrets, move the config to %LOCALAPPDATA%
 pwsh -File scripts\migrate-channel-settings.ps1 # one-off move of BotToken/AllowedUserIds into Gateway:Channel:Settings
-dotnet publish src\AgentsTracker.Gateway -c Release -o C:\Apps\AgentsTracker   # install: publish…
+dotnet publish src\AgentsTracker.Gateway -c Release -o C:\Apps\AgentsTracker   # install: publish (the folder is an example)…
 C:\Apps\AgentsTracker\AgentsTracker.Gateway.exe install --start                # …and autostart; remove with uninstall
 docker compose up -d --build                    # the same gateway in a container, needs .env
 ```
@@ -42,7 +42,7 @@ instead of a channel — `docs/en/operations.md`.
 **The working gateway on this machine is the published release** (`C:\AgentsTracker-<версия>-win-x64`;
 the path is shown by `Get-Process AgentsTracker.Gateway`). Do not stop it and do not rebuild over it:
 that is the stable service the user chats with, and new code reaches it only through a new release. A
-change is checked live by a **test instance from `bin\Debug` on its own ports** — a separate build
+change is checked live by a **scratch instance from `bin\Debug` on its own ports** — a separate build
 folder, `Gateway__McpPort`/`Gateway__MonitorPort` other than `5099`/`5100`, a fake bot token and its
 own `Gateway__DataDirectory`; the recipe and the cleanup are in `docs/en/operations.md`. When the
 gateway does run from `bin\Debug` of the main folder (`AgentsTracker`, branch `master`; there is no
@@ -96,6 +96,11 @@ transport failures — only `ChannelRequestException`. A line in the `channels` 
 comments. The channel takes its transport client **lazily**: the host creates the channel before it
 prints configuration errors, and a constructor failing on an empty token would replace a readable
 error with a stack trace.
+
+**A project.** There is no `Directory.Build.props` and no `.editorconfig`: every csproj repeats
+`TargetFramework`, `Nullable`, `ImplicitUsings`, `TreatWarningsAsErrors` and `RootNamespace` itself.
+Copy that block from a neighbouring project — `dotnet new` gives a project without warnings-as-errors
+and with a root namespace of its own, and that only shows up later, as a warning nobody notices.
 
 **A monitor endpoint.** `api.MapGet` in `MonitorModule.MapEndpoints`, read-only —
 `docs/en/monitor.md`.
@@ -401,11 +406,13 @@ session.
   `scripts\sync-wiki.ps1` for the Russian one. CLAUDE.md is English only, the README is Russian only.
 - **After a commit — restart the gateway**, if the working instance runs from `bin\Debug`: otherwise
   the chat keeps the old code. While it is the release, a commit changes nothing in the chat — say so
-  and check the change on a test instance instead of asking for a restart. The commands and the path
+  and check the change on a scratch instance instead of asking for a restart. The commands and the path
   through a clean worktree — `docs/en/operations.md`, "Restarting the gateway". From a session over
   Telegram you must not restart it yourself: give the user the commands and ask them to run them by
-  hand; a test instance on its own ports is fine, it does not touch the working one. From VS Code you
+  hand; a scratch instance on its own ports is fine, it does not touch the working one. From VS Code you
   may, but **before** Stop-Process check `git status`: someone else's uncommitted changes have broken
   the build right after the process was stopped.
 - **Terminology.** Checking by a live run of a scratch instance is «смоук-тест», not «дымовой прогон»
-  and not «дымовая проверка»: in the chat and in the docs alike.
+  and not «дымовая проверка»: in the chat and in the docs alike. The instance itself is a "scratch
+  instance" in English and «пробный экземпляр» in Russian — those are the section titles in
+  `operations.md`, and a third name for it only hides the section from search.
