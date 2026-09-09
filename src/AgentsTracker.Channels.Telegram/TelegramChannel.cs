@@ -42,7 +42,18 @@ public sealed class TelegramChannel(
     /// </summary>
     private static readonly TimeSpan EditRetryCeiling = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// Альбом Telegram шлёт по обновлению на картинку, подпись — только у одной из них.
+    /// Столько ждём остальные: элементы идут подряд, с паузами в сотни миллисекунд.
+    /// </summary>
+    private static readonly TimeSpan MediaGroupWindow = TimeSpan.FromMilliseconds(1200);
+
     private readonly TelegramOptions _options = options.Value;
+
+    private readonly Lock _groupsGate = new();
+
+    /// <summary>Недособранные альбомы по media_group_id. Живут только в памяти доли секунды.</summary>
+    private readonly Dictionary<string, IncomingMessage> _mediaGroups = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Клиент создаётся при первом обращении: его конструктор бросает
@@ -125,13 +136,66 @@ public sealed class TelegramChannel(
                     break;
 
                 case { Message: { From: { } from } message } when ToIncoming(message, from) is { } incoming:
-                    await sink.OnMessageAsync(incoming, ct);
+                    if (message.MediaGroupId is { Length: > 0 } group)
+                        CollectGroup(sink, group, incoming, ct);
+                    else
+                        await sink.OnMessageAsync(incoming, ct);
                     break;
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Ошибка обработки обновления");
+        }
+    }
+
+    /// <summary>
+    /// Копит альбом и отдаёт его одним сообщением. Ждём в отдельной задаче, а не здесь:
+    /// пока обработчик обновления не вернулся, следующие картинки того же альбома не
+    /// разбираются, и пауза внутри него превратила бы альбом в три отдельных запуска агента.
+    /// </summary>
+    private void CollectGroup(IChatInbound sink, string groupId, IncomingMessage part, CancellationToken ct)
+    {
+        lock (_groupsGate)
+        {
+            if (_mediaGroups.TryGetValue(groupId, out var collected))
+            {
+                // Подпись бывает только у одного элемента альбома — у какого, не обещано.
+                _mediaGroups[groupId] = collected with
+                {
+                    Text = collected.Text.Length > 0 ? collected.Text : part.Text,
+                    Attachments = [.. collected.Attachments, .. part.Attachments],
+                };
+                return;
+            }
+
+            _mediaGroups[groupId] = part;
+        }
+
+        // Паузу держит только пришедший первым; остальные лишь дописывают вложения.
+        _ = FlushGroupAsync(sink, groupId, ct);
+    }
+
+    private async Task FlushGroupAsync(IChatInbound sink, string groupId, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(MediaGroupWindow, ct);
+
+            IncomingMessage? collected;
+            lock (_groupsGate) _mediaGroups.Remove(groupId, out collected);
+
+            if (collected is not null) await sink.OnMessageAsync(collected, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // Остановка шлюза посреди альбома: недособранное теряем, как и всё в очереди опроса.
+            lock (_groupsGate) _mediaGroups.Remove(groupId);
+        }
+        catch (Exception ex)
+        {
+            lock (_groupsGate) _mediaGroups.Remove(groupId);
+            logger.LogError(ex, "Ошибка сборки альбома");
         }
     }
 
