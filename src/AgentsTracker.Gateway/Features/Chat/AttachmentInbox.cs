@@ -119,7 +119,7 @@ public sealed class AttachmentInbox(
 
             return (path, null);
         }
-        catch (AttachmentTooLargeException)
+        catch (Exception ex) when (IsTooLarge(ex))
         {
             Delete(temp);
             return (null, Refuse(chat, user, project, $"больше {limit.Bytes}", $"Файл слишком большой, предел — {limit.Bytes}."));
@@ -135,6 +135,21 @@ public sealed class AttachmentInbox(
             logger.LogWarning(ex, "Не удалось принять вложение");
             return (null, Refuse(chat, user, project, ex.Message, $"Не удалось скачать файл: {ex.Message}"));
         }
+    }
+
+    /// <summary>
+    /// Превышение потолка ищем по всей цепочке: канал заворачивает исключение потока-приёмника
+    /// в своё (у Telegram.Bot это «Exception during file download»), и по типу верхнего
+    /// исключения отказ по размеру не отличить от обрыва связи.
+    /// </summary>
+    private static bool IsTooLarge(Exception ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (current is AttachmentTooLargeException) return true;
+        }
+
+        return false;
     }
 
     private async Task DownloadAsync(IncomingAttachment attachment, string temp, long limit, CancellationToken ct)

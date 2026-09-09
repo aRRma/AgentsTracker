@@ -55,6 +55,9 @@ public sealed class TelegramChannel(
     /// <summary>Недособранные альбомы по media_group_id. Живут только в памяти доли секунды.</summary>
     private readonly Dictionary<string, IncomingMessage> _mediaGroups = new(StringComparer.Ordinal);
 
+    /// <summary>Хвост цепочки отдачи альбомов: его ждёт обычное сообщение, чтобы не обогнать картинки.</summary>
+    private Task _groupFlush = Task.CompletedTask;
+
     /// <summary>
     /// Клиент создаётся при первом обращении: его конструктор бросает
     /// <see cref="ArgumentException"/> на пустом токене, а канал хост создаёт раньше, чем
@@ -137,9 +140,18 @@ public sealed class TelegramChannel(
 
                 case { Message: { From: { } from } message } when ToIncoming(message, from) is { } incoming:
                     if (message.MediaGroupId is { Length: > 0 } group)
+                    {
                         CollectGroup(sink, group, incoming, ct);
+                    }
                     else
+                    {
+                        // Альбом отдаётся из отдельной задачи, отстав на MediaGroupWindow.
+                        // Без ожидания текст, отправленный сразу за картинками, обогнал бы их,
+                        // и агент получил бы вопрос раньше того, о чём он.
+                        await PendingGroupsAsync();
                         await sink.OnMessageAsync(incoming, ct);
+                    }
+
                     break;
             }
         }
@@ -170,16 +182,24 @@ public sealed class TelegramChannel(
             }
 
             _mediaGroups[groupId] = part;
-        }
 
-        // Паузу держит только пришедший первым; остальные лишь дописывают вложения.
-        _ = FlushGroupAsync(sink, groupId, ct);
+            // Паузу держит только пришедший первым; остальные лишь дописывают вложения.
+            // Альбомы идут цепочкой друг за другом: два подряд не должны разъехаться.
+            _groupFlush = FlushGroupAsync(sink, groupId, ct, _groupFlush);
+        }
     }
 
-    private async Task FlushGroupAsync(IChatInbound sink, string groupId, CancellationToken ct)
+    /// <summary>Задача недоотданного альбома. Она не бросает — ждать её можно без try.</summary>
+    private Task PendingGroupsAsync()
+    {
+        lock (_groupsGate) return _groupFlush;
+    }
+
+    private async Task FlushGroupAsync(IChatInbound sink, string groupId, CancellationToken ct, Task previous)
     {
         try
         {
+            await previous;
             await Task.Delay(MediaGroupWindow, ct);
 
             IncomingMessage? collected;

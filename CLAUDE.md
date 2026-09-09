@@ -189,7 +189,8 @@ is a rejection too). Text is processed in order:
 2. the `IChatTextHandler` chain in module order: an answer to a card (`ApprovalTextHandler`) → skill
    arguments (`SkillArgumentsTextHandler`) → into the agent's queue (`ChatEnqueueTextHandler`, always
    `true`). That is why `ChatModule` is last. Unknown slash commands are Claude Code's own commands,
-   they go to the CLI.
+   they go to the CLI. A message with an attachment is not skill arguments either, for the same
+   reason as with a command: `SkillArgumentsTextHandler` lets it through and keeps waiting.
 
 A handler receives the whole `IncomingMessage`: besides the text it may carry attachments.
 Pictures are taken by `ChatEnqueueTextHandler` through `AttachmentInbox` — it downloads them into
