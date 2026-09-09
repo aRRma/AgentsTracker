@@ -15,6 +15,11 @@ namespace AgentsTracker.Agents;
 /// <param name="Effort">Уровень усилий; null — как решит агент. У агента без этой настройки игнорируется.</param>
 /// <param name="PermissionMode">Режим разрешений — одно из значений <see cref="AgentCapabilities.PermissionMode"/>.</param>
 /// <param name="Timeout">Предельная длительность: по истечении процесс убивается.</param>
+/// <param name="AttachmentsPath">
+/// Папка с файлами, которые прислал пользователь: она вне <paramref name="ProjectPath"/>,
+/// и агенту нужно открыть к ней доступ (у Claude Code — <c>--add-dir</c>). null или
+/// несуществующая — вложений не было.
+/// </param>
 public sealed record AgentRunRequest(
     string Prompt,
     string ProjectPath,
@@ -23,7 +28,8 @@ public sealed record AgentRunRequest(
     string? Model,
     string? Effort,
     string PermissionMode,
-    TimeSpan Timeout);
+    TimeSpan Timeout,
+    string? AttachmentsPath = null);
 
 /// <summary>
 /// Что бэкенд сообщает по ходу запуска. <see cref="Activity"/> зовётся из потока чтения

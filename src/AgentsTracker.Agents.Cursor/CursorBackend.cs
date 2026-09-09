@@ -39,7 +39,7 @@ public sealed class CursorBackend(
         try
         {
             client = CursorAcpClient.Start(
-                locator.Resolve(), cwd, request.Model, options.Value.ApiKey, host.Proxy,
+                locator.Resolve(), cwd, request.Model, request.AttachmentsPath, options.Value.ApiKey, host.Proxy,
                 request.PermissionMode, console, observer, logger);
 
             await client.HandshakeAsync(linkedCts.Token);

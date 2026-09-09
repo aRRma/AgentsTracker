@@ -219,6 +219,14 @@ public sealed class ClaudeBackend(
         yield return "--allowedTools";
         yield return McpConfigFile.SendFileToolFullName;
 
+        // Картинки из чата лежат вне рабочей папки: без этого Read до них не дотянется.
+        // Проверка существования обязательна — у чата без вложений папки нет.
+        if (request.AttachmentsPath is { Length: > 0 } attachments && Directory.Exists(attachments))
+        {
+            yield return "--add-dir";
+            yield return attachments;
+        }
+
         if (request.Model is { Length: > 0 } model)
         {
             yield return "--model";

@@ -55,6 +55,7 @@ internal sealed class CursorAcpClient : IAsyncDisposable
         string executable,
         string projectPath,
         string? model,
+        string? attachmentsPath,
         string? apiKey,
         string? proxy,
         string permissionMode,
@@ -86,6 +87,13 @@ internal sealed class CursorAcpClient : IAsyncDisposable
             psi.ArgumentList.Add(model);
         }
 
+        // Картинки из чата лежат вне рабочей папки: без этого Read до них не дотянется.
+        if (attachmentsPath is { Length: > 0 } && Directory.Exists(attachmentsPath))
+        {
+            psi.ArgumentList.Add("--add-dir");
+            psi.ArgumentList.Add(attachmentsPath);
+        }
+
         psi.ArgumentList.Add("acp");
 
         // Тот же прокси, что и у канала: иначе за шлюзом с Gateway:Proxy агент не достучится
@@ -97,7 +105,10 @@ internal sealed class CursorAcpClient : IAsyncDisposable
             psi.Environment["NODE_USE_ENV_PROXY"] = "1";
         }
 
-        logger.LogInformation("agent acp{Model}", model is { Length: > 0 } ? $" --model {model}" : "");
+        logger.LogInformation(
+            "agent acp{Model}{AddDir}",
+            model is { Length: > 0 } ? $" --model {model}" : "",
+            attachmentsPath is { Length: > 0 } && Directory.Exists(attachmentsPath) ? " --add-dir" : "");
 
         var process = new Process { StartInfo = psi };
         try

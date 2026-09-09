@@ -24,7 +24,8 @@ public sealed class TelegramChannel(
     /// <summary>
     /// Сообщение до 4096 символов, подпись кнопки до 64 символов, callback_data до 64 байт.
     /// Файлы: документ до 50 МБ и фото до 10 МБ (пределы загрузки через Bot API), подпись до
-    /// 1024 символов — здесь с запасом на экранирование, как у сообщения.
+    /// 1024 символов — здесь с запасом на экранирование, как у сообщения. Скачать бот может
+    /// вчетверо меньше, чем отправить: getFile отдаёт файлы до 20 МБ.
     /// </summary>
     private static readonly ChannelLimits TelegramLimits = new(
         MessageLength: 3800,
@@ -32,7 +33,8 @@ public sealed class TelegramChannel(
         ButtonDataBytes: 64,
         DocumentBytes: 50L * 1024 * 1024,
         PhotoBytes: 10L * 1024 * 1024,
-        CaptionLength: 1000);
+        CaptionLength: 1000,
+        AttachmentBytes: 20L * 1024 * 1024);
 
     /// <summary>
     /// Кадры шкал идут чаще, чем Telegram позволяет править сообщение. Подождав не дольше
@@ -40,7 +42,21 @@ public sealed class TelegramChannel(
     /// </summary>
     private static readonly TimeSpan EditRetryCeiling = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// Альбом Telegram шлёт по обновлению на картинку, подпись — только у одной из них.
+    /// Столько ждём остальные: элементы идут подряд, с паузами в сотни миллисекунд.
+    /// </summary>
+    private static readonly TimeSpan MediaGroupWindow = TimeSpan.FromMilliseconds(1200);
+
     private readonly TelegramOptions _options = options.Value;
+
+    private readonly Lock _groupsGate = new();
+
+    /// <summary>Недособранные альбомы по media_group_id. Живут только в памяти доли секунды.</summary>
+    private readonly Dictionary<string, IncomingMessage> _mediaGroups = new(StringComparer.Ordinal);
+
+    /// <summary>Хвост цепочки отдачи альбомов: его ждёт обычное сообщение, чтобы не обогнать картинки.</summary>
+    private Task _groupFlush = Task.CompletedTask;
 
     /// <summary>
     /// Клиент создаётся при первом обращении: его конструктор бросает
@@ -122,10 +138,20 @@ public sealed class TelegramChannel(
                     await sink.OnButtonAsync(ToPress(callback), ct);
                     break;
 
-                case { Message: { Text: { Length: > 0 } text, From: { } from } message }:
-                    await sink.OnMessageAsync(
-                        new IncomingMessage(new TelegramChatId(message.Chat.Id), new TelegramUserId(from.Id), text.Trim(), Kind(message.Chat)),
-                        ct);
+                case { Message: { From: { } from } message } when ToIncoming(message, from) is { } incoming:
+                    if (message.MediaGroupId is { Length: > 0 } group)
+                    {
+                        CollectGroup(sink, group, incoming, ct);
+                    }
+                    else
+                    {
+                        // Альбом отдаётся из отдельной задачи, отстав на MediaGroupWindow.
+                        // Без ожидания текст, отправленный сразу за картинками, обогнал бы их,
+                        // и агент получил бы вопрос раньше того, о чём он.
+                        await PendingGroupsAsync();
+                        await sink.OnMessageAsync(incoming, ct);
+                    }
+
                     break;
             }
         }
@@ -134,6 +160,104 @@ public sealed class TelegramChannel(
             logger.LogError(ex, "Ошибка обработки обновления");
         }
     }
+
+    /// <summary>
+    /// Копит альбом и отдаёт его одним сообщением. Ждём в отдельной задаче, а не здесь:
+    /// пока обработчик обновления не вернулся, следующие картинки того же альбома не
+    /// разбираются, и пауза внутри него превратила бы альбом в три отдельных запуска агента.
+    /// </summary>
+    private void CollectGroup(IChatInbound sink, string groupId, IncomingMessage part, CancellationToken ct)
+    {
+        lock (_groupsGate)
+        {
+            if (_mediaGroups.TryGetValue(groupId, out var collected))
+            {
+                // Подпись бывает только у одного элемента альбома — у какого, не обещано.
+                _mediaGroups[groupId] = collected with
+                {
+                    Text = collected.Text.Length > 0 ? collected.Text : part.Text,
+                    Attachments = [.. collected.Attachments, .. part.Attachments],
+                };
+                return;
+            }
+
+            _mediaGroups[groupId] = part;
+
+            // Паузу держит только пришедший первым; остальные лишь дописывают вложения.
+            // Альбомы идут цепочкой друг за другом: два подряд не должны разъехаться.
+            _groupFlush = FlushGroupAsync(sink, groupId, ct, _groupFlush);
+        }
+    }
+
+    /// <summary>Задача недоотданного альбома. Она не бросает — ждать её можно без try.</summary>
+    private Task PendingGroupsAsync()
+    {
+        lock (_groupsGate) return _groupFlush;
+    }
+
+    private async Task FlushGroupAsync(IChatInbound sink, string groupId, CancellationToken ct, Task previous)
+    {
+        try
+        {
+            await previous;
+            await Task.Delay(MediaGroupWindow, ct);
+
+            IncomingMessage? collected;
+            lock (_groupsGate) _mediaGroups.Remove(groupId, out collected);
+
+            if (collected is not null) await sink.OnMessageAsync(collected, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // Остановка шлюза посреди альбома: недособранное теряем, как и всё в очереди опроса.
+            lock (_groupsGate) _mediaGroups.Remove(groupId);
+        }
+        catch (Exception ex)
+        {
+            lock (_groupsGate) _mediaGroups.Remove(groupId);
+            logger.LogError(ex, "Ошибка сборки альбома");
+        }
+    }
+
+    /// <summary>
+    /// Обновление в общую запись. null — брать нечего: сообщение без текста и без вложений
+    /// (вход в чат, закреплённое сообщение) шлюзу не нужно.
+    /// </summary>
+    private static IncomingMessage? ToIncoming(Message message, User from)
+    {
+        var attachments = Attachments(message);
+        var text = (message.Text ?? message.Caption ?? "").Trim();
+
+        if (text.Length == 0 && attachments.Count == 0) return null;
+
+        return new IncomingMessage(
+            new TelegramChatId(message.Chat.Id), new TelegramUserId(from.Id), text, Kind(message.Chat), attachments);
+    }
+
+    /// <summary>
+    /// Вложения сообщения. Голос, видео и стикеры тоже отдаём, помеченные
+    /// <see cref="AttachmentKind.Other"/>: хост ответит на них отказом, а молчание выглядит
+    /// как потерянное сообщение. Анимация разбирается раньше документа: Bot API кладёт GIF
+    /// сразу в оба поля, и как документ он бы поехал качаться впустую.
+    /// </summary>
+    private static IReadOnlyList<IncomingAttachment> Attachments(Message message) => message switch
+    {
+        // Фото приходит набором размеров одного снимка; последний — самый крупный.
+        { Photo: { Length: > 0 } sizes } =>
+            [new IncomingAttachment(sizes[^1].FileId, AttachmentKind.Photo, null, null, sizes[^1].FileSize)],
+        { Animation: { } animation } => [Unsupported(animation)],
+        { Video: { } video } => [Unsupported(video)],
+        { VideoNote: { } note } => [Unsupported(note)],
+        { Voice: { } voice } => [Unsupported(voice)],
+        { Audio: { } audio } => [Unsupported(audio)],
+        { Sticker: { } sticker } => [Unsupported(sticker)],
+        { Document: { } document } =>
+            [new IncomingAttachment(document.FileId, AttachmentKind.Document, document.FileName, document.MimeType, document.FileSize)],
+        _ => [],
+    };
+
+    private static IncomingAttachment Unsupported(FileBase file) =>
+        new(file.FileId, AttachmentKind.Other, null, null, file.FileSize);
 
     /// <summary>
     /// У callback-а сообщения может не быть (старое или недоступно боту), и тогда тип чата
@@ -209,6 +333,18 @@ public sealed class TelegramChannel(
 
     public Task<MessageRef> SendPhotoAsync(ChatId chat, string fileName, Stream content, string? caption, CancellationToken ct) =>
         SendMediaAsync(chat, file => Bot.SendPhoto(ChatIdOf(chat), file, caption, cancellationToken: ct), fileName, content);
+
+    public async Task DownloadAttachmentAsync(IncomingAttachment attachment, Stream destination, CancellationToken ct)
+    {
+        try
+        {
+            await Bot.GetInfoAndDownloadFile(attachment.FileId, destination, ct);
+        }
+        catch (RequestException ex)
+        {
+            throw Translate(ex);
+        }
+    }
 
     private async Task<MessageRef> SendMediaAsync(ChatId chat, Func<InputFile, Task<Message>> send, string fileName, Stream content)
     {

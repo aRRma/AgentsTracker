@@ -49,7 +49,7 @@
   </tr>
   <tr>
     <td align="center" width="50%"><img src="docs/images/bot-3.png" width="320" alt="Экран скиллов"><br><sub><b><code>/skills</code>.</b> Скиллы по источникам и плагины Claude Code</sub></td>
-    <td align="center" width="50%"><img src="docs/images/bot-2.png" width="320" alt="Экран расхода и лимитов"><br><sub><b><code>/usage</code>.</b> Остаток тарифа, расход по дням и моделям</sub></td>
+    <td align="center" width="50%"><img src="docs/images/bot-2.png" width="320" alt="Экран расхода и лимитов"><br><sub><b><code>/usage</code>.</b> Расход тарифа, расход по дням и моделям</sub></td>
   </tr>
 </table>
 
@@ -77,7 +77,7 @@
 | Работа по дням | запуски, ходы, токены, время в CLI; график и выгрузка CSV |
 | Запуски · Сессии | история последних запусков с исходом и расходом; сессии по проектам |
 | Аудит · Лог | кто что разрешил и подробный лог шлюза |
-| Слева на рейке | занят или свободен, остаток тарифа, версия CLI, модель и режим |
+| Слева на рейке | занят или свободен, расход тарифа шкалами, версия шлюза и CLI, модель и режим |
 
 <p align="center">
   <img src="docs/images/monitor.png" width="900" alt="Веб-монитор AgentsTracker">
@@ -88,15 +88,18 @@
 Готовое приложение со страницы [Releases](https://github.com/aRRma/AgentsTracker/releases):
 скачать, заполнить три значения, поставить на автозапуск. Ни SDK, ни клона репозитория не нужно.
 
+Команды везде даны двумя блоками: первый — PowerShell, второй — bash (Git Bash на Windows,
+обычный терминал на macOS и Linux). Где команда одинакова, блок один.
+
 ### Что нужно
 
 | | Проверка | Если нет |
 |---|---|---|
 | Windows 10/11 | — | на macOS и Linux пока только Docker |
-| Агент | Claude: `claude --version`; Cursor: `agent --version` | Claude: `irm https://claude.ai/install.ps1 \| iex`. Cursor: `irm 'https://cursor.com/install?win32=true' \| iex` |
+| Агент | Claude: `claude --version`; Cursor: `agent --version` | Claude: PowerShell — `irm https://claude.ai/install.ps1 \| iex`, bash — `curl -fsSL https://claude.ai/install.sh \| bash`. Cursor: `irm 'https://cursor.com/install?win32=true' \| iex` |
 | Вход в агента | CLI стартует без просьбы войти | `claude` или `agent login` |
 | Бот в Telegram | — | у [@BotFather](https://t.me/BotFather) команда `/newbot`, скопировать токен |
-| Telegram доступен | `curl.exe -sI https://api.telegram.org` | указать `Proxy` в настройках |
+| Telegram доступен | PowerShell — `curl.exe -sI https://api.telegram.org`, bash — `curl -sI https://api.telegram.org` | указать `Proxy` в настройках |
 
 Node.js не нужен. Git — по желанию: меню проектов ищет папки с `.git`.
 
@@ -109,26 +112,33 @@ Node.js не нужен. Git — по желанию: меню проектов 
 
 ### Пять шагов
 
-1. **Распакуйте** архив в постоянную папку вне репозиториев, например `C:\Apps\AgentsTracker`:
-   внутри репозитория её снесёт `git clean`.
+Внутри архива — папка `AgentsTracker-<версия>-…` с приложением и рядом с ней `install.txt`
+с этой же инструкцией. По имени папки видно, какая версия установлена.
+
+1. **Распакуйте** архив и перенесите папку приложения в постоянное место вне репозиториев,
+   например `C:\Apps\AgentsTracker`: внутри репозитория её снесёт `git clean`.
 2. **Настройки.** Рядом с exe скопируйте `appsettings.Local.example.json` как
    `appsettings.Local.json`, впишите `Channel:Settings:BotToken` и `ProjectPath`.
-3. **Ваш id.** Запустите `.\AgentsTracker.Gateway.exe` в консоли и напишите боту что угодно —
-   появится `Отклонено сообщение от постороннего пользователя. Пользователь: telegram:123456789`.
+3. **Ваш id.** Запустите exe в консоли (`.\AgentsTracker.Gateway.exe` в PowerShell,
+   `./AgentsTracker.Gateway.exe` в bash) и напишите боту что угодно — появится
+   `Отклонено сообщение от постороннего пользователя. Пользователь: telegram:123456789`.
    Впишите номер (без имени канала) в `"AllowedUserIds": [ 123456789 ]` внутри
    `Channel:Settings` и закройте консоль по Ctrl+C.
 4. **Поставьте на автозапуск:**
    ```powershell
    .\AgentsTracker.Gateway.exe install --start
    ```
+   ```bash
+   ./AgentsTracker.Gateway.exe install --start
+   ```
    Задача Планировщика поднимет шлюз при входе в Windows, настройки переедут
    в `%LOCALAPPDATA%\AgentsTracker\`, токен зашифруется.
-5. **Проверьте.** В чат придёт «🔌 Шлюз запущен», `/help` покажет команды, веб-монитор —
-   <http://127.0.0.1:5100>.
+5. **Проверьте.** В чат придёт «🔌 Шлюз запущен» с версией, `/help` покажет команды,
+   веб-монитор — <http://127.0.0.1:5100>.
 
-Обновление: `uninstall` → распаковать новый архив поверх → `install --start`. Снять всё —
-`uninstall`, настройки и история останутся. Та же инструкция лежит в архиве как
-`УСТАНОВКА.txt`, подробности — [docs/deployment.md](docs/deployment.md).
+Обновление: `uninstall` → распаковать новую папку приложения на место старой →
+`install --start`. Снять всё — `uninstall`, настройки и история останутся.
+Подробности — [docs/deployment.md](docs/deployment.md).
 
 ## Сборка из исходников
 
@@ -143,11 +153,20 @@ Node.js не нужен. Git — по желанию: меню проектов 
 dotnet run --project src\AgentsTracker.Gateway
 ```
 
+```bash
+dotnet run --project src/AgentsTracker.Gateway
+```
+
 Постоянная установка из исходников — публикация и автозапуск при входе в Windows:
 
 ```powershell
 dotnet publish src\AgentsTracker.Gateway -c Release -o C:\Apps\AgentsTracker
 C:\Apps\AgentsTracker\AgentsTracker.Gateway.exe install --start
+```
+
+```bash
+dotnet publish src/AgentsTracker.Gateway -c Release -o /c/Apps/AgentsTracker
+/c/Apps/AgentsTracker/AgentsTracker.Gateway.exe install --start
 ```
 
 `install` регистрирует задачу Планировщика для того exe, который его запустил, переносит
@@ -163,8 +182,14 @@ C:\Apps\AgentsTracker\AgentsTracker.Gateway.exe install --start
 Единственный режим, где агент видит только то, что вы смонтировали. Он же способ запустить
 шлюз на macOS и Linux, пока для них нет своей установки.
 
+```powershell
+Copy-Item .env.example .env             # токен, свой id, папка с репозиториями
+docker compose up -d --build
+docker compose exec gateway claude      # один раз войти в аккаунт агента
+```
+
 ```bash
-cp .env.example .env      # токен, свой id, папка с репозиториями
+cp .env.example .env                    # токен, свой id, папка с репозиториями
 docker compose up -d --build
 docker compose exec gateway claude      # один раз войти в аккаунт агента
 ```
@@ -205,11 +230,22 @@ dotnet build src\AgentsTracker.Gateway
 Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.exe
 ```
 
+```bash
+taskkill //F //IM AgentsTracker.Gateway.exe
+dotnet build src/AgentsTracker.Gateway
+cmd //c start "" "src/AgentsTracker.Gateway/bin/Debug/net10.0/AgentsTracker.Gateway.exe"
+```
+
 Настроен автозапуск:
 
 ```powershell
 Stop-ScheduledTask -TaskName 'AgentsTracker Gateway'
 Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
+```
+
+```bash
+schtasks //End //TN "AgentsTracker Gateway"
+schtasks //Run //TN "AgentsTracker Gateway"
 ```
 
 В контейнере: `docker compose restart`.
@@ -245,6 +281,7 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 | `McpPort` | порт, по которому Claude спрашивает разрешения у бота (5099). Cursor спрашивает по stdin ACP, этот порт ему не нужен |
 | `DataDirectory` | где хранить состояние и аудит; задаётся до остального конфига — в `appsettings.json` рядом с exe или переменной `Gateway__DataDirectory` |
 | `ApprovalTimeoutMinutes`, `RunTimeoutMinutes` | сколько минут ждать ответа на карточку (15) и всю задачу (60). Первое шлюз передаёт и самому агенту — иначе тот бросит ждать через 5 минут |
+| `Attachments:Enabled`, `Attachments:MaxBytes`, `Attachments:RetentionHours` | картинки из чата: принимать ли их (да), предел размера (10 МБ; Telegram отдаёт боту не больше 20 МБ) и сколько часов файл лежит в папке данных (24) |
 
 Полный список — в `appsettings.json`.
 
@@ -270,6 +307,9 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
   `.md .txt .json .cs .js .html` (документом) и `.png .jpg .jpeg` (фото). Папка данных шлюза
   недоступна. Секреты, лежащие внутри проекта (`.env`, локальный `appsettings.Local.json`),
   под это ограничение не попадают — держите их вне репозитория или в папке данных;
+- присланная в чат картинка ложится в `inbox` папки данных, и агенту открывается только папка
+  этого чата — не вся папка данных с секретами. Хранится сутки, чистится при старте шлюза и при
+  `/new`; принимаются только PNG и JPEG, тип проверяется по содержимому файла;
 - запретить что-то намертво можно в `.claude/settings.local.json` проекта:
 
   ```json
@@ -299,7 +339,7 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 | В меню не все репозитории | не задан `ProjectsRoot`; список листается `◀ ▶` |
 | `claude` / `agent` не найден | не поставлен CLI или не открыто новое окно PowerShell; крайний случай — `Claude:Executable` / `Cursor:Executable` |
 | Агент просит войти в аккаунт | запустите `claude` или `agent login` в PowerShell; бот использует этот вход |
-| Сборка падает с `MSB3021` | шлюз запущен и держит файлы. Установленный — `AgentsTracker.Gateway.exe uninstall` (снимает и останавливает), запущенный вручную — `Get-Process AgentsTracker.Gateway \| Stop-Process -Force` |
+| Сборка падает с `MSB3021` | шлюз запущен и держит файлы. Установленный — `AgentsTracker.Gateway.exe uninstall` (снимает и останавливает), запущенный вручную — `Get-Process AgentsTracker.Gateway \| Stop-Process -Force` (в bash `taskkill //F //IM AgentsTracker.Gateway.exe`) |
 | Кнопки не приходят | `PermissionMode` стоит `auto` — поставьте `default` |
 | В логе кракозябры | консоль в cp866; смотрите лог в PowerShell |
 | Монитор из контейнера не открывается | порт опубликован? внутри нужен `Gateway__MonitorBind=any` |
@@ -308,5 +348,7 @@ Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
 
 ---
 
-Детали эксплуатации, контракта с CLI и монитора — [docs/](docs/). Устройство проекта и
-инструкции для самого агента — [CLAUDE.md](CLAUDE.md) и `docs/en/`, они на английском.
+Детали эксплуатации, контракта с CLI и монитора — [docs/](docs/); там же устройство шлюза
+([docs/architecture.md](docs/architecture.md)) и чек-листы, как добавить команду, экран, агента или
+канал ([docs/extending.md](docs/extending.md)). Инструкции для самого агента —
+[CLAUDE.md](CLAUDE.md) и `docs/en/`, они на английском.

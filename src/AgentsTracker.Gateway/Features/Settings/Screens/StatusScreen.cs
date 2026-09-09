@@ -7,8 +7,8 @@ using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
 
 /// <summary>
-/// Статус: где работаем, что происходит и сколько осталось тарифа — шкалами. Шкалы
-/// заполняются за несколько кадров (<see cref="LimitBars"/>): так остаток виден с одного
+/// Статус: где работаем, что происходит и сколько тарифа уже израсходовано — шкалами. Шкалы
+/// заполняются за несколько кадров (<see cref="LimitBars"/>): так расход виден с одного
 /// взгляда, а движение показывает, что шлюз жив. «Обновить» перерисовывает тем же способом.
 /// </summary>
 public sealed class StatusScreen(
@@ -45,10 +45,21 @@ public sealed class StatusScreen(
         // Без окон анимировать нечего — один кадр, иначе сообщение дёргалось бы впустую.
         var frames = view.Windows.Count == 0 ? 1 : LimitBars.Frames;
 
+        // Кадр, совпавший с предыдущим, пропускаем вместе с паузой перед ним: с тех пор как
+        // шкала заполняется расходом, у слабо израсходованного окна (3% — ноль клеток из
+        // десяти) все кадры одинаковы, и правка уходила бы в Telegram впустую — он отвечает
+        // «message is not modified», а пользователь ждёт паузу между кадрами ни за чем.
+        // Сравниваем только текст: клавиатура здесь зависит от того же IsBusy, что и он.
+        string? shown = null;
+
         for (var frame = 0; frame < frames; frame++)
         {
-            if (frame > 0) await Task.Delay(LimitBars.FrameDelay, ct);
-            yield return Render(view, frames == 1 ? 1.0 : LimitBars.Progress(frame));
+            var rendered = Render(view, frames == 1 ? 1.0 : LimitBars.Progress(frame));
+            if (rendered.Html == shown) continue;
+
+            if (shown is not null) await Task.Delay(LimitBars.FrameDelay, ct);
+            shown = rendered.Html;
+            yield return rendered;
         }
     }
 
@@ -78,7 +89,7 @@ public sealed class StatusScreen(
             🧠 {E(store.EffectiveModel is { } selected ? agent.Capabilities.Model.Describe(selected) : "модель по умолчанию")}{effort} · 🔐 {E(store.EffectivePermissionMode)}
             ♾ Правил «всегда» в проекте: {store.AlwaysAllowRules().Count}
 
-            🚦 <b>Остаток тарифа</b>
+            🚦 <b>Расход тарифа</b>
             {LimitBars.Render(view, progress)}
             """;
 

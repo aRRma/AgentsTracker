@@ -85,6 +85,7 @@ public sealed class MonitorModule : IFeatureModule
     private static object Snapshot(LiveState live, SessionStore store, ChatWorker worker, IAgentBackend agent) => new
     {
         At = DateTimeOffset.UtcNow,
+        Version = AppVersion.Current,
         live.GatewayStartedUtc,
         Agent = agent.DisplayName,
         live.CliVersion,

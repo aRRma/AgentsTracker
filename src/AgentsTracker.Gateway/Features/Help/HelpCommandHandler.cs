@@ -33,6 +33,9 @@ public sealed class HelpCommandHandler(IChatChannel channel, IAgentBackend agent
             Текстом: /new — новая сессия, /stop — прервать запуск,
             /model {string.Join('|', caps.Model.Selectable)}|reset{effort}, /mode {string.Join('|', caps.PermissionMode.Selectable)}|reset.
 
+            Картинку (PNG, JPEG) можно прислать прямо в чат — подпись станет задачей.
+            Если на скриншоте мелкий текст, отправляйте «как файл»: Telegram жмёт фото.
+
             Когда агенту нужно разрешение, придёт карточка с кнопками.
             Слэш-команды самого {agent.DisplayName} (например /init или /plugin:skill) передаются агенту как есть.
             """;

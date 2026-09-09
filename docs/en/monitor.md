@@ -26,6 +26,11 @@ the latest state, not a queue of stale ones. `/api/events` sends a snapshot on c
 changes, with a `ping` between them every 5 s — without it the page couldn't tell silence apart
 from a crashed gateway.
 
+The gateway version is `AppVersion.Current` in the snapshot's `version` field, shown as the
+first row of the rail's "Шлюз" block. It is the same number as in the «🔌 Шлюз запущен» message:
+otherwise, after the install folder is updated, there is no way to tell the running build from
+the one sitting on disk.
+
 History is `GatewayState.RecentRuns` (200 entries, `SessionStore.RecordRunOutcome` after a run;
 the outcome is decided by `ChatWorker`, usage comes from `AgentRunResult.Usage`).
 `/api/stats.csv` uses `;`, a BOM, and a decimal comma: otherwise Excel under the Russian locale
@@ -47,7 +52,9 @@ it to `routes`), `python -m http.server <port> --bind 127.0.0.1` from the scratc
 
 - Accessibility — `browser_snapshot` from Playwright MCP (the tree of roles and names).
 - Dark theme — only via a Playwright script: `page.emulateMedia({colorScheme:'dark'})`.
-- Screenshots land in the repository root, they're in `.gitignore`.
+- A whole-page shot: `browser_navigate` to the right port, `browser_take_screenshot` with a
+  `filename`. Screenshots land in the repository root, they're in `.gitignore`; to show one to a
+  human — `mcp__tg__send_file`, then delete the file, the repository does not need it.
 - Design variants — a script in the scratchpad that swaps only the `<style>` block in a copy
   of the page (the markup and script stay shared, so the comparison is fair) and inserts the
   mock.
@@ -55,6 +62,11 @@ it to `routes`), `python -m http.server <port> --bind 127.0.0.1` from the scratc
   `browser_run_code_unsafe`; the same call checks the live `http://127.0.0.1:5100/`. `/api/*`
   itself without a browser — `pwsh -File scripts\monitor-api.ps1 api/snapshot` (`curl` and
   `Invoke-WebRequest` are in `deny`, loopback is not an exception).
+- Port `5100` is the **working** gateway, on this machine the release: it serves the page from
+  its own build, so your edit is not there. Look at your own change on a scratch instance
+  (`docs/en/operations.md`) — and take the screenshot from its port too.
+- A single panel — `browser_take_screenshot` with a `target` selector (`.gauges`, `.facts`):
+  a whole-page shot buries a change in a rail block.
 - Blue digits in a table screenshot are a subpixel artifact, check against
   `getComputedStyle(td).color`.
 
@@ -68,8 +80,9 @@ statistics, tables, audit, log.
 
 Worth knowing when editing the markup:
 
-- the color threshold for the limit bars is the same as `LimitBars` in chat — the numbers on
-  the page and in chat must not diverge;
+- the limit bars fill with **consumption** (a full bar means the window is exhausted), the
+  remainder goes into the caption below; the rounding and the color threshold are the same as
+  `LimitBars` in chat — the numbers on the page and in chat must not diverge;
 - sparklines are drawn only where there's a daily series `stats.byDay` (14 days);
 - selects and links go in `.band-head` next to `<h2>`, not inside the heading;
 - the `.tape` feed: time · tool · argument. `splitStep` takes the tool name as the first word

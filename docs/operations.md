@@ -3,17 +3,39 @@
 Когда читать: нужно перезапустить шлюз, проверить правку живьём или вести долгую задачу,
 не ломая работающий процесс.
 
+Команды даны двумя блоками: первый — PowerShell, второй — bash (Git Bash). Где команда
+одинакова в обеих оболочках, блок один.
+
+## Какой экземпляр работает
+
+Путь покажет `Get-Process AgentsTracker.Gateway`, и от него зависит всё остальное:
+
+- **опубликованный релиз** (`C:\AgentsTracker-<версия>-win-x64`) — так эта машина настроена
+  сейчас: стабильный сервис, с которым пользователь переписывается. Останавливать его и
+  пересобирать поверх нельзя; коммит в чате ничего не меняет, новый код попадёт туда только
+  со следующим релизом (`docs/deployment.md`). Правку живьём проверяет пробный экземпляр — ниже;
+- **`bin\Debug` основной папки** — тогда рабочий шлюз и есть разрабатываемый, и после коммита
+  его перезапускают, как описано здесь.
+
 ## Перезапуск шлюза
 
-На машине разработки exe запущен вручную из `bin\Debug`, задачи Планировщика обычно нет
-(путь покажет `Get-Process AgentsTracker.Gateway`). Пока он работает, `dotnet build` падает
-с `MSB3021` (exe занят).
+Относится к случаю, когда exe запущен вручную из `bin\Debug` и задачи Планировщика нет. Пока
+он работает, `dotnet build` падает с `MSB3021` (exe занят). У `Get-Process
+AgentsTracker.Gateway | Stop-Process -Force` фильтра нет: рядом с работающим релизом эта
+команда снимет и боевой сервис — отбирайте по `Path`.
 
 ```powershell
 git status                                                # чужие незакоммиченные правки могут не собираться
 Get-Process AgentsTracker.Gateway | Stop-Process -Force
 dotnet build src\AgentsTracker.Gateway
 Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.exe
+```
+
+```bash
+git status                                                # чужие незакоммиченные правки могут не собираться
+taskkill //F //IM AgentsTracker.Gateway.exe
+dotnet build src/AgentsTracker.Gateway
+cmd //c start "" "src/AgentsTracker.Gateway/bin/Debug/net10.0/AgentsTracker.Gateway.exe"
 ```
 
 - Рабочая папка не важна: `Program.cs` ставит `ContentRootPath = AppContext.BaseDirectory`;
@@ -30,17 +52,42 @@ Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.
   dotnet build ..\AgentsTracker-run\src\AgentsTracker.Gateway -o src\AgentsTracker.Gateway\bin\Debug\net10.0
   git worktree remove --force ..\AgentsTracker-run
   ```
+  ```bash
+  git worktree add --detach ../AgentsTracker-run HEAD
+  dotnet build ../AgentsTracker-run/src/AgentsTracker.Gateway -o src/AgentsTracker.Gateway/bin/Debug/net10.0
+  git worktree remove --force ../AgentsTracker-run
+  ```
 - Из сессии, запущенной самим шлюзом (из Telegram), перезапускать нельзя: `Stop-Process` убьёт
   и текущий `claude -p`, а отложенный `schtasks /SC ONCE` не срабатывал. Дайте пользователю
   команды выше и попросите выполнить руками.
 - Консоль отдаёт русский в cp866 — лог смотрите в PowerShell (`iconv` в Git Bash нет).
-- Бот после старта пишет «🔌 Шлюз запущен»; если перезапуск пришёлся на работающую задачу —
+- Бот после старта пишет «🔌 Шлюз запущен» с версией сборки (в сборке из исходников это
+  `0.0.0-dev`) — по ней видно, что поднялся именно новый exe; если перезапуск пришёлся на работающую задачу —
   в её чат уходит «прерван, напишите „продолжай“».
 
 ## Пробный экземпляр
 
 Любой ключ конфига перекрывается переменной окружения, поэтому второй exe можно поднять рядом
-с рабочим. Что задать пробе:
+с рабочим. Пока рабочий экземпляр — релиз, это единственный способ увидеть правку живьём: проба
+собирается в отдельную папку и слушает свои порты, так что не трогает ни `bin\Debug`, ни боевой
+сервис.
+
+```powershell
+dotnet build src\AgentsTracker.Gateway -o $env:TEMP\at-build
+$env:Gateway__Channel__Settings__BotToken = '123456789:AAFakeTokenFakeTokenFakeTokenFakeTok'
+$env:Gateway__McpPort = '5198'; $env:Gateway__MonitorPort = '5199'
+$env:Gateway__DataDirectory = "$env:TEMP\at-scratch-data"
+$env:Gateway__ProjectPath = 'C:\Users\aRRma99\source\repos\ME\AgentsTracker'
+& "$env:TEMP\at-build\AgentsTracker.Gateway.exe"
+```
+
+Эти строки кладите скриптом в scratchpad и запускайте `pwsh -File` в фоне: переменные,
+выставленные инструментом PowerShell, до следующего вызова не доживают, а exe держит консоль.
+Останавливать — по пути, а не по имени: `Get-Process AgentsTracker.Gateway | Where-Object
+{ $_.Path -like "$env:TEMP*" } | Stop-Process -Force`, иначе вместе с пробой ляжет рабочий
+релиз; потом удалить папку `Gateway__DataDirectory`.
+
+Что задать пробе:
 
 - `Gateway__Channel__Settings__BotToken` — поддельный, но формата `<число>:<строка>`, иначе
   канал не создастся;
@@ -51,27 +98,55 @@ Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.
   читает боевой `appsettings.Local.json`: не мешает рабочему шлюзу и не зависит от формы его
   конфига. Без этого `state.json` общий — не запускайте пробу, пока идёт задача.
 
-Живёт проба около минуты: бот один, и `getUpdates` второму процессу отдаёт 409. Этого хватает,
-чтобы дёрнуть монитор. MCP-конфиг конфликта не создаёт — он у каждого свой,
-`mcp-gateway-<pid>.json`.
+С **поддельным** токеном проба живёт около минуты: `getUpdates` получает `Unauthorized`, и
+после `ConnectAttempts` (6 попыток по 10 с) хост пишет «Не удалось подключиться» и завершается.
+Этого хватает на старт, конфиг и монитор, а рабочий бот ничего не замечает. Для чего-то дольше —
+и вообще для сценария в чате — нужен **отдельный тестовый бот** от @BotFather: с токеном рабочего
+второй процесс получит 409 на `getUpdates`, а релиз потеряет опрос. MCP-конфиг конфликта не
+создаёт в любом случае — он у каждого свой, `mcp-gateway-<pid>.json`.
+
+Монитор пробы (`http://127.0.0.1:5199`) — единственное место, где видна правка страницы: порт
+`5100` принадлежит релизу и показывает старый код. Скриншоты — `docs/monitor.md`.
 
 Смоук-тест после правок инфраструктуры: скрипт в scratchpad, `pwsh -File`; через ~8 с
 проверить:
 
-- `/api/snapshot` — поля `agent`, `cliVersion`;
+- `/api/snapshot` — поля `version` (версия шлюза), `agent`, `cliVersion`;
 - `/api/limits`;
 - 404 на `/` порта MCP;
 - 401 на `POST /mcp` без токена, с заголовками `Content-Type: application/json` и
   `Accept: application/json, text/event-stream` — иначе придёт 415.
 
+## Проверка логики хоста без Telegram
+
+Всё, чему не нужен живой бот, проверяется file-based приложением на C#: классы шлюза с
+подделками вместо канала — без токена, портов и ожидания.
+
+```csharp
+#:sdk Microsoft.NET.Sdk.Web
+#:project C:/Users/…/src/AgentsTracker.Gateway
+```
+
+Сначала `AppPaths.UseDirectory(<папка во временных>)`, затем
+`Options.Create(new GatewayOptions { … })`, `NullLogger<T>.Instance` и свои
+`IChatChannel`/`IAuditLog` (остальные методы канала — `throw new NotSupportedException()`).
+Файл кладётся в scratchpad и запускается `dotnet run check.cs`. Так за один прогон проверена
+работа с присланными файлами: определение типа по сигнатуре, пределы размера, чистка по возрасту,
+отказы и записи аудита — и там же нашёлся `Directory.Delete`, падавший на только что удалённом файле.
+
 ## Крупные задачи — в worktree
 
-Шлюз запущен из `bin\Debug` основной папки `AgentsTracker` (ветка `master`; ветки `main` в
-репозитории нет): переключение ветки подменит исходники под процессом, сломанная сборка
-лишит возможности перезапустить.
+Основная папка `AgentsTracker` остаётся на `master` (ветки `main` в репозитории нет):
+переключение ветки в ней подменит исходники под шлюзом, запущенным из `bin\Debug`, а сломанная
+сборка лишит возможности перезапустить. Даже когда рабочий экземпляр — релиз, правило в силе:
+пробный экземпляр собирается из этой же папки.
 
 ```powershell
 git worktree add ..\AgentsTracker-<задача> -b <ветка>   # основная папка остаётся папкой шлюза
+```
+
+```bash
+git worktree add ../AgentsTracker-<задача> -b <ветка>   # основная папка остаётся папкой шлюза
 ```
 
 Работайте в новой папке (из чата — `/project`, у неё свои сессии). Вливать — в два шага:
@@ -105,6 +180,11 @@ pwsh -File scripts\sync-wiki.ps1 -OutDir C:\Temp\wiki-preview   # посмотр
 pwsh -File scripts\sync-wiki.ps1                                # собрать и отправить
 ```
 
+```bash
+pwsh -File scripts/sync-wiki.ps1 -OutDir /c/Temp/wiki-preview   # посмотреть, что получится
+pwsh -File scripts/sync-wiki.ps1                                # собрать и отправить
+```
+
 Папку предпросмотра скрипт чистит от своих страниц, поэтому `-OutDir` внутрь репозитория
 он не пускает: `-OutDir docs` затёр бы исходники.
 
@@ -123,6 +203,11 @@ pwsh -File scripts\sync-wiki.ps1                                # собрать
   `\r` в путях съедаются молча и неотличимы от опечатки. Скрипт — в scratchpad через Write,
   запуск файлом, результат проверять `grep … | cat -v` и сборкой.
 - Исходники — UTF-8 **без BOM** (`utf-8-sig` добавит его молча).
+- `claude` нет в PATH оболочек инструментов: зовите как
+  `& "$env:USERPROFILE\.local\bin\claude.exe" --help` (из Git Bash этот путь не запускается).
+  Недокументированное поведение CLI быстрее всего проверять голым
+  `claude -p … --output-format json` и полем `permission_denials` в ответе — так выяснилось, что
+  `--add-dir` не поднимает карточку подтверждения.
 - Сообщение коммита из нескольких абзацев — файлом в scratchpad и `git commit -F <файл>`:
   `-F -` с here-string из инструмента PowerShell stdin не получает.
 - Ревьюеру-сабагенту без Bash `git show`/`git diff` недоступны: выгружайте старые версии

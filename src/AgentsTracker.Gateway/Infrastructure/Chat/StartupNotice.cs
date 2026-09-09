@@ -21,7 +21,11 @@ public sealed class StartupNotice(
 
         var probe = agent.Probe();
         var version = probe.Version is { Length: > 0 } v ? $" {v}" : "";
-        var started = $"🔌 Шлюз запущен — {agent.DisplayName}{version}, проект {Path.GetFileName(store.ProjectPath)}.";
+
+        // Версия шлюза рядом с версией агента: после «распакуйте архив поверх» это
+        // единственный способ из чата убедиться, что поднялась новая сборка.
+        var started = $"🔌 Шлюз запущен {AppVersion.Current} — {agent.DisplayName}{version}, "
+                      + $"проект {Path.GetFileName(store.ProjectPath)}.";
 
         var interruptedChat = interrupted is null ? null : channel.ParseChat(interrupted.ChatKey);
         var told = false;

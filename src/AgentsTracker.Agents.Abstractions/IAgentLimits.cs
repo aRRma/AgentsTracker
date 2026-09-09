@@ -10,10 +10,11 @@ public sealed record LimitWindow(string Key, double Used, DateTimeOffset? Resets
 public sealed record ExtraUsageState(bool IsEnabled, double? UsedCredits);
 
 /// <summary>
-/// Окно для шкалы в чате: подпись, остаток 0..1 и сброс — момент плюс готовая подпись
-/// («в 18:00», «9 сентября в 10:00») в формате агента.
+/// Окно для шкалы в чате: подпись, израсходованная доля 0..1 и сброс — момент плюс готовая
+/// подпись («в 18:00», «9 сентября в 10:00») в формате агента. Шкала показывает именно расход:
+/// полная шкала — окно исчерпано, поэтому «сколько съели» и заполнение всегда об одном и том же.
 /// </summary>
-public sealed record LimitGauge(string Title, double Remaining, DateTimeOffset? ResetsAt, string? ResetLabel);
+public sealed record LimitGauge(string Title, double Used, DateTimeOffset? ResetsAt, string? ResetLabel);
 
 /// <summary>Окна для шкал либо причина, по которой опрос не удался (тогда окон нет).</summary>
 public sealed record LimitsView(IReadOnlyList<LimitGauge> Windows, string? Error);

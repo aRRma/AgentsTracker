@@ -26,8 +26,45 @@ public enum ChatKind
     Unknown,
 }
 
-/// <summary>Текст от пользователя. Доступ проверяет хост, канал лишь говорит, откуда пришло.</summary>
-public sealed record IncomingMessage(ChatId Chat, UserId User, string Text, ChatKind Kind);
+/// <summary>
+/// Что за вложение пришло. <see cref="Photo"/> — картинка, пережатая мессенджером;
+/// <see cref="Document"/> — файл как есть, с именем и заявленным типом; <see cref="Other"/> —
+/// голос, видео, стикер и прочее, чего хост принимать не умеет: он ответит отказом, а не
+/// молчанием.
+/// </summary>
+public enum AttachmentKind
+{
+    Photo,
+    Document,
+    Other,
+}
+
+/// <summary>
+/// Вложение до скачивания. Канал отдаёт только описание, тело — по запросу хоста
+/// (<see cref="IChatChannel.DownloadAttachmentAsync"/>): куда его класть и надолго ли,
+/// решает хост.
+/// </summary>
+/// <param name="FileId">Ключ вложения у канала — по нему хост просит тело.</param>
+/// <param name="FileName">Имя от отправителя; у фото его не бывает. Доверять ему нельзя.</param>
+/// <param name="MimeType">Тип по версии отправителя — тоже лишь подсказка.</param>
+/// <param name="Size">Размер по версии канала; null — канал его не сообщил.</param>
+public sealed record IncomingAttachment(
+    string FileId,
+    AttachmentKind Kind,
+    string? FileName,
+    string? MimeType,
+    long? Size);
+
+/// <summary>
+/// Сообщение от пользователя. Доступ проверяет хост, канал лишь говорит, откуда пришло.
+/// <paramref name="Text"/> пуст, если прислали вложение без подписи.
+/// </summary>
+public sealed record IncomingMessage(
+    ChatId Chat,
+    UserId User,
+    string Text,
+    ChatKind Kind,
+    IReadOnlyList<IncomingAttachment> Attachments);
 
 /// <summary>
 /// Нажатие кнопки. <paramref name="PressId"/> — чем ответить каналу («принято», всплывающий
