@@ -340,5 +340,7 @@ schtasks //Run //TN "AgentsTracker Gateway"
 
 ---
 
-Детали эксплуатации, контракта с CLI и монитора — [docs/](docs/). Устройство проекта и
-инструкции для самого агента — [CLAUDE.md](CLAUDE.md) и `docs/en/`, они на английском.
+Детали эксплуатации, контракта с CLI и монитора — [docs/](docs/); там же устройство шлюза
+([docs/architecture.md](docs/architecture.md)) и чек-листы, как добавить команду, экран, агента или
+канал ([docs/extending.md](docs/extending.md)). Инструкции для самого агента —
+[CLAUDE.md](CLAUDE.md) и `docs/en/`, они на английском.

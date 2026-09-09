@@ -52,7 +52,9 @@ it to `routes`), `python -m http.server <port> --bind 127.0.0.1` from the scratc
 
 - Accessibility — `browser_snapshot` from Playwright MCP (the tree of roles and names).
 - Dark theme — only via a Playwright script: `page.emulateMedia({colorScheme:'dark'})`.
-- Screenshots land in the repository root, they're in `.gitignore`.
+- A whole-page shot: `browser_navigate` to the right port, `browser_take_screenshot` with a
+  `filename`. Screenshots land in the repository root, they're in `.gitignore`; to show one to a
+  human — `mcp__tg__send_file`, then delete the file, the repository does not need it.
 - Design variants — a script in the scratchpad that swaps only the `<style>` block in a copy
   of the page (the markup and script stay shared, so the comparison is fair) and inserts the
   mock.
