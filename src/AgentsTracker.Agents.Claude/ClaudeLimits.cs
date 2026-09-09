@@ -147,9 +147,15 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
             .Where(w => Applies(w.Key, model) && !Passed(w.ResetsAt))
             .OrderBy(w => w.ResetsAt ?? DateTimeOffset.MaxValue);
 
-    /// <summary>Остаток окна в процентах, округление вниз — чтобы не обнадёживать.</summary>
+    /// <summary>
+    /// Остаток окна в процентах: 100 минус расход, округлённый вверх (чтобы не обнадёживать) —
+    /// той же формулой, что и шкалы <c>LimitBars</c>. Своё округление вниз расходилось с ними на
+    /// 14 значениях из 1001: у 0.67 доля остатка в double равна 0.32999999999999996, и в меню
+    /// выходило «неделя 32%» против «осталось 33%» в том же `/status`. Поправка 1e-9 гасит ту же
+    /// погрешность в другую сторону: без неё 0.67 даёт 67.00000000000001 и остаток 32%.
+    /// </summary>
     private static string Left(double used) =>
-        ((int)Math.Floor(Math.Clamp(1.0 - used, 0.0, 1.0) * 100)).ToString(CultureInfo.InvariantCulture) + "%";
+        (100 - (int)Math.Ceiling(Math.Clamp(used, 0.0, 1.0) * 100 - 1e-9)).ToString(CultureInfo.InvariantCulture) + "%";
 
     /// <summary>
     /// Окно без модели в ключе действует на любой запуск, окно модели — только на её запуск.

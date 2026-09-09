@@ -154,8 +154,10 @@ budget on one line — `ShortSummaryAsync` (menu summary); the windows for the g
 `ViewAsync`. `LimitGauge.Used` is the **consumed** fraction 0..1: the `LimitBars` gauges on
 `/status` and the meters in the monitor fill with consumption, a full bar means the window is
 exhausted. Consumption is rounded up (so as not to flatter), the remainder is 100 minus that
-rather than its own rounding: in double `1 - 0.67` is `0.32999999999999996`, and independent
-rounding produced "67% · осталось 32%".
+rather than its own rounding — **one formula** in `LimitBars`, in the monitor and in
+`ClaudeLimits.Left`. In double `1 - 0.67` is `0.32999999999999996`, and independent rounding
+diverged on 14 values out of 1001: the menu showed «неделя 32%» against «осталось 33%» in the
+very same `/status`.
 
 `ClaudeLimits` calls the **undocumented** `api.anthropic.com/api/oauth/usage` with the token
 from `~/.claude/.credentials.json`: it requires a plausible User-Agent, responds 429 on
