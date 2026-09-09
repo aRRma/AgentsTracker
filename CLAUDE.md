@@ -1,8 +1,14 @@
 # CLAUDE.md
 
-Notes for Claude Code working in this repository. Details are in `docs/en/`:
+Notes for Claude Code working in this repository. This file holds the rules and the map; the
+details are in `docs/en/`:
 
 - `docs/en/operations.md` — restarting the gateway, scratch instance, worktree, tooling.
+- `docs/en/architecture.md` — how the gateway is built: the annotated project tree, the message
+  path, the gateway ↔ CLI loop, sessions, state and secrets, audit, chat output.
+- `docs/en/extending.md` — checklists for adding: a chat command, a settings screen, a feature, an
+  agent, a channel, a project, an MCP tool, a monitor endpoint, an exe command, an autostart
+  mechanism, a config key.
 - `docs/en/deployment.md` — production run: publish, install/uninstall, Docker, ports, secrets.
 - `docs/en/cli-contract.md` — the CLI contract: approvals, stream-json, sessions, limits, skills.
 - `docs/en/monitor.md` — web monitor: endpoints, mock, styling, accessibility.
@@ -50,193 +56,53 @@ gateway does run from `bin\Debug` of the main folder (`AgentsTracker`, branch `m
 sources out from under the process. From a session started from Telegram you must not restart it —
 hand the commands to the user instead.
 
-## How to add
-
-**A chat command.** A class implementing `IChatCommandHandler` in the feature folder, `AddSingleton`
-in its `*Module`, an entry in `ChatCommandCatalog` (the channel's command hints) and in the
-`HelpCommandHandler` text. Taken: `/start /help` (Help), `/new /stop` (Chat), `/rules` (Approvals),
-`/audit` (Audit), `/menu /settings /status /sessions /agent /model /effort /mode /skills /project
-/usage` (Settings). A duplicate across two features kills startup. The «Меню» screen holds screens
-only — `/new /stop /model /effort /mode` work as text but are not in the list. The command list and
-the help share one order: status and sessions, agent and skills, repository, statistics, rules,
-logs. `RootScreen` repeats it up to and including statistics: there are no menu buttons for `/rules`
-and `/audit`. Every other slash command goes to the CLI as-is.
-
-**A settings screen.** A class implementing `ISettingsScreen` in `Features/Settings/Screens/`,
-registration in `SettingsModule`, a button in `RootScreen`. `RenderAsync` is async because of the
-limits; `RenderFramesAsync` returns optional frames (`StatusScreen` "fills" the `LimitBars` gauges:
-three frames 350 ms apart, more often gets a 429 from Telegram). A frame identical to the previous
-one is skipped along with the pause before it — the bar of a barely used window does not move, and
-the edit would only earn a «message is not modified» after a wait. Model, effort and mode are one
-`AgentScreen` with the arguments `model:…`/`effort:…`/`mode:…`. `Apply` receives the `ChatId`: a
-screen can enqueue work on `ChatWorker` (`SkillsScreen`), the answer goes to whoever pressed the
-button. The list position lives in `ScreenNavigation` per user: screens are singletons, there can be
-several users. Pages and callback_data keys — `SettingsKeyboard.Page`/`Key12`; the one-letter prefix
-of a screen argument must not be a hex character, or it will be confused with a key.
-
-**A feature.** A folder in `Features/` with a `*Module : IFeatureModule` (`Infrastructure/Modules/`)
-and a line in the module list in `Program.cs`; `ChatModule` stays last.
-
-**An agent (Codex, Cursor).** A project `src/AgentsTracker.Agents.<Name>` referencing
-`Agents.Abstractions`: an `IAgentBackendModule` registers `IAgentBackend`, `IAgentLimits` (or
-`NoAgentLimits`), `IAgentSkillCatalog` (or `NoAgentSkills`) and its own approval channel through
-`IOperatorConsole`. A line in the `agents` list in `Program.cs`, a reference in `Gateway.csproj` and
-a `COPY` line in the `Dockerfile`.
-`grep -rn Claude src/AgentsTracker.Gateway --include=*.cs` must only find `Program.cs` and comments.
-Agent settings live in `Gateway:<Id>`, the host does not read them.
-
-**A chat channel (Slack, Discord).** A project `src/AgentsTracker.Channels.<Name>` referencing
-`Channels.Abstractions`: an `IChatChannelModule` registers `IChatChannel` and everything of its own,
-reads settings from `Gateway:Channel:Settings` and declares in `SecretKeys` what `protect-secrets`
-encrypts. Its own `ChatId`/`UserId` types (`Key` is "channel:value"), its own `ChannelLimits`,
-transport failures — only `ChannelRequestException`. A line in the `channels` list in `Program.cs`
-(selected by `Gateway:Channel:Type`), a reference in `Gateway.csproj` and a `COPY` line in the
-`Dockerfile`.
-`grep -rn Telegram src/AgentsTracker.Gateway --include=*.cs` must only find `Program.cs` and
-comments. The channel takes its transport client **lazily**: the host creates the channel before it
-prints configuration errors, and a constructor failing on an empty token would replace a readable
-error with a stack trace.
-
-**A project.** There is no `Directory.Build.props` and no `.editorconfig`: every csproj repeats
-`TargetFramework`, `Nullable`, `ImplicitUsings`, `TreatWarningsAsErrors` and `RootNamespace` itself.
-Copy that block from a neighbouring project — `dotnet new` gives a project without warnings-as-errors
-and with a root namespace of its own, and that only shows up later, as a warning nobody notices.
-
-**A monitor endpoint.** `api.MapGet` in `MonitorModule.MapEndpoints`, read-only —
-`docs/en/monitor.md`.
-
-**An exe command.** A class in `Infrastructure/Cli/` (`protect-secrets` lives in `Security/`, next to
-`SecretsProtector`) with a `public const string Name` and `Run(string[] args, TextWriter output)` —
-plus `IReadOnlyList<IChatChannelModule> channels` if the command needs channel keys (as `install` and
-`protect-secrets` do). A line in the `switch` of `ConsoleCommands` and in its help. Commands run
-before the host is built: DI and Telegram are unavailable to them, the answer goes to `output` only,
-the exit code is 0 or 1. Taken: `protect-secrets`, `install`, `uninstall`, `help`. Anything starting
-with a dash is not a command — those are configuration arguments.
-
-**An autostart mechanism (launchd, systemd).** An `IAutostartInstaller` implementation in
-`Infrastructure/Autostart/` and a line in `AutostartInstaller.ForCurrentOs`. The approach is the same
-on every OS: drop a descriptor file and call the platform utility through
-`ProcessAutostartInstaller.Run` — decide by the exit code, their output is localized. The XML for
-`schtasks` is written in UTF-16: in UTF-8 the Cyrillic in the task description turns into mojibake.
-
-**A config key.** A property in `GatewayOptions` (+ `Validate`), a default in `appsettings.json`, a
-`"//Ключ": "…"` sample in `appsettings.Local.example.json`, a line in the README's «Основные
-настройки». An agent key goes into `ClaudeOptions` and `Gateway:Claude`, a channel key into its
-`*Options` and `Gateway:Channel:Settings`. The exception is `DataDirectory`: it is needed before the
-config (that folder holds `appsettings.Local.json` itself), so it is read in
-`AppPaths.UseConfiguredDirectory` from the `appsettings.json` next to the exe and from the
-environment.
-
 ## Layout
 
 ```
-src/AgentsTracker.Agents.Abstractions/   agent contracts, no Telegram and no specific CLI:
-  IAgentBackend         Probe() (binary, version), RunAsync(AgentRunRequest, IAgentRunObserver)
-  AgentRun.cs           request (prompt, folder, session, model, effort, mode, timeout), observer, result
-  AgentCapabilities     which models/efforts/modes the agent supports (effort null — not supported)
-  IOperatorConsole      what the agent asks a human for: ApproveAsync, AskAsync, SendFileAsync; PersistentRule — an "always" rule
-  IAgentLimits          plan limits; IAgentSkillCatalog — slash commands
-  IAgentBackendModule   AddServices + MapEndpoints; AgentHost — data directory, port, proxy, card timeout from the host
-src/AgentsTracker.Agents.Claude/         Claude Code behind those contracts:
-  ClaudeBackend         the claude -p process: arguments, stream-json, "session not found", limit
-  ClaudeCapabilities    which models, efforts and modes the CLI accepts; Selectable — what is offered from the chat
-  ClaudeLimits, ClaudeSkillCatalog, ClaudePluginRegistry, ClaudeCliLocator, ClaudeStreamEvent
-  Mcp/                  McpConfigFile — mcp-gateway-<pid>.json with a token; ClaudePermissionTool — the CLI ↔ IOperatorConsole payload;
-                        ClaudeSendFileTool — a file from the agent into the chat, the policy stays on the host side
-src/AgentsTracker.Channels.Abstractions/ channel contracts, no specific messenger:
-  IChatChannel          channel addresses and limits, ConnectAsync/ListenAsync, Send/Edit/Delete/Acknowledge,
-                        SendDocumentAsync/SendPhotoAsync — a file and a picture as a stream
-  ChannelLimits         channel bounds: message and caption length, document and photo size
-  RateLimitRetry        one retry after a 429 with a short retry_after — shared by every send
-  ChatId, UserId        an address as a value; Key is "channel:value" for state.json, the audit and the log
-  Messages.cs           OutgoingMessage, Keyboard, MessageRef, IncomingMessage, ButtonPress, ChatCommand
-  IChatInbound          where the channel hands incoming traffic; implemented by the host (ChatDispatcher)
-  ChatHtml              the canonical text format (b, i, s, code, pre, a, blockquote) and escaping
-  ChannelRequestException  the channel's only outward exception: RateLimited (retry_after), MarkupRejected, CannotReach
-  IChatChannelModule    AddServices + MapEndpoints, SecretKeys; ChannelHost — the shared proxy from the host
-src/AgentsTracker.Channels.Telegram/     Telegram behind those contracts:
-  TelegramChannel       long polling, inline buttons, HTML; "message is not modified" and retry_after live here
-  TelegramOptions, TelegramIds, TelegramClientFactory (client is lazy: the constructor validates the token)
-src/AgentsTracker.Gateway/
-  Program.cs            data directory, service commands, lists of agents (Gateway:Agent), channels (Gateway:Channel:Type) and features
-  Domain/               pure models: GatewayState (state.json), AuditEvent
-  Infrastructure/       Configuration (GatewayOptions, ProjectCatalog), State (SessionStore),
-                        Chat (ChatGatewayService, ChatDispatcher, MarkdownRenderer, StartupNotice —
-                        «запущен»/«прерван» after a restart, Dispatch/ — handler contracts),
-                        Container.Detected — in a container no autostart is installed, the monitor listens on any,
-                        Audit, Monitoring (RunMonitor, RingBufferLog), Security (protect-secrets included),
-                        AppVersion — the build number for the log, the monitor and «Шлюз запущен»,
-                        Cli/ (install, uninstall), Autostart/ (a Task Scheduler task via schtasks)
-  Features/             vertical slices, each with its own *Module:
-    Approvals/          approval cards, ApprovalBroker, /rules
-    Chat/               ChatWorker (queue, launch, sessions), RunStatusMessage, /new /stop
-    Settings/           SettingsMenuCoordinator + Screens/*, /menu /status /sessions /agent /skills /project /usage
-    Help/ Audit/ Monitor/   /start /help; /audit; the web page (index.html — EmbeddedResource) and /api/*
+src/AgentsTracker.Agents.Abstractions/   agent contracts, no Telegram and no specific CLI
+src/AgentsTracker.Agents.Claude/         Claude Code behind those contracts, Mcp/ — the tools the CLI calls
+src/AgentsTracker.Channels.Abstractions/ channel contracts, no specific messenger
+src/AgentsTracker.Channels.Telegram/     Telegram behind those contracts
+src/AgentsTracker.Gateway/               Program.cs (agents, channels, features), Domain/, Infrastructure/,
+                                         Features/ — vertical slices: Approvals, Chat, Settings, Help, Audit, Monitor
 ```
 
-Layering rules: `Domain` and `Abstractions` do not open files and do not go over the network;
-`Gateway` knows about a specific agent and channel only in `Program.cs`; the backend and the channel
-know nothing about each other or about `GatewayOptions`; `Infrastructure` knows nothing about
-features (except the `Dispatch` contracts); a feature depends on a feature only through a public
-service (`Settings` → `ChatWorker.IsBusy`).
+What each file inside them is for — `docs/en/architecture.md`. Layering rules, and breaking one is
+an architecture error rather than a typo: `Domain` and `Abstractions` do not open files and do not
+go over the network; `Gateway` knows about a specific agent and channel only in `Program.cs`; the
+backend and the channel know nothing about each other or about `GatewayOptions`; `Infrastructure`
+knows nothing about features (except the `Dispatch` contracts); a feature depends on a feature only
+through a public service (`Settings` → `ChatWorker.IsBusy`).
+
+**Adding anything** — the checklists in `docs/en/extending.md`, do not do it from memory: a
+half-registered command or screen either kills startup or cannot be reached from the chat. What
+matters no matter what you add: the lists of agents, channels and features live only in
+`Program.cs`, `ChatModule` stays last there, and a slash command duplicated across two features
+kills startup.
 
 ### How a message travels
 
-`ChatDispatcher` lets through only `IChatChannel.AllowedUsers` and private chats (`ChatKind.Unknown`
-is a rejection too). Text is processed in order:
-
-1. a slash command from `IChatCommandHandler.Commands` — **first of all**, otherwise `/stop` would go
-   to a waiting free-form answer and there would be nothing left to interrupt a stuck run with;
-2. the `IChatTextHandler` chain in module order: an answer to a card (`ApprovalTextHandler`) → skill
-   arguments (`SkillArgumentsTextHandler`) → into the agent's queue (`ChatEnqueueTextHandler`, always
-   `true`). That is why `ChatModule` is last. Unknown slash commands are Claude Code's own commands,
-   they go to the CLI.
-
-Buttons: the `IChatButtonHandler` chain (`Dispatch/`), each recognizing its own by the prefix in
-`CanHandle`: `cfg:` — the menu (`SettingsCallbackHandler`), everything else (a hex request id) —
-`ApprovalCallbackHandler` → `ApprovalBroker`.
-The broker's `ActiveChat` is set by `ChatWorker` before a run, otherwise cards would go to another
-user's chat.
+`ChatDispatcher` lets through only `IChatChannel.AllowedUsers` and private chats. A slash command
+from `IChatCommandHandler.Commands` is matched **before** the text handlers — otherwise `/stop`
+would go to a waiting free-form answer and there would be nothing left to interrupt a stuck run
+with. Then the `IChatTextHandler` chain in module order: an answer to a card → skill arguments →
+into the agent's queue (always `true`, hence `ChatModule` last). Unknown slash commands are Claude
+Code's own, they go to the CLI. Buttons: the `IChatButtonHandler` chain, `cfg:` — the menu,
+everything else — approvals. Details — `docs/en/architecture.md`.
 
 ### The gateway → CLI → gateway loop
 
-The gateway both launches the agent and serves it:
+The gateway both launches the agent and serves it: `claude -p` asks for permissions back through
+the gateway's own MCP server (`http://127.0.0.1:<McpPort>/mcp`, a token in the header,
+`--permission-prompt-tool mcp__tg__approve`), the question becomes a card in the chat, the button
+becomes the answer. The diagram, the token file and the timeouts — `docs/en/architecture.md`; the
+undocumented parts of the contract (`updatedInput`, «Всегда», the truncated tail) —
+`docs/en/cli-contract.md`.
 
-```
-channel ─▶ ChatDispatcher ──▶ ChatWorker ──▶ ClaudeBackend ──▶ claude.exe -p
-                    ▲                                                     │ needs permission
-                    └── ApprovalBroker ◀── OperatorConsole ◀── ClaudePermissionTool ◀── MCP http://127.0.0.1:<McpPort>/mcp
-                                                                              Authorization: Bearer <token>
-```
-
-At startup `McpConfigFile` generates a token, writes `mcp-gateway-<pid>.json` and deletes it on
-shutdown (the name carries the PID: a shared file was overwritten and deleted by a second instance,
-and the working gateway then died on "mcp__tg__approve not found"; files of dead PIDs are swept at
-startup); `/mcp` is mounted with the `McpConfigFile.Authorizes` filter; the CLI gets `--mcp-config`
-and `--permission-prompt-tool mcp__tg__approve`. The server and tool names are `McpConfigFile`
-constants, `[McpServerTool]` takes the same constant. The README is the user's manual; when changing
-the endpoint protection or the data directory, check its «Безопасность» section.
-
-The second tool of the same server is `mcp__tg__send_file` (`ClaudeSendFileTool`): the agent calls it
-itself to send a file into the chat. Path → `IOperatorConsole.SendFileAsync` → `OperatorConsole`
-checks the folder (the current project only, the data directory is forbidden, no symlink/junction on
-the path), the type (an extension allowlist in code) and the size (`ChannelLimits`), writes
-`file.send` into the audit and sends it through `ApprovalBroker.SendFileAsync` →
-`IChatChannel.SendDocumentAsync`/`SendPhotoAsync`. The tool is passed in `--allowedTools`: an
-"allow?" card would duplicate the gateway's own check with an extra button press. A refusal is always
-a `{"sent":false,"reason":…}` answer, never an exception.
-
-**An MCP tool.** A class with `[McpServerToolType]` in `Agents.Claude/Mcp/`, the name as a constant in
-`McpConfigFile`, `.WithTools<…>()` in `ClaudeAgentModule`, the method the host needs — in
-`IOperatorConsole` (implemented in `OperatorConsole`). If the tool must work without a card — into
-`--allowedTools` in `ClaudeBackend.BuildArguments`.
-
-The approval contract was verified against a live CLI 2.1.x and is undocumented —
-`docs/en/cli-contract.md`. The essentials: an `allow` answer requires `updatedInput`; the «Всегда»
-button either hands a rule to the CLI (`permission_suggestions`) or the gateway keeps the signature
-in `state.json` for its own project only; input truncated before the card is sent as a file.
-`ApprovalTimeoutMinutes` reaches `AgentHost` and from there the MCP server's `timeout` in the config:
-without it the CLI aborted the call after 5 minutes of silence, and the card was dead afterwards.
+- `--bare` is not allowed: it does not read `~/.claude` and breaks the subscription OAuth login.
+- `--allowedTools` holds only `mcp__tg__send_file`: its policy belongs to the gateway. Do not add
+  other tools there — that bypasses the cards past the machine's config.
+- CLI arguments go through `ProcessStartInfo.ArgumentList`, do not concatenate a string.
 
 ### `--permission-mode` is always passed
 
@@ -248,106 +114,48 @@ turning approvals off entirely stays a config edit on the machine. The values ar
 `ValidateFor(capabilities)` in `ValidateStartup`, not by `GatewayOptions.Validate` (the agent is not
 chosen yet).
 
-### Sessions and chat-side selection
+### Sessions, state, audit
 
-Sessions are keyed by the **normalized project path** (`ProjectCatalog.Normalize`); the id of a new
-one is issued by the gateway (`--session-id`) and is reset only on `SessionLost` from the CLI —
-details in `docs/en/cli-contract.md`.
-
-The chat-side selection (`SessionStore`) sits on top of the config: `EffectiveModel`,
-`EffectivePermissionMode`, `EffectiveEffort`, `ProjectPath`. A value equal to the config is stored as
-`null`: otherwise a config edit would be silently overridden by an old selection.
-
-`ProjectCatalog`: the `Gateway:Projects` list, otherwise a walk of `Gateway:ProjectsRoot` down to
-`ProjectsRootDepth`, otherwise the neighbours of `ProjectPath`. `ProjectScreen` selects in two steps
-(folder → repository) in pages of 12. The current project comes first in its group, and after a
-selection the page resets to the first one — otherwise the `▶` marker could end up off-screen.
-
-### State, secrets, configuration layers
-
-`%LOCALAPPDATA%\AgentsTracker\` (`AppPaths.DataDirectory`, ACL — the owner and SYSTEM):
-`state.json` (atomic), `mcp-gateway-<pid>.json`, `appsettings.Local.json` with the secrets,
-`audit\audit-ГГГГ-ММ.jsonl`.
-
-The config comes in layers: `appsettings.json` → `appsettings.Local.json` next to the exe (IDE) → the
-same file in the data directory (production) → environment variables. `dpapi:…` is decrypted on load
-(`ProtectedJsonConfigurationProvider`); `protect-secrets` encrypts `Gateway:Proxy` and the
-`IChatChannelModule.SecretKeys` keys in `Gateway:Channel:Settings` (for Telegram — `BotToken`,
-`Proxy`). `publish\` contains no secrets. `Gateway__*` variables are invisible to the child `claude`
-— the host strips them from the environment in `ValidateStartup`.
-
-### Audit
-
-`IAuditLog.Write(AuditEvent.Now(kind, summary, user, chat, project, session, outcome))` — "who,
-where, what"; addresses are stored as `UserKey`/`ChatKey` strings ("channel:value"), not as numbers:
-ids from different channels collide. There is also `NowByKeys` — for writing by ready-made keys from
-`state.json`. No secrets and no full texts (≤200 characters; the user's text is a `Text.Preview`
-excerpt, 80 characters: a token could have been pasted there). The kinds are in `AuditKinds`:
-`access.rejected`, `message`, `run.start`/`run.end`, `approval`, `question`, `file.send`, `settings`,
-`rules`, `session.reset`, `limit.refused`, `gateway`. Menu screens write through
-`SettingsAudit.Changed`. This is not a replacement for `ILogger`: the audit gets what a human is
-answerable for, the log gets what is needed for debugging.
+Sessions are keyed by the **normalized project path**; the chat-side selection (`SessionStore`)
+stores a value equal to the config as `null`, otherwise a config edit would be silently overridden
+by an old selection. State, secrets and the `audit\` journal live in `%LOCALAPPDATA%\AgentsTracker\`,
+the config comes in layers up to the `Gateway__*` environment variables. The audit gets what a human
+is answerable for ("who, where, what" — no secrets, no full texts, addresses as `channel:value`
+keys, kinds in `AuditKinds`), the log gets what is needed for debugging. All three —
+`docs/en/architecture.md`, the user-facing side of the config — `docs/en/deployment.md`.
 
 ### Limits and money
 
 The only limiter is `IAgentLimits` (the plan windows), checked in `ChatWorker.ProcessAsync` before a
-run; if the poll fails, the run is **skipped**. There is no money in the gateway: `total_cost_usd` is
-not read, `--max-budget-usd` is not passed, the statistics show only turns, tokens and time. Do not
-return dollar estimates. Credits ("extra usage") are forbidden to the agent. Details —
-`docs/en/cli-contract.md`.
+run; if the poll fails, the run is **skipped**, not blocked. There is no money in the gateway:
+`total_cost_usd` is not read, `--max-budget-usd` is not passed, the statistics show only turns,
+tokens and time. Do not return dollar estimates. Credits ("extra usage") are forbidden to the agent.
+Details — `docs/en/cli-contract.md`.
 
 ### Chat output
 
 `MarkdownRenderer` converts markdown into `ChatHtml` and cuts it to `IChatChannel.Limits`
 (`MessageLength`, 3800 for Telegram) — cut the **source markdown before the conversion**, otherwise
-tags get torn apart. Lists use `•`/`◦`, a table is an aligned `<pre>`. Italics only for a `*` tight
-against the content on a word boundary (otherwise `*.cs` and `2 * 3` went italic); `_` is not parsed
-(`snake_case`). A code block longer than the limit is sent as a file. Escaping within the budget —
-`ChatHtml.EscapeCapped` (text that fits whole does not spend a character on the ellipsis). If the
-channel answered with any 400 (not just "can't parse": an unsupported tag, "too long" after
-escaping), it retries the send itself without markup (`ChatHtml.StripTags`) — otherwise part of the
-answer would vanish silently. On a 429 in the middle of a multi-part answer `ChatWorker.SendPartAsync`
-waits `RetryAfter` (≤30 s) and repeats the same part; the same goes for the agent's file in
-`ApprovalBroker` — both through `RateLimitRetry.OnceAsync` (Channels.Abstractions), one shared
-ceiling. The callback_data length (64 bytes) is checked by `TelegramChannel.Markup`, which names the
-button — that is a screen bug, not a transport one. Sums, tokens and time — `DisplayFormat`.
+tags get torn apart. A code block longer than the limit is sent as a file. Any 400 from the channel
+makes the send retry itself without markup, a 429 is waited out and the same part repeated
+(`RateLimitRetry.OnceAsync`) — otherwise part of the answer would vanish silently. Sums, tokens and
+time — `DisplayFormat`. The renderer's own quirks (italics, `snake_case`, escaping budget) —
+`docs/en/architecture.md`.
 
 ## Keep in mind
 
 - The gateway **does not attach** to a VS Code session — it is a parallel session on the same folder:
   shared `CLAUDE.md`, settings, hooks and MCP, but its own history.
-- `--bare` is not allowed: it does not read `~/.claude` and breaks the subscription OAuth login.
-- `--allowedTools` holds only `mcp__tg__send_file`: its policy belongs to the gateway. Do not add
-  other tools there — that bypasses the cards past the machine's config.
 - Barriers: the channel's `AllowedUsers` plus private chats only; MCP is always `127.0.0.1` plus a
   token in the header; the monitor has no token — that is why it is read-only, and `MonitorBind: any`
   (needed in a container) is published only on the host's `127.0.0.1`.
-- CLI arguments go through `ProcessStartInfo.ArgumentList`, do not concatenate a string.
-- `HttpClient` only through `IHttpClientFactory`. `ClaudeLimits.HttpClientName` — one timeout, no
-  retries. The Telegram client (`TelegramClientFactory`) is a singleton, DNS is refreshed by
-  `PooledConnectionLifetime`; retry only on `HttpRequestException`: Bot API methods are POSTs without
-  idempotency (a retry after a 5xx is a duplicate in the chat), and a 429 is waited out by the caller
-  per `retry_after`. Do not set `BaseAddress`. `RemoveAllLoggers()`: the token is part of the path.
-- `Channel.CreateUnbounded` in `ChatWorker` without `SingleReader`: with it `Reader.Count` throws and
-  `/status` falls over.
-- `_runCts` in `ChatWorker` is set right before `agent.RunAsync`, after the status message is sent:
-  only the run's `finally` clears it, and a failure above would leave `IsBusy` set until a restart.
-- Moved channel keys live in one list, `ChannelOptions.MovedKeys`: both the startup check and
-  `protect-secrets` read it. Test on a copy of the old config: `protect-secrets <path>` must return 1
-  with a hint, and `migrate-channel-settings.ps1 -Path <path>` must not touch what is already filled
-  in under `Channel:Settings`.
-- `McpConfigFile` and `SessionStore` are the only ones with a classic constructor: the side effect (a
-  file) must happen exactly once before startup.
-- A release is a `v*` tag push, after which `.github/workflows/release.yml` builds the archives and
-  creates the release itself. Release notes go into `docs/release-notes/<tag>.md` **before** the tag
-  is pushed, otherwise a list of commits ends up in the release. Each archive holds a folder named
-  after the archive plus `install.txt` next to it (source — `docs/install-quickstart.txt`). The
-  version comes from the tag through `-p:Version`; the csproj keeps `0.0.0-dev`, so a build from
-  source never looks like a released one. Details — `docs/en/deployment.md`.
-- The GitHub wiki mirrors `README.md` and the Russian `docs/*.md`, it is never edited by hand: the
-  pages are built by `scripts\sync-wiki.ps1` (the `wiki.yml` workflow on a push to `master`). A new
-  file in `docs/` gets there only if it is added to the script's `$pages` table —
-  `docs/en/operations.md`.
+- `HttpClient` only through `IHttpClientFactory`; the retry rules differ per client and are spelled
+  out in `docs/en/architecture.md` — a blind retry on a Bot API POST is a duplicate in the chat.
+- A release is a `v*` tag push, and the release notes go into `docs/release-notes/<tag>.md`
+  **before** the tag, otherwise a list of commits ends up in the release. The rest —
+  `docs/en/deployment.md`.
+- The wiki is built from `README.md` and the Russian `docs/*.md` by `scripts\sync-wiki.ps1` and is
+  never edited by hand; a new file in `docs/` reaches it only through the script's `$pages` table.
 - Edit Russian texts and Windows paths with Edit/Write, not with a heredoc from Bash. Sources are
   UTF-8 **without a BOM**. The rest about tooling — `docs/en/operations.md`.
 - Comments explain which failure the code prevents, not what it does.
@@ -355,13 +163,9 @@ button — that is a screen bug, not a transport one. Sums, tokens and time — 
   (15 min): with no answer, take the recommended option.
 - The monitor at `http://127.0.0.1:5100` is unreachable from a session via `curl`/`Invoke-RestMethod`
   — they are in `deny` for any address, do not try to work around it. A snapshot and the other
-  `/api/*` — `pwsh -File scripts\monitor-api.ps1 /api/snapshot`.
-- A monitor screenshot — Playwright MCP: `browser_navigate` to `http://127.0.0.1:5100`,
-  `browser_take_screenshot` with a `filename` (the file lands in the project root), then
-  `mcp__tg__send_file` and delete the file — the repository does not need it. Port `5100` is the
-  **release** instance: it shows old code. A screenshot of your own change comes from the test
-  instance's port, and `browser_take_screenshot` with a `target` selector (`.gauges`) gives a panel
-  instead of the whole page.
+  `/api/*` — `pwsh -File scripts\monitor-api.ps1 /api/snapshot`; a screenshot and the page itself —
+  `docs/en/monitor.md`. Port `5100` is the **release** instance: it shows old code, your own change
+  is on the scratch instance's port.
 
 ## Как работать
 
