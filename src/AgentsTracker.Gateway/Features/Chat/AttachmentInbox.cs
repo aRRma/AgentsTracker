@@ -174,15 +174,14 @@ public sealed class AttachmentInbox(
     public void ClearSession(ChatId chat, string projectPath)
     {
         var directory = SessionDirectory(chat, projectPath);
+        if (!Directory.Exists(directory)) return;
 
-        try
-        {
-            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            logger.LogWarning(ex, "Не удалось убрать вложения закрытой сессии");
-        }
+        // Сначала файлы, потом папка: только что удалённый файл Windows держит ещё мгновение,
+        // и Directory.Delete падает на нём с «папка не пуста». Картинок к этому моменту уже
+        // нет, а пустую папку уберёт ближайшая чистка.
+        foreach (var file in Files(directory)) Delete(file);
+
+        RemoveEmpty(directory);
     }
 
     /// <summary>Обход всего inbox при старте: файлы прошлых суток переживают перезапуск.</summary>
@@ -194,21 +193,44 @@ public sealed class AttachmentInbox(
 
         var cutoff = DateTime.UtcNow - TimeSpan.FromHours(_options.RetentionHours);
 
+        foreach (var file in Files(directory))
+        {
+            if (File.GetLastWriteTimeUtc(file) < cutoff) Delete(file);
+        }
+
+        // Снизу вверх: иначе внешняя папка проверяется, пока внутренняя ещё на месте.
+        foreach (var folder in Folders(directory).Reverse()) RemoveEmpty(folder);
+    }
+
+    private IReadOnlyList<string> Files(string directory) => Enumerate(() => Directory.GetFiles(directory, "*", SearchOption.AllDirectories));
+
+    private IReadOnlyList<string> Folders(string directory) => Enumerate(() => Directory.GetDirectories(directory, "*", SearchOption.AllDirectories));
+
+    /// <summary>Папку могли удалить между обходом и обращением: чистка не повод падать.</summary>
+    private IReadOnlyList<string> Enumerate(Func<string[]> list)
+    {
         try
         {
-            foreach (var file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
-            {
-                if (File.GetLastWriteTimeUtc(file) < cutoff) Delete(file);
-            }
-
-            foreach (var folder in Directory.EnumerateDirectories(directory, "*", SearchOption.AllDirectories).Reverse())
-            {
-                if (!Directory.EnumerateFileSystemEntries(folder).Any()) Directory.Delete(folder);
-            }
+            return list();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            logger.LogWarning(ex, "Не удалось почистить папку вложений {Directory}", directory);
+            logger.LogWarning(ex, "Не удалось прочитать папку вложений");
+            return [];
+        }
+    }
+
+    private void RemoveEmpty(string directory)
+    {
+        try
+        {
+            if (Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any())
+                Directory.Delete(directory);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Пустая папка вреда не делает: её уберёт следующая чистка.
+            logger.LogDebug(ex, "Папка вложений осталась: {Directory}", directory);
         }
     }
 
