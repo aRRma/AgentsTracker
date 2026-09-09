@@ -47,14 +47,20 @@ internal static class LimitBars
 
         // Цифры сразу итоговые, кадрами двигается только полоса: пара «расход · остаток» посреди
         // анимации не должна складываться во что-то кроме 100%.
-        // Расход округляем вверх, остаток — вниз (как в сводке меню): обе цифры смотрят в сторону
-        // «хуже, чем кажется».
-        var percent = ((int)Math.Ceiling(used * 100)).ToString(CultureInfo.InvariantCulture);
-        var left = ((int)Math.Floor((1.0 - used) * 100)).ToString(CultureInfo.InvariantCulture);
+        var percent = Percent(used).ToString(CultureInfo.InvariantCulture);
+        var left = (100 - Percent(used)).ToString(CultureInfo.InvariantCulture);
         var reset = gauge.ResetLabel is { } label ? $", сброс {E(label)}" : "";
 
         return $"{Lamp(used)} <code>{bar}</code> {percent}% · осталось {left}% · {E(gauge.Title)}{reset}";
     }
+
+    /// <summary>
+    /// Расход в процентах, округление вверх — чтобы не обнадёживать. Остаток считается как
+    /// <c>100 - Percent</c>, а не своим округлением: у 0.67 доля остатка в double равна
+    /// 0.32999999999999996, и независимые округления давали «67% · осталось 32%». Поправка
+    /// 1e-9 гасит ту же погрешность в другую сторону: без неё 0.67 даёт 67.00000000000001 и 68%.
+    /// </summary>
+    private static int Percent(double used) => Math.Clamp((int)Math.Ceiling(used * 100 - 1e-9), 0, 100);
 
     /// <summary>Цвет по итоговому остатку, а не по кадру: лампочка не должна мигать при заполнении.</summary>
     private static string Lamp(double used) => (1.0 - used) switch
