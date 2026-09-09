@@ -1,10 +1,16 @@
 AgentsTracker — мостик между Telegram и Claude Code.
 Пишете боту → агент работает в папке проекта на этом ПК → вопросы «можно?» приходят кнопками.
 
+ЧТО В АРХИВЕ
+  install.txt                        — этот файл.
+  AgentsTracker-<версия>-win-x64…\   — само приложение. Имя папки совпадает с именем
+                                       архива, поэтому по нему видно установленную версию.
+
 ЧТО НУЖНО НА МАШИНЕ
   • Windows 10/11.
-  • Claude Code: проверка «claude --version». Если нет — в PowerShell:
-      irm https://claude.ai/install.ps1 | iex
+  • Claude Code: проверка «claude --version». Если нет:
+      PowerShell: irm https://claude.ai/install.ps1 | iex
+      bash:       curl -fsSL https://claude.ai/install.sh | bash
     затем откройте новое окно, запустите «claude» и войдите по подписке.
   • Бот в Telegram: у @BotFather команда /newbot, скопируйте токен.
   • Только для архива AgentsTracker-<версия>-win-x64.zip — .NET 10 Runtime
@@ -12,7 +18,9 @@ AgentsTracker — мостик между Telegram и Claude Code.
     В архиве ...-win-x64-self-contained.zip среда выполнения уже внутри.
 
 УСТАНОВКА
-  1. Распакуйте архив в постоянную папку вне репозиториев, например C:\Apps\AgentsTracker.
+  1. Распакуйте архив и перенесите папку приложения в постоянное место вне репозиториев,
+     например C:\Apps\AgentsTracker. Внутри репозитория её снесёт «git clean».
+     Все команды ниже выполняются из этой папки.
 
   2. Скопируйте рядом appsettings.Local.example.json как appsettings.Local.json
      и заполните три значения:
@@ -21,26 +29,32 @@ AgentsTracker — мостик между Telegram и Claude Code.
        Gateway:Channel:Settings:AllowedUserIds — ваш числовой id, его узнаем на шаге 3
 
   3. Узнайте свой id. Запустите exe в консоли и напишите боту что угодно:
-       .\AgentsTracker.Gateway.exe
+       PowerShell: .\AgentsTracker.Gateway.exe
+       bash:       ./AgentsTracker.Gateway.exe
      В консоли появится строка «Отклонено сообщение от постороннего пользователя.
      Пользователь: telegram:123456789». Номер (без «telegram:») впишите в AllowedUserIds:
        "AllowedUserIds": [ 123456789 ]
      Закройте консоль по Ctrl+C. Кроме вас в бота никто не попадёт.
 
   4. Поставьте на автозапуск:
-       .\AgentsTracker.Gateway.exe install --start
+       PowerShell: .\AgentsTracker.Gateway.exe install --start
+       bash:       ./AgentsTracker.Gateway.exe install --start
 
      Команда зарегистрирует задачу Планировщика (запуск при входе в Windows), перенесёт
      настройки в %LOCALAPPDATA%\AgentsTracker и зашифрует токен через DPAPI: расшифровать
      его сможет только ваша учётная запись.
 
 ПРОВЕРКА
-  В Telegram придёт «🔌 Шлюз запущен». Напишите боту /help — там весь список команд.
+  В Telegram придёт «🔌 Шлюз запущен <версия>». Напишите боту /help — там весь список команд.
   Веб-монитор: http://127.0.0.1:5100 (только с этой машины, пароля у него нет).
+  Версия шлюза видна в обоих местах: в сообщении о запуске и на рейке монитора.
 
 ОБНОВЛЕНИЕ И УДАЛЕНИЕ
-  Обновить: uninstall → распаковать новый архив поверх → install --start.
-  Снять:    .\AgentsTracker.Gateway.exe uninstall   — данные и настройки остаются.
+  Обновить: uninstall → распаковать новую папку приложения на место старой → install --start.
+  Снять:
+       PowerShell: .\AgentsTracker.Gateway.exe uninstall
+       bash:       ./AgentsTracker.Gateway.exe uninstall
+  Данные и настройки при этом остаются.
 
 ЕСЛИ НЕ ЗАПУСКАЕТСЯ
   Шлюз намеренно завершается с ошибкой, когда настройки неполные, — причина печатается

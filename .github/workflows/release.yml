@@ -58,13 +58,23 @@ jobs:
             Remove-Item "$dir/appsettings.Local.json" -ErrorAction SilentlyContinue
             Remove-Item "$dir/appsettings.Development.json" -ErrorAction SilentlyContinue
 
+            $suffix = if ($kind -eq 'self-contained') { 'win-x64-self-contained' } else { 'win-x64' }
+            $name = "AgentsTracker-$tag-$suffix"
+
+            # Приложение — в папке с именем архива, инструкция рядом с ней. Так распаковка
+            # «сюда» не рассыпает полторы сотни файлов по папке загрузок, а по имени папки
+            # видно, какая версия установлена.
+            $stage = "stage/$name"
+            New-Item -ItemType Directory $stage -Force | Out-Null
+            Move-Item "$dir/*" $stage
+
             # Инструкция в корне архива: Блокнот открывает txt по двойному щелчку,
             # а BOM спасает кириллицу от кракозябр в старых сборках Windows.
             Get-Content docs/install-quickstart.txt -Raw |
-              Set-Content "$dir/УСТАНОВКА.txt" -Encoding utf8BOM
+              Set-Content "stage/install.txt" -Encoding utf8BOM
 
-            $suffix = if ($kind -eq 'self-contained') { 'win-x64-self-contained' } else { 'win-x64' }
-            Compress-Archive "$dir/*" "assets/AgentsTracker-$tag-$suffix.zip"
+            Compress-Archive "stage/*" "assets/$name.zip"
+            Remove-Item stage -Recurse -Force
           }
 
           Get-ChildItem assets | Select-Object Name, @{ n = 'МБ'; e = { [math]::Round($_.Length / 1MB, 1) } }
