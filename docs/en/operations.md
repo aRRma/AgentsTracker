@@ -103,11 +103,13 @@ What to set for the scratch instance:
   interfere with the working gateway and does not depend on the shape of its config. Without
   this, `state.json` is shared — do not start the scratch instance while a task is in progress.
 
-With a **fake** token the scratch instance may live as long as needed: `getUpdates` gets an
-`Unauthorized`, the log repeats «Telegram недоступен», and the working bot notices nothing —
-the monitor, the MCP port and the limits work as usual. Give it the **real** token and it lives
-about a minute: there is one bot, and `getUpdates` returns 409 to the second process. The MCP
-config does not conflict either way — each instance has its own, `mcp-gateway-<pid>.json`.
+With a **fake** token the scratch instance lives about a minute: `getUpdates` gets an
+`Unauthorized`, and after `ConnectAttempts` (6, ten seconds apart) the host writes «Не удалось
+подключиться» and shuts itself down. That is enough for startup, the config and the monitor, and
+the working bot notices nothing. Anything longer — or a chat scenario at all — needs a **separate
+test bot** from @BotFather: the working bot's token gives the second process a 409 on
+`getUpdates`, and the release loses its polling. The MCP config does not conflict either way —
+each instance has its own, `mcp-gateway-<pid>.json`.
 
 The monitor of the scratch instance (`http://127.0.0.1:5199`) is the only place where a change
 to the page can be seen: port `5100` belongs to the release and shows the old code. Screenshots
@@ -121,6 +123,23 @@ check:
 - 404 on `/` of the MCP port;
 - 401 on `POST /mcp` without a token, with the headers `Content-Type: application/json` and
   `Accept: application/json, text/event-stream` — otherwise you get 415.
+
+## Checking host logic without Telegram
+
+Everything that does not need a live bot is checked by a file-based C# app: the gateway's own
+classes with fakes instead of a channel — no token, no ports, no waiting.
+
+```csharp
+#:sdk Microsoft.NET.Sdk.Web
+#:project C:/Users/…/src/AgentsTracker.Gateway
+```
+
+`AppPaths.UseDirectory(<a temp folder>)` before anything else, then
+`Options.Create(new GatewayOptions { … })`, `NullLogger<T>.Instance` and your own
+`IChatChannel`/`IAuditLog` (the rest of the channel's methods — `throw new NotSupportedException()`).
+Put the file in the scratchpad and run `dotnet run check.cs`. That is how `AttachmentInbox` was
+checked in a single run: signature sniffing, size caps, the retention sweep, refusals and the
+audit records — and it caught a `Directory.Delete` that failed on a just-deleted file.
 
 ## Larger tasks — use a worktree
 
@@ -194,6 +213,11 @@ found".
   script in the scratchpad via Write, run it as a file, check the result with `grep … | cat -v`
   and by building.
 - Sources are UTF-8 **without BOM** (`utf-8-sig` adds one silently).
+- `claude` is not on the tool shells' PATH: call it as
+  `& "$env:USERPROFILE\.local\bin\claude.exe" --help` (from Git Bash that path does not execute).
+  Undocumented CLI behaviour is quickest to check with a bare `claude -p … --output-format json`
+  and `permission_denials` in the answer — that is how `--add-dir` was verified not to raise an
+  approval card.
 - A multi-paragraph commit message goes into a file in the scratchpad and `git commit -F
   <file>`: `-F -` with a here-string from the PowerShell tool does not get stdin.
 - A reviewer subagent without Bash has no access to `git show`/`git diff`: dump old versions of

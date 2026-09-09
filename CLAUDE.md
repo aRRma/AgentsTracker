@@ -36,7 +36,8 @@ docker compose up -d --build                    # the same gateway in a containe
 ```
 
 There are no tests. Anything touching the CLI contract is checked by hand: start the gateway and
-watch the log.
+watch the log. Host logic that needs no live bot is checked by a file-based C# harness with fakes
+instead of a channel — `docs/en/operations.md`.
 
 **The working gateway on this machine is the published release** (`C:\AgentsTracker-<версия>-win-x64`;
 the path is shown by `Get-Process AgentsTracker.Gateway`). Do not stop it and do not rebuild over it:
