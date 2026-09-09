@@ -6,11 +6,23 @@ without breaking the running process.
 Commands come in two blocks: PowerShell first, bash second (Git Bash). Where a command is the
 same in both shells, there is one block.
 
+## Which instance is running
+
+`Get-Process AgentsTracker.Gateway` shows the path, and everything else follows from it:
+
+- **a published release** (`C:\AgentsTracker-<version>-win-x64`) — that is how this machine is
+  set up now: the stable service the user chats with. Do not stop it and do not rebuild over it;
+  a commit does not change anything in the chat, new code gets there only with the next release
+  (`docs/en/deployment.md`). A change is checked live by a test instance, see below;
+- **`bin\Debug` of the main folder** — then the working gateway is the one being developed, and
+  it is restarted after a commit as described here.
+
 ## Restarting the gateway
 
-On the development machine the exe is started manually from `bin\Debug`; there is usually no
-Task Scheduler task (the path is shown by `Get-Process AgentsTracker.Gateway`). While it is
-running, `dotnet build` fails with `MSB3021` (the exe is locked).
+Applies when the exe was started manually from `bin\Debug` and there is no Task Scheduler task.
+While it is running, `dotnet build` fails with `MSB3021` (the exe is locked). `Get-Process
+AgentsTracker.Gateway | Stop-Process -Force` has no filter: with a release running alongside it
+takes down the working service too — filter by `Path`.
 
 ```powershell
 git status                                                # someone else's uncommitted changes may not build
@@ -59,7 +71,26 @@ cmd //c start "" "src/AgentsTracker.Gateway/bin/Debug/net10.0/AgentsTracker.Gate
 ## Scratch instance
 
 Any config key can be overridden by an environment variable, so a second exe can be started
-alongside the working one. What to set for the scratch instance:
+alongside the working one. This is the only way to see a change live while the release is the
+working instance: it is built into a separate folder and started on its own ports, so it touches
+neither `bin\Debug` nor the working service.
+
+```powershell
+dotnet build src\AgentsTracker.Gateway -o $env:TEMP\at-build
+$env:Gateway__Channel__Settings__BotToken = '123456789:AAFakeTokenFakeTokenFakeTokenFakeTok'
+$env:Gateway__McpPort = '5198'; $env:Gateway__MonitorPort = '5199'
+$env:Gateway__DataDirectory = "$env:TEMP\at-scratch-data"
+$env:Gateway__ProjectPath = 'C:\Users\aRRma99\source\repos\ME\AgentsTracker'
+& "$env:TEMP\at-build\AgentsTracker.Gateway.exe"
+```
+
+Put those lines in a script in the scratchpad and start it with `pwsh -File` in the background:
+variables set by the PowerShell tool do not survive to the next call, and the exe holds the
+console. Stop it by the path, not by the name — `Get-Process AgentsTracker.Gateway | Where-Object
+{ $_.Path -like "$env:TEMP*" } | Stop-Process -Force` — otherwise the working release goes down
+with it; then delete the `Gateway__DataDirectory` folder.
+
+What to set for the scratch instance:
 
 - `Gateway__Channel__Settings__BotToken` — fake, but in the `<number>:<string>` format, otherwise
   the channel will not be created;
@@ -72,9 +103,15 @@ alongside the working one. What to set for the scratch instance:
   interfere with the working gateway and does not depend on the shape of its config. Without
   this, `state.json` is shared — do not start the scratch instance while a task is in progress.
 
-The scratch instance lives about a minute: there is one bot, and `getUpdates` returns 409 to
-the second process. That is enough to poke the monitor. The MCP config does not conflict — each
-instance has its own, `mcp-gateway-<pid>.json`.
+With a **fake** token the scratch instance may live as long as needed: `getUpdates` gets an
+`Unauthorized`, the log repeats «Telegram недоступен», and the working bot notices nothing —
+the monitor, the MCP port and the limits work as usual. Give it the **real** token and it lives
+about a minute: there is one bot, and `getUpdates` returns 409 to the second process. The MCP
+config does not conflict either way — each instance has its own, `mcp-gateway-<pid>.json`.
+
+The monitor of the scratch instance (`http://127.0.0.1:5199`) is the only place where a change
+to the page can be seen: port `5100` belongs to the release and shows the old code. Screenshots
+— `docs/en/monitor.md`.
 
 Smoke test after infrastructure changes: a script in the scratchpad, `pwsh -File`; after ~8 s
 check:
@@ -87,9 +124,10 @@ check:
 
 ## Larger tasks — use a worktree
 
-The gateway runs from `bin\Debug` of the main `AgentsTracker` folder (branch `master`; there is
-no `main` branch in the repository): switching the branch would swap the sources out from
-under the running process, and a broken build would leave you unable to restart it.
+The main `AgentsTracker` folder stays on `master` (there is no `main` branch in the repository):
+switching the branch there swaps the sources out from under a gateway running from `bin\Debug`,
+and a broken build leaves you unable to restart it. Even with the release as the working
+instance, the rule holds — a scratch instance is built out of the same folder.
 
 ```powershell
 git worktree add ..\AgentsTracker-<task> -b <branch>   # the main folder stays the gateway's folder

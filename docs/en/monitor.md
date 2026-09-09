@@ -60,6 +60,11 @@ it to `routes`), `python -m http.server <port> --bind 127.0.0.1` from the scratc
   `browser_run_code_unsafe`; the same call checks the live `http://127.0.0.1:5100/`. `/api/*`
   itself without a browser — `pwsh -File scripts\monitor-api.ps1 api/snapshot` (`curl` and
   `Invoke-WebRequest` are in `deny`, loopback is not an exception).
+- Port `5100` is the **working** gateway, on this machine the release: it serves the page from
+  its own build, so your edit is not there. Look at your own change on a scratch instance
+  (`docs/en/operations.md`) — and take the screenshot from its port too.
+- A single panel — `browser_take_screenshot` with a `target` selector (`.gauges`, `.facts`):
+  a whole-page shot buries a change in a rail block.
 - Blue digits in a table screenshot are a subpixel artifact, check against
   `getComputedStyle(td).color`.
 

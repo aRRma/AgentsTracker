@@ -38,10 +38,15 @@ docker compose up -d --build                    # the same gateway in a containe
 There are no tests. Anything touching the CLI contract is checked by hand: start the gateway and
 watch the log.
 
-**The gateway runs from `bin\Debug` of the main folder** (`AgentsTracker`, branch `master`; there is
-no `main` branch). While it runs, `dotnet build` fails with `MSB3021`; switching branches would swap
-the sources out from under the process. Restarting, building into another folder and working in a
-worktree — `docs/en/operations.md`. From a session started from Telegram you must not restart it —
+**The working gateway on this machine is the published release** (`C:\AgentsTracker-<версия>-win-x64`;
+the path is shown by `Get-Process AgentsTracker.Gateway`). Do not stop it and do not rebuild over it:
+that is the stable service the user chats with, and new code reaches it only through a new release. A
+change is checked live by a **test instance from `bin\Debug` on its own ports** — a separate build
+folder, `Gateway__McpPort`/`Gateway__MonitorPort` other than `5099`/`5100`, a fake bot token and its
+own `Gateway__DataDirectory`; the recipe and the cleanup are in `docs/en/operations.md`. When the
+gateway does run from `bin\Debug` of the main folder (`AgentsTracker`, branch `master`; there is no
+`main` branch), `dotnet build` fails with `MSB3021` while it runs and switching branches swaps the
+sources out from under the process. From a session started from Telegram you must not restart it —
 hand the commands to the user instead.
 
 ## How to add
@@ -345,7 +350,10 @@ button — that is a screen bug, not a transport one. Sums, tokens and time — 
   `/api/*` — `pwsh -File scripts\monitor-api.ps1 /api/snapshot`.
 - A monitor screenshot — Playwright MCP: `browser_navigate` to `http://127.0.0.1:5100`,
   `browser_take_screenshot` with a `filename` (the file lands in the project root), then
-  `mcp__tg__send_file` and delete the file — the repository does not need it.
+  `mcp__tg__send_file` and delete the file — the repository does not need it. Port `5100` is the
+  **release** instance: it shows old code. A screenshot of your own change comes from the test
+  instance's port, and `browser_take_screenshot` with a `target` selector (`.gauges`) gives a panel
+  instead of the whole page.
 
 ## Как работать
 
@@ -388,11 +396,13 @@ session.
   built from. A change to one file goes into its twin in the same commit — the two must not drift
   apart. A new document is added in both languages at once, plus a `$pages` line in
   `scripts\sync-wiki.ps1` for the Russian one. CLAUDE.md is English only, the README is Russian only.
-- **After a commit — restart the gateway.** Otherwise the chat runs old code. The commands and the
-  path through a clean worktree — `docs/en/operations.md`, "Restarting the gateway". From a session
-  over Telegram you must not restart it yourself: give the user the commands and ask them to run them
-  by hand; do not raise temporary instances without a reason. From VS Code you may, but **before**
-  Stop-Process check `git status`: someone else's uncommitted changes have broken the build right
-  after the process was stopped.
+- **After a commit — restart the gateway**, if the working instance runs from `bin\Debug`: otherwise
+  the chat keeps the old code. While it is the release, a commit changes nothing in the chat — say so
+  and check the change on a test instance instead of asking for a restart. The commands and the path
+  through a clean worktree — `docs/en/operations.md`, "Restarting the gateway". From a session over
+  Telegram you must not restart it yourself: give the user the commands and ask them to run them by
+  hand; a test instance on its own ports is fine, it does not touch the working one. From VS Code you
+  may, but **before** Stop-Process check `git status`: someone else's uncommitted changes have broken
+  the build right after the process was stopped.
 - **Terminology.** Checking by a live run of a scratch instance is «смоук-тест», not «дымовой прогон»
   and not «дымовая проверка»: in the chat and in the docs alike.
