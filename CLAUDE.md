@@ -126,7 +126,7 @@ environment.
 ```
 src/AgentsTracker.Agents.Abstractions/   agent contracts, no Telegram and no specific CLI:
   IAgentBackend         Probe() (binary, version), RunAsync(AgentRunRequest, IAgentRunObserver)
-  AgentRun.cs           request (prompt, folder, session, model, effort, mode, timeout), observer, result
+  AgentRun.cs           request (prompt, folder, session, model, effort, mode, timeout, attachments folder), observer, result
   AgentCapabilities     which models/efforts/modes the agent supports (effort null — not supported)
   IOperatorConsole      what the agent asks a human for: ApproveAsync, AskAsync, SendFileAsync; PersistentRule — an "always" rule
   IAgentLimits          plan limits; IAgentSkillCatalog — slash commands
@@ -139,11 +139,13 @@ src/AgentsTracker.Agents.Claude/         Claude Code behind those contracts:
                         ClaudeSendFileTool — a file from the agent into the chat, the policy stays on the host side
 src/AgentsTracker.Channels.Abstractions/ channel contracts, no specific messenger:
   IChatChannel          channel addresses and limits, ConnectAsync/ListenAsync, Send/Edit/Delete/Acknowledge,
-                        SendDocumentAsync/SendPhotoAsync — a file and a picture as a stream
-  ChannelLimits         channel bounds: message and caption length, document and photo size
+                        SendDocumentAsync/SendPhotoAsync — a file and a picture as a stream,
+                        DownloadAttachmentAsync — the body of an incoming attachment into a stream
+  ChannelLimits         channel bounds: message and caption length, document, photo and download size
   RateLimitRetry        one retry after a 429 with a short retry_after — shared by every send
   ChatId, UserId        an address as a value; Key is "channel:value" for state.json, the audit and the log
-  Messages.cs           OutgoingMessage, Keyboard, MessageRef, IncomingMessage, ButtonPress, ChatCommand
+  Messages.cs           OutgoingMessage, Keyboard, MessageRef, IncomingMessage (text + attachments),
+                        IncomingAttachment/AttachmentKind, ButtonPress, ChatCommand
   IChatInbound          where the channel hands incoming traffic; implemented by the host (ChatDispatcher)
   ChatHtml              the canonical text format (b, i, s, code, pre, a, blockquote) and escaping
   ChannelRequestException  the channel's only outward exception: RateLimited (retry_after), MarkupRejected, CannotReach
@@ -163,7 +165,8 @@ src/AgentsTracker.Gateway/
                         Cli/ (install, uninstall), Autostart/ (a Task Scheduler task via schtasks)
   Features/             vertical slices, each with its own *Module:
     Approvals/          approval cards, ApprovalBroker, /rules
-    Chat/               ChatWorker (queue, launch, sessions), RunStatusMessage, /new /stop
+    Chat/               ChatWorker (queue, launch, sessions), RunStatusMessage, /new /stop,
+                        AttachmentInbox — pictures from the chat: download, checks, inbox folder, cleanup
     Settings/           SettingsMenuCoordinator + Screens/*, /menu /status /sessions /agent /skills /project /usage
     Help/ Audit/ Monitor/   /start /help; /audit; the web page (index.html — EmbeddedResource) and /api/*
 ```
@@ -180,11 +183,19 @@ service (`Settings` → `ChatWorker.IsBusy`).
 is a rejection too). Text is processed in order:
 
 1. a slash command from `IChatCommandHandler.Commands` — **first of all**, otherwise `/stop` would go
-   to a waiting free-form answer and there would be nothing left to interrupt a stuck run with;
+   to a waiting free-form answer and there would be nothing left to interrupt a stuck run with. A
+   message carrying an attachment is never a command: the command would run and the picture would
+   be lost;
 2. the `IChatTextHandler` chain in module order: an answer to a card (`ApprovalTextHandler`) → skill
    arguments (`SkillArgumentsTextHandler`) → into the agent's queue (`ChatEnqueueTextHandler`, always
    `true`). That is why `ChatModule` is last. Unknown slash commands are Claude Code's own commands,
    they go to the CLI.
+
+A handler receives the whole `IncomingMessage`: besides the text it may carry attachments.
+Pictures are taken by `ChatEnqueueTextHandler` through `AttachmentInbox` — it downloads them into
+`<data directory>\inbox\<chat>\<project>\`, checks the type by the signature bytes and puts the
+absolute paths into the prompt; the run then gets that chat folder in `--add-dir`. Details —
+`docs/en/cli-contract.md`.
 
 Buttons: the `IChatButtonHandler` chain (`Dispatch/`), each recognizing its own by the prefix in
 `CanHandle`: `cfg:` — the menu (`SettingsCallbackHandler`), everything else (a hex request id) —
@@ -313,6 +324,9 @@ button — that is a screen bug, not a transport one. Sums, tokens and time — 
 - `--bare` is not allowed: it does not read `~/.claude` and breaks the subscription OAuth login.
 - `--allowedTools` holds only `mcp__tg__send_file`: its policy belongs to the gateway. Do not add
   other tools there — that bypasses the cards past the machine's config.
+- `--add-dir` carries exactly one folder — the chat's `inbox`. Never the data directory itself
+  (`state.json`, `appsettings.Local.json` with the secrets, the MCP token) and never the project
+  subfolder: `/project` may change while the message waits in the queue.
 - Barriers: the channel's `AllowedUsers` plus private chats only; MCP is always `127.0.0.1` plus a
   token in the header; the monitor has no token — that is why it is read-only, and `MonitorBind: any`
   (needed in a container) is published only on the host's `127.0.0.1`.
