@@ -152,7 +152,9 @@ time — `DisplayFormat`. The renderer's own quirks (italics, `snake_case`, esca
 - `HttpClient` only through `IHttpClientFactory`; the retry rules differ per client and are spelled
   out in `docs/en/architecture.md` — a blind retry on a Bot API POST is a duplicate in the chat.
 - A release is a `v*` tag push, and the release notes go into `docs/release-notes/<tag>.md`
-  **before** the tag, otherwise a list of commits ends up in the release. The rest —
+  **before** the tag, otherwise a list of commits ends up in the release. The notes are written
+  **short and in plain human words**, for the person using the bot: what changed and what it gives
+  them, only the essentials — no reasoning, no class names, no invisible changes. The rest —
   `docs/en/deployment.md`.
 - The wiki is built from `README.md` and the Russian `docs/*.md` by `scripts\sync-wiki.ps1` and is
   never edited by hand; a new file in `docs/` reaches it only through the script's `$pages` table.

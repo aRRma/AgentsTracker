@@ -274,6 +274,14 @@ The build then publishes both win-x64 archives (with and without the runtime) an
 release. Release notes are taken from `../release-notes/<tag>.md`, so create the file **before**
 pushing the tag; no file — GitHub will collect a list of commits instead.
 
+How to write the notes: **short, in plain human words**, from the side of the person using the bot
+rather than writing it. One or two sentences on what changed overall, then a «Что нового» list —
+one bullet per change, the visible result first. Only what matters: a change the user cannot notice
+does not belong in the notes. No reasoning about why it was done that way, no class names, flags or
+edit history; stay technically accurate, but explain it so that someone who has never seen the code
+understands. The install and update sections are boilerplate — copy them from the previous release
+and change the version.
+
 The tag number without the `v` goes into `-p:Version`; the version isn't edited separately in
 the csproj — it holds `0.0.0-dev` there, so a build from source is honestly distinguishable from
 a released one. The gateway prints that same number as the first line of the log, puts it in the
