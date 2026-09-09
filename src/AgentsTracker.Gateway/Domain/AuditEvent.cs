@@ -10,6 +10,7 @@ public static class AuditKinds
     public const string Approval = "approval";
     public const string Question = "question";
     public const string FileSend = "file.send";
+    public const string FileReceive = "file.receive";
     public const string Settings = "settings";
     public const string Rules = "rules";
     public const string SessionReset = "session.reset";
