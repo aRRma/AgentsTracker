@@ -130,9 +130,9 @@ $env:Gateway__ProjectPath = 'C:\Users\aRRma99\source\repos\ME\AgentsTracker'
 Сначала `AppPaths.UseDirectory(<папка во временных>)`, затем
 `Options.Create(new GatewayOptions { … })`, `NullLogger<T>.Instance` и свои
 `IChatChannel`/`IAuditLog` (остальные методы канала — `throw new NotSupportedException()`).
-Файл кладётся в scratchpad и запускается `dotnet run check.cs`. Так за один прогон проверен
-`AttachmentInbox`: определение типа по сигнатуре, пределы размера, чистка по возрасту, отказы и
-записи аудита — и там же нашёлся `Directory.Delete`, падавший на только что удалённом файле.
+Файл кладётся в scratchpad и запускается `dotnet run check.cs`. Так за один прогон проверена
+работа с присланными файлами: определение типа по сигнатуре, пределы размера, чистка по возрасту,
+отказы и записи аудита — и там же нашёлся `Directory.Delete`, падавший на только что удалённом файле.
 
 ## Крупные задачи — в worktree
 

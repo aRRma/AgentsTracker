@@ -13,7 +13,7 @@ same in both shells, there is one block.
 - **a published release** (`C:\AgentsTracker-<version>-win-x64`) — that is how this machine is
   set up now: the stable service the user chats with. Do not stop it and do not rebuild over it;
   a commit does not change anything in the chat, new code gets there only with the next release
-  (`docs/en/deployment.md`). A change is checked live by a test instance, see below;
+  (`docs/en/deployment.md`). A change is checked live by a scratch instance, see below;
 - **`bin\Debug` of the main folder** — then the working gateway is the one being developed, and
   it is restarted after a commit as described here.
 
@@ -137,9 +137,9 @@ classes with fakes instead of a channel — no token, no ports, no waiting.
 `AppPaths.UseDirectory(<a temp folder>)` before anything else, then
 `Options.Create(new GatewayOptions { … })`, `NullLogger<T>.Instance` and your own
 `IChatChannel`/`IAuditLog` (the rest of the channel's methods — `throw new NotSupportedException()`).
-Put the file in the scratchpad and run `dotnet run check.cs`. That is how `AttachmentInbox` was
-checked in a single run: signature sniffing, size caps, the retention sweep, refusals and the
-audit records — and it caught a `Directory.Delete` that failed on a just-deleted file.
+Put the file in the scratchpad and run `dotnet run check.cs`. That is how the incoming-file
+handling was checked in a single run: signature sniffing, size caps, the retention sweep, refusals
+and the audit records — and it caught a `Directory.Delete` that failed on a just-deleted file.
 
 ## Larger tasks — use a worktree
 
