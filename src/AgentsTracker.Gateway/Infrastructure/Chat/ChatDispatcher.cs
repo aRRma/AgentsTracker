@@ -34,8 +34,9 @@ public sealed class ChatDispatcher(
         var (command, argument) = ParseCommand(message.Text);
 
         // Команды шлюза разбираем раньше текстовых обработчиков: иначе /stop уйдёт
-        // в ожидающий свободный ответ, и прервать зависший запуск будет нечем.
-        if (command is not null && _commands.TryGetValue(command, out var handler))
+        // в ожидающий свободный ответ, и прервать зависший запуск будет нечем. Подпись
+        // к вложению командой не считаем: команда выполнилась бы, а картинка пропала.
+        if (command is not null && message.Attachments.Count == 0 && _commands.TryGetValue(command, out var handler))
         {
             audit.Write(AuditEvent.Now(
                 AuditKinds.Message, argument.Length > 0 ? $"{command} {Text.Preview(argument)}" : command,
@@ -46,7 +47,7 @@ public sealed class ChatDispatcher(
 
         foreach (var textHandler in _texts)
         {
-            if (await textHandler.TryHandleAsync(message.Chat, message.User, message.Text, ct)) return;
+            if (await textHandler.TryHandleAsync(message, ct)) return;
         }
 
         logger.LogWarning("Сообщение из чата {Chat} никто не обработал", message.Chat.Key);

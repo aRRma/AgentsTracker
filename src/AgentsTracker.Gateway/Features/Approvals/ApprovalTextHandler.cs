@@ -8,6 +8,7 @@ namespace AgentsTracker.Gateway.Features.Approvals;
 /// </summary>
 public sealed class ApprovalTextHandler(ApprovalBroker broker) : IChatTextHandler
 {
-    public Task<bool> TryHandleAsync(ChatId chat, UserId user, string text, CancellationToken ct) =>
-        Task.FromResult(broker.TryConsumeText(chat, text));
+    // Вложения агенту как ответ на карточку не передаём: он ждёт строку.
+    public Task<bool> TryHandleAsync(IncomingMessage message, CancellationToken ct) =>
+        Task.FromResult(message.Text.Length > 0 && broker.TryConsumeText(message.Chat, message.Text));
 }

@@ -10,8 +10,10 @@ namespace AgentsTracker.Gateway.Features.Chat;
 public sealed class ChatEnqueueTextHandler(
     IChatChannel channel, ChatWorker worker, SessionStore store, IAuditLog audit) : IChatTextHandler
 {
-    public async Task<bool> TryHandleAsync(ChatId chat, UserId user, string text, CancellationToken ct)
+    public async Task<bool> TryHandleAsync(IncomingMessage message, CancellationToken ct)
     {
+        var (chat, user, text) = (message.Chat, message.User, message.Text);
+
         // Превью, а не весь промпт: в него могли вставить токен или содержимое файла.
         audit.Write(AuditEvent.Now(AuditKinds.Message, $"text: {Text.Preview(text)}", user, chat, store.ProjectPath, store.SessionId));
 
