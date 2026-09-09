@@ -5,6 +5,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Номер выпуска приходит из тега: релизная сборка передаёт -p:Version. Здесь остаётся
+         пометка сборки из исходников — иначе монитор и чат показали бы «1.0.0» от SDK
+         и локальная сборка выглядела бы выпущенной версией. -->
+    <Version>0.0.0-dev</Version>
   </PropertyGroup>
 
   <ItemGroup>

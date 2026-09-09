@@ -85,6 +85,11 @@ public static class GatewayInfrastructure
         public int ValidateStartup()
         {
             var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+
+            // Первой строкой: по жалобе «после обновления ничего не изменилось» надо сразу
+            // видеть, какая сборка на самом деле поднялась.
+            logger.LogInformation("AgentsTracker {Version}", AppVersion.Current);
+
             var options = app.Services.GetRequiredService<IOptions<GatewayOptions>>().Value;
             var agent = app.Services.GetRequiredService<IAgentBackend>();
             var channel = app.Services.GetRequiredService<IChatChannel>();

@@ -228,6 +228,7 @@
   <div class="facts card">
     <h2 class="eyebrow">Шлюз</h2>
     <dl>
+      <dt>Версия</dt><dd id="version">—</dd>
       <dt id="agent">Агент</dt><dd id="cli">—</dd>
       <dt>Проект</dt><dd id="project" class="mono">—</dd>
       <dt>Модель</dt><dd id="model">—</dd>
@@ -343,6 +344,7 @@
   let last = null, tapeKey = null;
   function renderLive(s) {
     last = s;
+    $('version').textContent = s.version || '—';
     $('agent').textContent = s.agent || 'Агент';
     const version = (s.cliVersion || '?').replace(` (${s.agent})`, '');
     $('cli').textContent = version; $('cli').title = s.cliVersion || '';
