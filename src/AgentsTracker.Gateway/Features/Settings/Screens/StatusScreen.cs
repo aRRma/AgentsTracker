@@ -45,10 +45,21 @@ public sealed class StatusScreen(
         // Без окон анимировать нечего — один кадр, иначе сообщение дёргалось бы впустую.
         var frames = view.Windows.Count == 0 ? 1 : LimitBars.Frames;
 
+        // Кадр, совпавший с предыдущим, пропускаем вместе с паузой перед ним: с тех пор как
+        // шкала заполняется расходом, у слабо израсходованного окна (3% — ноль клеток из
+        // десяти) все кадры одинаковы, и правка уходила бы в Telegram впустую — он отвечает
+        // «message is not modified», а пользователь ждёт паузу между кадрами ни за чем.
+        // Сравниваем только текст: клавиатура здесь зависит от того же IsBusy, что и он.
+        string? shown = null;
+
         for (var frame = 0; frame < frames; frame++)
         {
-            if (frame > 0) await Task.Delay(LimitBars.FrameDelay, ct);
-            yield return Render(view, frames == 1 ? 1.0 : LimitBars.Progress(frame));
+            var rendered = Render(view, frames == 1 ? 1.0 : LimitBars.Progress(frame));
+            if (rendered.Html == shown) continue;
+
+            if (shown is not null) await Task.Delay(LimitBars.FrameDelay, ct);
+            shown = rendered.Html;
+            yield return rendered;
         }
     }
 

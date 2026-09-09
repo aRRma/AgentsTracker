@@ -64,7 +64,9 @@ and `/audit`. Every other slash command goes to the CLI as-is.
 **A settings screen.** A class implementing `ISettingsScreen` in `Features/Settings/Screens/`,
 registration in `SettingsModule`, a button in `RootScreen`. `RenderAsync` is async because of the
 limits; `RenderFramesAsync` returns optional frames (`StatusScreen` "fills" the `LimitBars` gauges:
-three frames 350 ms apart, more often gets a 429 from Telegram). Model, effort and mode are one
+three frames 350 ms apart, more often gets a 429 from Telegram). A frame identical to the previous
+one is skipped along with the pause before it — the bar of a barely used window does not move, and
+the edit would only earn a «message is not modified» after a wait. Model, effort and mode are one
 `AgentScreen` with the arguments `model:…`/`effort:…`/`mode:…`. `Apply` receives the `ChatId`: a
 screen can enqueue work on `ChatWorker` (`SkillsScreen`), the answer goes to whoever pressed the
 button. The list position lives in `ScreenNavigation` per user: screens are singletons, there can be
