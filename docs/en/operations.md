@@ -3,6 +3,9 @@
 When to read this: you need to restart the gateway, check a change live, or run a long task
 without breaking the running process.
 
+Commands come in two blocks: PowerShell first, bash second (Git Bash). Where a command is the
+same in both shells, there is one block.
+
 ## Restarting the gateway
 
 On the development machine the exe is started manually from `bin\Debug`; there is usually no
@@ -14,6 +17,13 @@ git status                                                # someone else's uncom
 Get-Process AgentsTracker.Gateway | Stop-Process -Force
 dotnet build src\AgentsTracker.Gateway
 Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.exe
+```
+
+```bash
+git status                                                # someone else's uncommitted changes may not build
+taskkill //F //IM AgentsTracker.Gateway.exe
+dotnet build src/AgentsTracker.Gateway
+cmd //c start "" "src/AgentsTracker.Gateway/bin/Debug/net10.0/AgentsTracker.Gateway.exe"
 ```
 
 - The working directory does not matter: `Program.cs` sets `ContentRootPath =
@@ -30,12 +40,19 @@ Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.
   dotnet build ..\AgentsTracker-run\src\AgentsTracker.Gateway -o src\AgentsTracker.Gateway\bin\Debug\net10.0
   git worktree remove --force ..\AgentsTracker-run
   ```
+  ```bash
+  git worktree add --detach ../AgentsTracker-run HEAD
+  dotnet build ../AgentsTracker-run/src/AgentsTracker.Gateway -o src/AgentsTracker.Gateway/bin/Debug/net10.0
+  git worktree remove --force ../AgentsTracker-run
+  ```
 - Do not restart from a session launched by the gateway itself (from Telegram): `Stop-Process`
   would kill the current `claude -p` too, and a deferred `schtasks /SC ONCE` did not work. Give
   the user the commands above and ask them to run them by hand.
 - The console outputs Russian text in cp866 — view the log in PowerShell (`iconv` is not
   available in Git Bash).
-- After startup the bot posts «🔌 Шлюз запущен» ("Gateway started"); if the restart happened
+- After startup the bot posts «🔌 Шлюз запущен» ("Gateway started") with the build version
+  (`0.0.0-dev` for a build from source) — it shows that the new exe is the one that came up;
+  if the restart happened
   during a running task, its chat receives «прерван, напишите „продолжай“» ("interrupted, type
   \"continue\"").
 
@@ -62,7 +79,7 @@ instance has its own, `mcp-gateway-<pid>.json`.
 Smoke test after infrastructure changes: a script in the scratchpad, `pwsh -File`; after ~8 s
 check:
 
-- `/api/snapshot` — the `agent`, `cliVersion` fields;
+- `/api/snapshot` — the `version` (gateway build), `agent`, `cliVersion` fields;
 - `/api/limits`;
 - 404 on `/` of the MCP port;
 - 401 on `POST /mcp` without a token, with the headers `Content-Type: application/json` and
@@ -76,6 +93,10 @@ under the running process, and a broken build would leave you unable to restart 
 
 ```powershell
 git worktree add ..\AgentsTracker-<task> -b <branch>   # the main folder stays the gateway's folder
+```
+
+```bash
+git worktree add ../AgentsTracker-<task> -b <branch>   # the main folder stays the gateway's folder
 ```
 
 Work in the new folder (from chat — `/project`, it has its own sessions). Merge in two steps:
@@ -108,6 +129,11 @@ updates them on push to `master`; the same script can also be run manually:
 ```powershell
 pwsh -File scripts\sync-wiki.ps1 -OutDir C:\Temp\wiki-preview   # see what it would produce
 pwsh -File scripts\sync-wiki.ps1                                # build and push
+```
+
+```bash
+pwsh -File scripts/sync-wiki.ps1 -OutDir /c/Temp/wiki-preview   # see what it would produce
+pwsh -File scripts/sync-wiki.ps1                                # build and push
 ```
 
 The script clears its own pages from the preview folder, so it does not allow `-OutDir` inside

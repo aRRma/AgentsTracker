@@ -152,6 +152,7 @@ src/AgentsTracker.Gateway/
                         «запущен»/«прерван» after a restart, Dispatch/ — handler contracts),
                         Container.Detected — in a container no autostart is installed, the monitor listens on any,
                         Audit, Monitoring (RunMonitor, RingBufferLog), Security (protect-secrets included),
+                        AppVersion — the build number for the log, the monitor and «Шлюз запущен»,
                         Cli/ (install, uninstall), Autostart/ (a Task Scheduler task via schtasks)
   Features/             vertical slices, each with its own *Module:
     Approvals/          approval cards, ApprovalBroker, /rules
@@ -326,7 +327,10 @@ button — that is a screen bug, not a transport one. Sums, tokens and time — 
   file) must happen exactly once before startup.
 - A release is a `v*` tag push, after which `.github/workflows/release.yml` builds the archives and
   creates the release itself. Release notes go into `docs/release-notes/<tag>.md` **before** the tag
-  is pushed, otherwise a list of commits ends up in the release. Details — `docs/en/deployment.md`.
+  is pushed, otherwise a list of commits ends up in the release. Each archive holds a folder named
+  after the archive plus `install.txt` next to it (source — `docs/install-quickstart.txt`). The
+  version comes from the tag through `-p:Version`; the csproj keeps `0.0.0-dev`, so a build from
+  source never looks like a released one. Details — `docs/en/deployment.md`.
 - The GitHub wiki mirrors `README.md` and the Russian `docs/*.md`, it is never edited by hand: the
   pages are built by `scripts\sync-wiki.ps1` (the `wiki.yml` workflow on a push to `master`). A new
   file in `docs/` gets there only if it is added to the script's `$pages` table —

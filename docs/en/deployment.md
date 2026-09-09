@@ -3,6 +3,9 @@
 When to read this: you're setting up the gateway "for good" — not `dotnet run` from the project
 folder, but a published application that comes up on its own and survives a reboot.
 
+Commands come in two blocks: PowerShell first, bash second (Git Bash on Windows, a plain
+terminal on macOS and Linux). Where a command is the same in both shells, there is one block.
+
 Three ways to run it:
 
 | | `dotnet run` | Install on the machine | Docker |
@@ -24,8 +27,12 @@ SDK nor the Runtime is needed on the machine) and the smaller `…-win-x64.zip`,
 frameworks, `Microsoft.NETCore.App` and `Microsoft.AspNetCore.App` — the plain .NET Runtime is
 not enough. Inside is the same result as `dotnet publish`, so everything below applies
 the same way: fill in `appsettings.Local.json` next to the exe and run `install --start`.
-A short guide for the user ships in the archive as `УСТАНОВКА.txt` (source —
-`../install-quickstart.txt`).
+
+Archive layout: a folder `AgentsTracker-<tag>-<kind>` with the application and, next to it,
+`install.txt` — a short guide for the user (source — `../install-quickstart.txt`). The
+application sits in a folder named after the archive so that extracting "here" does not scatter
+a hundred and a half files across the downloads folder, and so the installed folder's name shows
+which version it is.
 
 ### From source
 
@@ -34,6 +41,11 @@ Publishing and registering autostart are two commands, no scripts needed:
 ```powershell
 dotnet publish src\AgentsTracker.Gateway -c Release -o C:\Apps\AgentsTracker
 C:\Apps\AgentsTracker\AgentsTracker.Gateway.exe install --start
+```
+
+```bash
+dotnet publish src/AgentsTracker.Gateway -c Release -o /c/Apps/AgentsTracker
+/c/Apps/AgentsTracker/AgentsTracker.Gateway.exe install --start
 ```
 
 Pick an install folder outside the repository, otherwise `git clean` will wipe it along with the
@@ -64,6 +76,10 @@ hand:
 C:\Apps\AgentsTracker\AgentsTracker.Gateway.exe uninstall
 ```
 
+```bash
+/c/Apps/AgentsTracker/AgentsTracker.Gateway.exe uninstall
+```
+
 The task is created **under your own account, without elevation**. It can't be a service:
 Claude Code reads the OAuth login from `%USERPROFILE%\.claude`, and SYSTEM doesn't have access
 to it. Consequence — the gateway runs only while you're logged into Windows. If you need it to
@@ -82,6 +98,13 @@ dotnet publish src\AgentsTracker.Gateway -c Release -o C:\Apps\AgentsTracker
 C:\Apps\AgentsTracker\AgentsTracker.Gateway.exe install --start
 ```
 
+```bash
+/c/Apps/AgentsTracker/AgentsTracker.Gateway.exe uninstall
+git pull
+dotnet publish src/AgentsTracker.Gateway -c Release -o /c/Apps/AgentsTracker
+/c/Apps/AgentsTracker/AgentsTracker.Gateway.exe install --start
+```
+
 `uninstall` goes first: while the exe is running, publishing over it fails with `MSB3021`, and
 the task would be left on the old version. The config, sessions, and audit log in the data
 directory are not touched. If the update lands on a running task, its chat gets
@@ -92,11 +115,19 @@ directory are not touched. If the update lands on a running task, its chat gets
 ```powershell
 Get-ScheduledTaskInfo -TaskName 'AgentsTracker Gateway' | Select-Object LastRunTime, LastTaskResult
 Get-Process AgentsTracker.Gateway | Select-Object Id, Path
-Invoke-RestMethod http://127.0.0.1:5100/api/snapshot | Select-Object agent, cliVersion
+Invoke-RestMethod http://127.0.0.1:5100/api/snapshot | Select-Object version, agent, cliVersion
+```
+
+```bash
+schtasks //Query //TN "AgentsTracker Gateway" //FO LIST
+tasklist //FI "IMAGENAME eq AgentsTracker.Gateway.exe"
+curl -s http://127.0.0.1:5100/api/snapshot
 ```
 
 `LastTaskResult` = 0 and a process with a path from the install folder — the task came up, and
-Telegram will get «🔌 Шлюз запущен» (🔌 Gateway started). A non-zero exit code is returned by the
+Telegram will get «🔌 Шлюз запущен» (🔌 Gateway started) with the version. The snapshot's
+`version` field and the version in the message are the same string: it shows that a new build is
+running after an update, not the old task. A non-zero exit code is returned by the
 gateway on purpose when it fails to connect to Telegram: the Task Scheduler uses it to restart
 the task (3 attempts, a minute apart).
 
@@ -156,6 +187,10 @@ Get-NetTCPConnection -LocalPort 5099,5100 -State Listen -ErrorAction SilentlyCon
     Select-Object LocalPort, OwningProcess
 ```
 
+```bash
+netstat -ano | grep -E ':(5099|5100)\s.*LISTENING'
+```
+
 No firewall rules are needed: the ports don't face outward.
 
 ## Docker
@@ -163,8 +198,14 @@ No firewall rules are needed: the ports don't face outward.
 The container gives you what an on-machine install doesn't: the agent sees only mounted volumes.
 A failed command and the «Всегда» (Always) button can't reach the rest of the system.
 
+```powershell
+Copy-Item .env.example .env             # fill in the token, your id, and the folder with repositories
+docker compose up -d --build
+docker compose exec gateway claude      # sign in to the agent's account once
+```
+
 ```bash
-cp .env.example .env      # fill in the token, your id, and the folder with repositories
+cp .env.example .env                    # fill in the token, your id, and the folder with repositories
 docker compose up -d --build
 docker compose exec gateway claude      # sign in to the agent's account once
 ```
@@ -231,8 +272,16 @@ git push origin v0.1.0
 
 The build then publishes both win-x64 archives (with and without the runtime) and creates the
 release. Release notes are taken from `../release-notes/<tag>.md`, so create the file **before**
-pushing the tag; no file — GitHub will collect a list of commits instead. The tag number without
-the `v` goes into `-p:Version`; the version isn't edited separately in the csproj.
+pushing the tag; no file — GitHub will collect a list of commits instead.
+
+The tag number without the `v` goes into `-p:Version`; the version isn't edited separately in
+the csproj — it holds `0.0.0-dev` there, so a build from source is honestly distinguishable from
+a released one. The gateway prints that same number as the first line of the log, puts it in the
+monitor snapshot's `version` field and into the «🔌 Шлюз запущен» message.
+
+Packaging puts the publish output into a folder `AgentsTracker-<tag>-<kind>` inside the archive
+and `install.txt` from `../install-quickstart.txt` next to it (UTF-8 with a BOM: without it
+Cyrillic turns into mojibake in Notepad on older Windows builds).
 
 No tokens need to be set up: the workflow uses the built-in `github.token` with `contents:
 write` permission. Before packaging, `appsettings.Local.json` is removed from the publish

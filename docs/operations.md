@@ -3,6 +3,9 @@
 Когда читать: нужно перезапустить шлюз, проверить правку живьём или вести долгую задачу,
 не ломая работающий процесс.
 
+Команды даны двумя блоками: первый — PowerShell, второй — bash (Git Bash). Где команда
+одинакова в обеих оболочках, блок один.
+
 ## Перезапуск шлюза
 
 На машине разработки exe запущен вручную из `bin\Debug`, задачи Планировщика обычно нет
@@ -14,6 +17,13 @@ git status                                                # чужие неза�
 Get-Process AgentsTracker.Gateway | Stop-Process -Force
 dotnet build src\AgentsTracker.Gateway
 Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.exe
+```
+
+```bash
+git status                                                # чужие незакоммиченные правки могут не собираться
+taskkill //F //IM AgentsTracker.Gateway.exe
+dotnet build src/AgentsTracker.Gateway
+cmd //c start "" "src/AgentsTracker.Gateway/bin/Debug/net10.0/AgentsTracker.Gateway.exe"
 ```
 
 - Рабочая папка не важна: `Program.cs` ставит `ContentRootPath = AppContext.BaseDirectory`;
@@ -30,11 +40,17 @@ Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.
   dotnet build ..\AgentsTracker-run\src\AgentsTracker.Gateway -o src\AgentsTracker.Gateway\bin\Debug\net10.0
   git worktree remove --force ..\AgentsTracker-run
   ```
+  ```bash
+  git worktree add --detach ../AgentsTracker-run HEAD
+  dotnet build ../AgentsTracker-run/src/AgentsTracker.Gateway -o src/AgentsTracker.Gateway/bin/Debug/net10.0
+  git worktree remove --force ../AgentsTracker-run
+  ```
 - Из сессии, запущенной самим шлюзом (из Telegram), перезапускать нельзя: `Stop-Process` убьёт
   и текущий `claude -p`, а отложенный `schtasks /SC ONCE` не срабатывал. Дайте пользователю
   команды выше и попросите выполнить руками.
 - Консоль отдаёт русский в cp866 — лог смотрите в PowerShell (`iconv` в Git Bash нет).
-- Бот после старта пишет «🔌 Шлюз запущен»; если перезапуск пришёлся на работающую задачу —
+- Бот после старта пишет «🔌 Шлюз запущен» с версией сборки (в сборке из исходников это
+  `0.0.0-dev`) — по ней видно, что поднялся именно новый exe; если перезапуск пришёлся на работающую задачу —
   в её чат уходит «прерван, напишите „продолжай“».
 
 ## Пробный экземпляр
@@ -58,7 +74,7 @@ Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.
 Смоук-тест после правок инфраструктуры: скрипт в scratchpad, `pwsh -File`; через ~8 с
 проверить:
 
-- `/api/snapshot` — поля `agent`, `cliVersion`;
+- `/api/snapshot` — поля `version` (версия шлюза), `agent`, `cliVersion`;
 - `/api/limits`;
 - 404 на `/` порта MCP;
 - 401 на `POST /mcp` без токена, с заголовками `Content-Type: application/json` и
@@ -72,6 +88,10 @@ Start-Process src\AgentsTracker.Gateway\bin\Debug\net10.0\AgentsTracker.Gateway.
 
 ```powershell
 git worktree add ..\AgentsTracker-<задача> -b <ветка>   # основная папка остаётся папкой шлюза
+```
+
+```bash
+git worktree add ../AgentsTracker-<задача> -b <ветка>   # основная папка остаётся папкой шлюза
 ```
 
 Работайте в новой папке (из чата — `/project`, у неё свои сессии). Вливать — в два шага:
@@ -103,6 +123,11 @@ git worktree add ..\AgentsTracker-<задача> -b <ветка>   # основ�
 ```powershell
 pwsh -File scripts\sync-wiki.ps1 -OutDir C:\Temp\wiki-preview   # посмотреть, что получится
 pwsh -File scripts\sync-wiki.ps1                                # собрать и отправить
+```
+
+```bash
+pwsh -File scripts/sync-wiki.ps1 -OutDir /c/Temp/wiki-preview   # посмотреть, что получится
+pwsh -File scripts/sync-wiki.ps1                                # собрать и отправить
 ```
 
 Папку предпросмотра скрипт чистит от своих страниц, поэтому `-OutDir` внутрь репозитория

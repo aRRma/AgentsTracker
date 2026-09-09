@@ -26,6 +26,11 @@ the latest state, not a queue of stale ones. `/api/events` sends a snapshot on c
 changes, with a `ping` between them every 5 s — without it the page couldn't tell silence apart
 from a crashed gateway.
 
+The gateway version is `AppVersion.Current` in the snapshot's `version` field, shown as the
+first row of the rail's "Шлюз" block. It is the same number as in the «🔌 Шлюз запущен» message:
+otherwise, after the install folder is updated, there is no way to tell the running build from
+the one sitting on disk.
+
 History is `GatewayState.RecentRuns` (200 entries, `SessionStore.RecordRunOutcome` after a run;
 the outcome is decided by `ChatWorker`, usage comes from `AgentRunResult.Usage`).
 `/api/stats.csv` uses `;`, a BOM, and a decimal comma: otherwise Excel under the Russian locale

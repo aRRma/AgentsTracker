@@ -3,6 +3,9 @@
 Когда читать: ставите шлюз «насовсем» — не `dotnet run` из папки проекта, а опубликованное
 приложение, которое поднимается само и переживает перезагрузку.
 
+Команды даны двумя блоками: первый — PowerShell, второй — bash (Git Bash на Windows, обычный
+терминал на macOS и Linux). Где команда одинакова в обеих оболочках, блок один.
+
 Три способа запуска:
 
 | | `dotnet run` | Установка на машину | Docker |
@@ -24,8 +27,11 @@
 `Microsoft.NETCore.App` и `Microsoft.AspNetCore.App`, — обычного .NET Runtime не хватит.
 Внутри — тот же результат `dotnet publish`, поэтому дальше
 всё как ниже: заполнить `appsettings.Local.json` рядом с exe и выполнить `install --start`.
-Короткая инструкция для пользователя лежит в архиве как `УСТАНОВКА.txt` (исходник —
-`docs/install-quickstart.txt`).
+
+Раскладка архива: папка `AgentsTracker-<тег>-<вариант>` с приложением и рядом с ней
+`install.txt` — короткая инструкция для пользователя (исходник — `docs/install-quickstart.txt`).
+Приложение убрано в папку с именем архива, чтобы распаковка «сюда» не рассыпала полторы сотни
+файлов по папке загрузок, а по имени установленной папки было видно версию.
 
 ### Из исходников
 
@@ -34,6 +40,11 @@
 ```powershell
 dotnet publish src\AgentsTracker.Gateway -c Release -o C:\Apps\AgentsTracker
 C:\Apps\AgentsTracker\AgentsTracker.Gateway.exe install --start
+```
+
+```bash
+dotnet publish src/AgentsTracker.Gateway -c Release -o /c/Apps/AgentsTracker
+/c/Apps/AgentsTracker/AgentsTracker.Gateway.exe install --start
 ```
 
 Папку установки берите вне репозитория, иначе `git clean` снесёт её вместе с приложением.
@@ -61,6 +72,10 @@ C:\Apps\AgentsTracker\AgentsTracker.Gateway.exe install --start
 C:\Apps\AgentsTracker\AgentsTracker.Gateway.exe uninstall
 ```
 
+```bash
+/c/Apps/AgentsTracker/AgentsTracker.Gateway.exe uninstall
+```
+
 Задача создаётся **от вашей учётной записи и без повышения прав**. Службой ставить нельзя:
 Claude Code читает OAuth-логин из `%USERPROFILE%\.claude`, под SYSTEM его там нет. Отсюда
 следствие — шлюз работает, пока вы вошли в Windows. Нужна работа без входа в сессию —
@@ -78,6 +93,13 @@ dotnet publish src\AgentsTracker.Gateway -c Release -o C:\Apps\AgentsTracker
 C:\Apps\AgentsTracker\AgentsTracker.Gateway.exe install --start
 ```
 
+```bash
+/c/Apps/AgentsTracker/AgentsTracker.Gateway.exe uninstall
+git pull
+dotnet publish src/AgentsTracker.Gateway -c Release -o /c/Apps/AgentsTracker
+/c/Apps/AgentsTracker/AgentsTracker.Gateway.exe install --start
+```
+
 `uninstall` первым: пока exe запущен, публикация поверх падает с `MSB3021`, а задача осталась
 бы на старой версии. Конфиг, сессии и аудит в папке данных не затрагиваются. Если обновление
 пришлось на работающую задачу, в её чат уйдёт «прервана, напишите „продолжай“».
@@ -87,11 +109,18 @@ C:\Apps\AgentsTracker\AgentsTracker.Gateway.exe install --start
 ```powershell
 Get-ScheduledTaskInfo -TaskName 'AgentsTracker Gateway' | Select-Object LastRunTime, LastTaskResult
 Get-Process AgentsTracker.Gateway | Select-Object Id, Path
-Invoke-RestMethod http://127.0.0.1:5100/api/snapshot | Select-Object agent, cliVersion
+Invoke-RestMethod http://127.0.0.1:5100/api/snapshot | Select-Object version, agent, cliVersion
+```
+
+```bash
+schtasks //Query //TN "AgentsTracker Gateway" //FO LIST
+tasklist //FI "IMAGENAME eq AgentsTracker.Gateway.exe"
+curl -s http://127.0.0.1:5100/api/snapshot
 ```
 
 `LastTaskResult` = 0 и процесс с путём из папки установки — задача поднялась, в Telegram
-придёт «🔌 Шлюз запущен». Ненулевой код выхода шлюз возвращает намеренно, когда не смог
+придёт «🔌 Шлюз запущен» с версией. Поле `version` снимка и версия в сообщении — одна и та же
+строка: по ней видно, что после обновления работает новая сборка, а не старая задача. Ненулевой код выхода шлюз возвращает намеренно, когда не смог
 подключиться к Telegram: по нему Планировщик перезапускает задачу (3 попытки с интервалом
 в минуту).
 
@@ -149,6 +178,10 @@ Get-NetTCPConnection -LocalPort 5099,5100 -State Listen -ErrorAction SilentlyCon
     Select-Object LocalPort, OwningProcess
 ```
 
+```bash
+netstat -ano | grep -E ':(5099|5100)\s.*LISTENING'
+```
+
 Правила брандмауэра не нужны: наружу порты не смотрят.
 
 ## Docker
@@ -156,8 +189,14 @@ Get-NetTCPConnection -LocalPort 5099,5100 -State Listen -ErrorAction SilentlyCon
 Контейнер даёт то, чего нет в установке на машину: агент видит только смонтированные тома.
 Неудачная команда и кнопка «Всегда» не дотягиваются до остальной системы.
 
+```powershell
+Copy-Item .env.example .env             # вписать токен, свой id и папку с репозиториями
+docker compose up -d --build
+docker compose exec gateway claude      # один раз войти в аккаунт агента
+```
+
 ```bash
-cp .env.example .env      # вписать токен, свой id и папку с репозиториями
+cp .env.example .env                    # вписать токен, свой id и папку с репозиториями
 docker compose up -d --build
 docker compose exec gateway claude      # один раз войти в аккаунт агента
 ```
@@ -221,8 +260,16 @@ git push origin v0.1.0
 
 Дальше сборка сама публикует оба архива win-x64 (со средой выполнения и без) и создаёт релиз.
 Заметки берутся из `docs/release-notes/<тег>.md`, поэтому файл заводят **до** пуша тега; нет
-файла — GitHub соберёт список коммитов. Номер тега без `v` уходит в `-p:Version`, отдельно
-версию в csproj не правят.
+файла — GitHub соберёт список коммитов.
+
+Номер тега без `v` уходит в `-p:Version`, отдельно версию в csproj не правят: там стоит
+`0.0.0-dev`, и сборка из исходников этой пометкой честно отличается от выпущенной. Тот же
+номер шлюз печатает в лог первой строкой, кладёт в `version` снимка монитора и в сообщение
+«🔌 Шлюз запущен».
+
+Упаковка кладёт публикацию в папку `AgentsTracker-<тег>-<вариант>` внутри архива, а рядом
+с ней — `install.txt` из `docs/install-quickstart.txt` (UTF-8 с BOM: без него кириллица
+в Блокноте старых сборок Windows превращается в кракозябры).
 
 Токенов заводить не нужно: workflow ходит встроенным `github.token` с правом `contents: write`.
 Перед упаковкой из публикации удаляется `appsettings.Local.json` — на случай, если сборка
