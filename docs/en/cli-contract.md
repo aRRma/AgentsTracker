@@ -206,6 +206,13 @@ frequent polling (3 min cache), and can disappear in any version — on any erro
 `utilization: null` would reach the user as «Внутренняя ошибка шлюза» ("Internal gateway
 error").
 
+The scale of `utilization` (percent 0..100 or a fraction 0..1) is decided for the **whole
+response at once** — `ClaudeLimits.LooksLikePercents`: any value above 1, or all values integral,
+means percent; otherwise fractions. A single window cannot tell them apart: `utilization: 1` is
+both "1% after the reset" and "fully consumed". While the decision was made per window, on
+10.09.2026 the bot spent an hour refusing runs on an **empty** five-hour window, showing the new
+window's reset as the time to wait.
+
 Credits ("extra usage") are forbidden to the agent: `ClaudeBackend` sets
 `DISABLE_EXTRA_USAGE_COMMAND=1`, and when a run is aborted by the limit, `ChatWorker` clears
 the whole queue.

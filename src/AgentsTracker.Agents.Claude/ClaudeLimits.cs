@@ -320,7 +320,7 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
 
         if (document.RootElement.ValueKind is not JsonValueKind.Object) return ([], null);
 
-        var windows = new List<LimitWindow>();
+        var raws = new List<(string Key, double Utilization, DateTimeOffset? ResetsAt)>();
         ExtraUsageState? extra = null;
 
         foreach (var property in document.RootElement.EnumerateObject())
@@ -347,10 +347,13 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
                     ? moment
                     : null;
 
-            windows.Add(new LimitWindow(property.Name, Fraction(raw), resets));
+            raws.Add((property.Name, raw, resets));
         }
 
-        return (windows, extra);
+        // Шкала — одна на весь ответ, поэтому окна собираем только после разбора всех.
+        var percents = LooksLikePercents(raws.Select(r => r.Utilization));
+
+        return ([.. raws.Select(r => new LimitWindow(r.Key, Fraction(r.Utilization, percents), r.ResetsAt))], extra);
     }
 
     private static ExtraUsageState? ParseExtraUsage(JsonElement value)
@@ -374,11 +377,22 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
             ? value
             : null;
 
+    private static double Fraction(double raw, bool percents) => percents ? raw / 100.0 : raw;
+
     /// <summary>
-    /// <c>utilization</c> приходит то долей (0..1), то процентами — всё, что больше единицы,
-    /// считаем процентами.
+    /// Шкала <c>utilization</c> выбирается на весь ответ сразу, а не для каждого окна отдельно:
+    /// в одном окне значение 1 не отличить от доли 1.0, и «1%» через пять минут после сброса
+    /// читалось как «окно выбрано полностью» — 10.09.2026 бот час отказывал на пустом пятичасовом
+    /// окне («сброс в 21:19», хотя окно началось в 16:19). Эндпоинт отдаёт проценты, но набор полей
+    /// недокументирован: значение больше 1 или все значения целые — проценты, дробные — доли.
+    /// Ошибка в сторону процентов лишь пропустит запуск, ошибка в сторону долей глушит бота.
     /// </summary>
-    private static double Fraction(double raw) => raw > 1.0 ? raw / 100.0 : raw;
+    private static bool LooksLikePercents(IEnumerable<double> values)
+    {
+        var all = values.ToList();
+
+        return all.Any(v => v > 1.0) || all.TrueForAll(v => v == Math.Truncate(v));
+    }
 
     private static bool IsWindow(string key) =>
         key.StartsWith("five_hour", StringComparison.Ordinal) || key.StartsWith("seven_day", StringComparison.Ordinal);
