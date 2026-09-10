@@ -233,9 +233,10 @@ found".
   one-line PowerShell command in an approval prompt is easy to reject without reading it — put
   a multi-step check into a script and run it with `pwsh -File`.
 - `curl`, `Invoke-WebRequest`, `Invoke-RestMethod` are in `deny` — for `127.0.0.1` too. A
-  monitor snapshot from a session: `pwsh -File scripts\monitor-api.ps1 /api/snapshot` (loopback
-  only, allowed in `.claude/settings.json`); the whole page — Playwright's
-  `browser_run_code_unsafe`.
+  monitor snapshot from a session: `pwsh -File scripts\monitor-api.ps1 "api/snapshot"` (loopback
+  only, allowed in `.claude/settings.json`) — from the PowerShell tool: from Bash a leading `/`
+  turns into `C:/Program Files/Git/api/…` and the script refuses the argument; the whole page —
+  Playwright's `browser_run_code_unsafe`.
 - `modern-web-guidance` (`npx.cmd -y modern-web-guidance@latest search "…"`) — use the
   PowerShell tool: from Git Bash `npx.cmd` silently returns empty output.
 - Production installation and Docker (publishing, ports, secrets, upgrade) — `deployment.md`.

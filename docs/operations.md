@@ -223,8 +223,10 @@ pwsh -File scripts/sync-wiki.ps1                                # собрать
   подтверждении легко отклонить не глядя — многошаговую проверку кладите в скрипт и
   запускайте `pwsh -File`.
 - `curl`, `Invoke-WebRequest`, `Invoke-RestMethod` в `deny` — и для `127.0.0.1` тоже. Снимок
-  монитора из сессии: `pwsh -File scripts\monitor-api.ps1 /api/snapshot` (только loopback,
-  разрешён в `.claude/settings.json`); страницу целиком — `browser_run_code_unsafe` Playwright.
+  монитора из сессии: `pwsh -File scripts\monitor-api.ps1 "api/snapshot"` (только loopback,
+  разрешён в `.claude/settings.json`) — из инструмента PowerShell: из Bash ведущий `/`
+  превращается в `C:/Program Files/Git/api/…`, и скрипт отклоняет аргумент; страницу целиком —
+  `browser_run_code_unsafe` Playwright.
 - `modern-web-guidance` (`npx.cmd -y modern-web-guidance@latest search "…"`) — из инструмента
   PowerShell: из Git Bash `npx.cmd` молча отдаёт пустой вывод.
 - Промышленная установка и Docker (публикация, порты, секреты, обновление) — `deployment.md`.
