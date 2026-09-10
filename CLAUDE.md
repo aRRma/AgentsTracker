@@ -189,7 +189,7 @@ session.
   anything longer than a couple of paragraphs: temporary in the scratchpad, permanent in `docs/`
   (only if it really is documentation). A Latin, kebab-case name. The answer carries the gist and the
   link; from Telegram — the file into the chat through `mcp__tg__send_file` (from the project folder
-  only: `.md .txt .json .cs .js .html`, screenshots `.png .jpg .jpeg`).
+  only: `.md .txt .json .cs .js .html`, archives `.zip .7z`, screenshots `.png .jpg .jpeg`).
   From plan mode the file is saved before `ExitPlanMode` as well.
 - **Subagents only with `model: "sonnet"`.** In every `Agent` call and in a Workflow `agent()`. Do not
   inherit the parent's model, do not take opus/fable — it saves the plan limits.

@@ -88,8 +88,9 @@ inside the current project's folder (`ProjectCatalog.Normalize` on both sides,
 file itself nor the folders between it and the project root may be a symbolic link or
 junction — the path is checked as a string, while the OS opens the file following links, and a
 link inside the project pointing outward would hand over someone else's file; the extension is
-from a whitelist in code (`.md .txt .json .cs .js .html` — as a document, `.png .jpg .jpeg` —
-as a photo); size and caption — per the channel's `ChannelLimits`. Refusals also go into the
+from a whitelist in code (`.md .txt .json .cs .js .html .zip .7z` — as a document,
+`.png .jpg .jpeg` — as a photo; an archive's contents are not inspected, so the project folder's
+boundaries stay the only barrier); size and caption — per the channel's `ChannelLimits`. Refusals also go into the
 `file.send` audit with outcome `refused`.
 
 The tool is passed in `--allowedTools mcp__tg__send_file` so the CLI doesn't call
