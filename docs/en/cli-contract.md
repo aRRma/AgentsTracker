@@ -190,19 +190,23 @@ numbers.
 The only limiter is `IAgentLimits`, with windows `five_hour`, `seven_day`,
 `seven_day_<model>`; checked in `ChatWorker.ProcessAsync` before starting a run. The remaining
 budget on one line — `ShortSummaryAsync` (menu summary); the windows for the gauges —
-`ViewAsync`. `LimitGauge.Used` is the **consumed** fraction 0..1: the `LimitBars` gauges on
-`/status` and the meters in the monitor fill with consumption, a full bar means the window is
-exhausted. Consumption is rounded up (so as not to flatter), the remainder is 100 minus that
-rather than its own rounding — **one formula** in `LimitBars`, in the monitor and in
-`ClaudeLimits.Left`. In double `1 - 0.67` is `0.32999999999999996`, and independent rounding
-diverged on 14 values out of 1001: the menu showed «неделя 32%» against «осталось 33%» in the
-very same `/status`.
+`ViewAsync`. `LimitGauge.Used` is the **consumed** fraction 0..1 as a `decimal`: the `LimitBars`
+gauges on `/status` and the meters in the monitor fill with consumption, a full bar means the
+window is exhausted.
+
+Percentages are produced **only** by `LimitMath` (`Agents.Abstractions`) — the single rounding
+rule for the whole gateway: `Percent` rounds consumption up to a whole number and clamps it to
+0..100, `Left` is `100 - Percent` rather than its own rounding. It is used by the chat gauges, by
+the menu summary (`ClaudeLimits.Left`) and by `/api/limits`: the monitor page receives `percent`
+and `left` ready-made and no longer has its own formula in JS — JavaScript has no `decimal`, and
+that formula diverged from the chat. Independent rounding diverged on 14 values out of 1001: the
+menu showed «неделя 32%» against «осталось 33%» in the very same `/status`.
 
 `ClaudeLimits` calls the **undocumented** `api.anthropic.com/api/oauth/usage` with the token
 from `~/.claude/.credentials.json`: it requires a plausible User-Agent, responds 429 on
 frequent polling (3 min cache), and can disappear in any version — on any error the run is
 **skipped**, not blocked, otherwise the gateway would go completely silent. Fields are read via
-`ClaudeLimits.Number` with a `ValueKind` check: `TryGetDouble` on `null` throws, and
+`ClaudeLimits.Number` with a `ValueKind` check: `TryGetDecimal` on `null` throws, and
 `utilization: null` would reach the user as «Внутренняя ошибка шлюза» ("Internal gateway
 error").
 

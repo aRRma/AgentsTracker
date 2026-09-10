@@ -191,6 +191,25 @@ answer would vanish silently. On a 429 in the middle of a multi-part answer
 the agent's file in `ApprovalBroker` — both through `RateLimitRetry.OnceAsync`
 (`Channels.Abstractions`), one shared ceiling. Sums, tokens and time — `DisplayFormat`.
 
+### Numbers
+
+Anything fractional is `decimal`, never `double`/`float`: the consumed share of a window
+(`LimitWindow.Used`, `LimitGauge.Used`), the gauge frames, the divisors in `DisplayFormat`.
+`double` rounds where nobody expects it — `0.67 * 100` is `67.00000000000001` — and the limit
+share is not just displayed but compared against the edge of a window that stops a run.
+The gateway holds no money at all: `total_cost_usd` is not read (`cli-contract.md`).
+
+Rounding a share into percent happens in **exactly one** place — `LimitMath.Percent`/`Left`
+(`Agents.Abstractions`): consumption up to a whole number and clamped to 0..100, the remainder as
+`100 - Percent`. Everything that shows percentages calls it: the `/status` gauges, the menu
+summary, `/api/limits` (the monitor page gets `percent` and `left` ready-made — JS has no
+`decimal`). A second rounding formula somewhere is a bug even when it agrees on your numbers:
+independent rounding diverged on 14 values out of 1001, and one message showed «67% · осталось 32%».
+
+What stays `double` is the BCL's own arithmetic — `TimeSpan.TotalSeconds` and its kin — and only
+where the result is immediately truncated to whole units for a caption. Anything counted, rather
+than displayed, is derived from `Ticks` (`RunStatusMessage`) or from `long`.
+
 ## Details worth knowing before touching the host
 
 - `Channel.CreateUnbounded` in `ChatWorker` without `SingleReader`: with it `Reader.Count` throws

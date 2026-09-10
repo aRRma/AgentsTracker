@@ -163,6 +163,12 @@ time — `DisplayFormat`. The renderer's own quirks (italics, `snake_case`, esca
   (needed in a container) is published only on the host's `127.0.0.1`.
 - `HttpClient` only through `IHttpClientFactory`; the retry rules differ per client and are spelled
   out in `docs/en/architecture.md` — a blind retry on a Bot API POST is a duplicate in the chat.
+- **Fractional numbers are `decimal`**, never `double`/`float` — including what is read out of JSON
+  (`TryGetDecimal`). Rounding a share into percent happens in exactly one place,
+  `LimitMath.Percent`/`Left`; do not write a second formula, and do not compute percentages in the
+  monitor's JS — `/api/limits` sends them ready-made. `double` is left only where the BCL itself
+  counts that way (`TimeSpan.Total*`) and the result goes straight into a caption. Why —
+  `docs/en/architecture.md`, "Numbers".
 - A release is a `v*` tag push, and the release notes go into `docs/release-notes/<tag>.md`
   **before** the tag, otherwise a list of commits ends up in the release. The notes are written
   **short and in plain human words**, for the person using the bot: what changed and what it gives

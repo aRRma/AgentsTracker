@@ -81,8 +81,10 @@ statistics, tables, audit, log.
 Worth knowing when editing the markup:
 
 - the limit bars fill with **consumption** (a full bar means the window is exhausted), the
-  remainder goes into the caption below; the rounding and the color threshold are the same as
-  `LimitBars` in chat — the numbers on the page and in chat must not diverge;
+  remainder goes into the caption below; the percentages arrive ready-made in `/api/limits`
+  (`percent`, `left`, computed by `LimitMath` on the gateway side) — do not put a rounding
+  formula of your own in JS: JavaScript has no `decimal`, and the page's numbers would diverge
+  from the chat's;
 - sparklines are drawn only where there's a daily series `stats.byDay` (14 days);
 - selects and links go in `.band-head` next to `<h2>`, not inside the heading;
 - the `.tape` feed: time · tool · argument. `splitStep` takes the tool name as the first word
