@@ -97,6 +97,10 @@ That is the case for `mcp__tg__send_file`: the host checks the folder, the type 
 itself, and an "allow?" card would only duplicate that check with an extra button press. Nothing
 else belongs in `--allowedTools`: it bypasses the cards past the machine's config.
 
+The `send_file` file-type whitelist lives in five places at once — the map in `OperatorConsole`, the
+tool description in `ClaudeSendFileTool` (the CLI sees the description of the **running** gateway),
+`README.md`, `docs/cli-contract.md` and `docs/en/cli-contract.md`. Change a type — change all five.
+
 ## A monitor endpoint
 
 `api.MapGet` in `MonitorModule.MapEndpoints`, read-only — `monitor.md`.

@@ -93,6 +93,10 @@
 продублировала бы эту проверку лишним нажатием. Больше в `--allowedTools` не место ничему: это
 обход карточек мимо настроек машины.
 
+Белый список типов файлов `send_file` живёт сразу в пяти местах — таблица в `OperatorConsole`,
+описание инструмента в `ClaudeSendFileTool` (CLI видит описание **работающего** шлюза),
+`README.md`, `docs/cli-contract.md` и `docs/en/cli-contract.md`. Меняете тип — меняйте все пять.
+
 ## Эндпоинт монитора
 
 `api.MapGet` в `MonitorModule.MapEndpoints`, только чтение — [monitor.md](monitor.md).

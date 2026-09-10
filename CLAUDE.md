@@ -212,9 +212,10 @@ session.
   `/project` to the new folder. Something small in one or two commits goes straight into the main
   folder. After the branch is finally merged into `master`, remove the worktree folder
   (`git worktree remove ..\AgentsTracker-<task>`) and the branch too.
-- **A review in a worktree needs the branch name.** `/code-review` without an argument takes the
-  uncommitted diff of the main folder, not the worktree branch: on 07.09.2026 it reviewed and fixed
-  another session's changes in `master` that way. Call `code-review medium --fix <branch>`.
+- **A review in a worktree needs the branch name.** `/code-review` without an argument works on the
+  main folder: its uncommitted diff, or — when the tree is clean — the commits ahead of
+  `origin/master`, never the worktree branch. On 07.09.2026 it reviewed and fixed another session's
+  changes in `master` that way. Call `code-review medium --fix <branch>`.
 - **After changes — the documentation.** Check CLAUDE.md, the README and the config comments: new
   flags and commands, changes to the CLI contract, non-obvious decisions and their reasons. Do not
   add what is obvious from the code, or a history of the edits.
