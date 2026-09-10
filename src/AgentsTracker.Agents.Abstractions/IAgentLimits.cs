@@ -3,18 +3,20 @@ namespace AgentsTracker.Agents;
 /// <summary>
 /// Окно лимита тарифа. Key — ключ по версии агента (у Claude: <c>five_hour</c>, <c>seven_day</c>,
 /// <c>seven_day_&lt;модель&gt;</c>). Used — доля израсходованного окна, 0..1.
+/// Доля в <c>decimal</c>, а не в <c>double</c>: по ней решается, пускать ли запуск, а у double
+/// 0.67 — это 0.67000000000000004, и сравнение с границей окна зависит от порядка действий.
 /// </summary>
-public sealed record LimitWindow(string Key, double Used, DateTimeOffset? ResetsAt);
+public sealed record LimitWindow(string Key, decimal Used, DateTimeOffset? ResetsAt);
 
 /// <summary>Состояние кредитов сверх тарифа («extra usage») на аккаунте: их шлюз тратить не даёт.</summary>
-public sealed record ExtraUsageState(bool IsEnabled, double? UsedCredits);
+public sealed record ExtraUsageState(bool IsEnabled, decimal? UsedCredits);
 
 /// <summary>
 /// Окно для шкалы в чате: подпись, израсходованная доля 0..1 и сброс — момент плюс готовая
 /// подпись («в 18:00», «9 сентября в 10:00») в формате агента. Шкала показывает именно расход:
 /// полная шкала — окно исчерпано, поэтому «сколько съели» и заполнение всегда об одном и том же.
 /// </summary>
-public sealed record LimitGauge(string Title, double Used, DateTimeOffset? ResetsAt, string? ResetLabel);
+public sealed record LimitGauge(string Title, decimal Used, DateTimeOffset? ResetsAt, string? ResetLabel);
 
 /// <summary>Окна для шкал либо причина, по которой опрос не удался (тогда окон нет).</summary>
 public sealed record LimitsView(IReadOnlyList<LimitGauge> Windows, string? Error);

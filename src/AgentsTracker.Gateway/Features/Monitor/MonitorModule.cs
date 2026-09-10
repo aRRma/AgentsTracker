@@ -58,7 +58,16 @@ public sealed class MonitorModule : IFeatureModule
                 snapshot.FetchedUtc,
                 ExtraUsageEnabled = snapshot.ExtraUsage?.IsEnabled,
                 Model = store.EffectiveModel,
-                Windows = snapshot.Windows.Select(w => new { w.Key, w.Used, w.ResetsAt }),
+                // Проценты считает шлюз: в JS нет decimal, и своя формула на странице разошлась
+                // бы с чатом на копеечной погрешности double. Доля остаётся для полноты снимка.
+                Windows = snapshot.Windows.Select(w => new
+                {
+                    w.Key,
+                    w.Used,
+                    Percent = LimitMath.Percent(w.Used),
+                    Left = LimitMath.Left(w.Used),
+                    w.ResetsAt,
+                }),
             }, Json);
         });
 

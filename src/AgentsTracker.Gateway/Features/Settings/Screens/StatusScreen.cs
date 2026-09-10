@@ -35,7 +35,7 @@ public sealed class StatusScreen(
     }
 
     public async Task<(string Html, Keyboard Keyboard)> RenderAsync(UserId user, CancellationToken ct) =>
-        Render(await limits.ViewAsync(store.EffectiveModel, ct), 1.0);
+        Render(await limits.ViewAsync(store.EffectiveModel, ct), 1m);
 
     public async IAsyncEnumerable<(string Html, Keyboard Keyboard)> RenderFramesAsync(
         UserId user, [EnumeratorCancellation] CancellationToken ct)
@@ -54,7 +54,7 @@ public sealed class StatusScreen(
 
         for (var frame = 0; frame < frames; frame++)
         {
-            var rendered = Render(view, frames == 1 ? 1.0 : LimitBars.Progress(frame));
+            var rendered = Render(view, frames == 1 ? 1m : LimitBars.Progress(frame));
             if (rendered.Html == shown) continue;
 
             if (shown is not null) await Task.Delay(LimitBars.FrameDelay, ct);
@@ -63,7 +63,7 @@ public sealed class StatusScreen(
         }
     }
 
-    private (string Html, Keyboard Keyboard) Render(LimitsView view, double progress)
+    private (string Html, Keyboard Keyboard) Render(LimitsView view, decimal progress)
     {
         var state = store.Snapshot();
         var project = store.ProjectPath;

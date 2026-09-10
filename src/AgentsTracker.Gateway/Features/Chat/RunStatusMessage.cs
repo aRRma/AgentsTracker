@@ -65,7 +65,8 @@ internal sealed class RunStatusMessage : IAsyncDisposable
     private string Render()
     {
         var elapsed = _elapsed.Elapsed;
-        var frame = Clock[(int)(elapsed.TotalSeconds / Tick.TotalSeconds) % Clock.Length];
+        // Деление тиков, а не TotalSeconds: целочисленное — точное, номер кадра не сползёт.
+        var frame = Clock[(int)(elapsed.Ticks / Tick.Ticks) % Clock.Length];
         var lines = new List<string> { $"{frame} Работаю… {elapsed.Elapsed} · 🧵 {_thread}" };
 
         lock (_lock)

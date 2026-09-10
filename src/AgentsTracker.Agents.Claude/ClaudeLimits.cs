@@ -66,7 +66,7 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
 
         // Снимку до трёх минут, поэтому окно с прошедшим сбросом уже не считается.
         var window = snapshot.Windows
-            .Where(w => w.Used >= 1.0 && Applies(w.Key, model) && !Passed(w.ResetsAt))
+            .Where(w => w.Used >= 1.0m && Applies(w.Key, model) && !Passed(w.ResetsAt))
             .OrderBy(w => w.ResetsAt ?? DateTimeOffset.MaxValue)
             .FirstOrDefault();
 
@@ -133,7 +133,7 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
         [
             .. Live(snapshot, model).Select(w => new LimitGauge(
                 Describe(w.Key),
-                Math.Clamp(w.Used, 0.0, 1.0),
+                Math.Clamp(w.Used, 0m, 1m),
                 w.ResetsAt,
                 w.ResetsAt is { } at ? Moment(at) : null))
         ], null);
@@ -148,15 +148,9 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
             .Where(w => Applies(w.Key, model) && !Passed(w.ResetsAt))
             .OrderBy(w => w.ResetsAt ?? DateTimeOffset.MaxValue);
 
-    /// <summary>
-    /// Остаток окна в процентах: 100 минус расход, округлённый вверх (чтобы не обнадёживать) —
-    /// той же формулой, что и шкалы <c>LimitBars</c>. Своё округление вниз расходилось с ними на
-    /// 14 значениях из 1001: у 0.67 доля остатка в double равна 0.32999999999999996, и в меню
-    /// выходило «неделя 32%» против «осталось 33%» в том же `/status`. Поправка 1e-9 гасит ту же
-    /// погрешность в другую сторону: без неё 0.67 даёт 67.00000000000001 и остаток 32%.
-    /// </summary>
-    private static string Left(double used) =>
-        (100 - (int)Math.Ceiling(Math.Clamp(used, 0.0, 1.0) * 100 - 1e-9)).ToString(CultureInfo.InvariantCulture) + "%";
+    /// <summary>Остаток окна в процентах — общим правилом <see cref="LimitMath"/>, как и шкалы.</summary>
+    private static string Left(decimal used) =>
+        LimitMath.Left(used).ToString(CultureInfo.InvariantCulture) + "%";
 
     /// <summary>
     /// Окно без модели в ключе действует на любой запуск, окно модели — только на её запуск.
@@ -326,7 +320,7 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
 
         if (document.RootElement.ValueKind is not JsonValueKind.Object) return ([], null, true);
 
-        var raws = new List<(string Key, double Utilization, DateTimeOffset? ResetsAt)>();
+        var raws = new List<(string Key, decimal Utilization, DateTimeOffset? ResetsAt)>();
         ExtraUsageState? extra = null;
 
         foreach (var property in document.RootElement.EnumerateObject())
@@ -375,18 +369,19 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
     }
 
     /// <summary>
-    /// Числовое поле или <c>null</c>. Вид проверяем сами: <c>TryGetDouble</c> на JSON-null
+    /// Числовое поле или <c>null</c>. Вид проверяем сами: <c>TryGetDecimal</c> на JSON-null
     /// не возвращает false, а бросает <see cref="InvalidOperationException"/>, и одно пустое
-    /// поле сорвало бы разбор всего ответа.
+    /// поле сорвало бы разбор всего ответа. Число не по размеру decimal (такого у процентов
+    /// расхода быть не может) читается как отсутствующее — окно просто не ограничивает запуск.
     /// </summary>
-    private static double? Number(JsonElement owner, string name) =>
+    private static decimal? Number(JsonElement owner, string name) =>
         owner.TryGetProperty(name, out var field)
         && field.ValueKind is JsonValueKind.Number
-        && field.TryGetDouble(out var value)
+        && field.TryGetDecimal(out var value)
             ? value
             : null;
 
-    private static double Fraction(double raw, bool percents) => percents ? raw / 100.0 : raw;
+    private static decimal Fraction(decimal raw, bool percents) => percents ? raw / 100m : raw;
 
     /// <summary>
     /// Шкала <c>utilization</c> выбирается на весь ответ сразу, а не для каждого окна отдельно:
@@ -399,11 +394,11 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
     /// в сторону процентов лишь пропустит запуск — в лимит упрётся сам CLI, ошибка в сторону долей
     /// глушит бота на часы. Цена решения: на шкале долей исчерпанное окно запуск не задержит.
     /// </summary>
-    private static bool LooksLikePercents(IEnumerable<double> values)
+    private static bool LooksLikePercents(IEnumerable<decimal> values)
     {
         var all = values.ToList();
 
-        return all.Any(v => v >= 1.0) || all.TrueForAll(v => v == Math.Truncate(v));
+        return all.Any(v => v >= 1.0m) || all.TrueForAll(v => v == Math.Truncate(v));
     }
 
     private static bool IsWindow(string key) =>

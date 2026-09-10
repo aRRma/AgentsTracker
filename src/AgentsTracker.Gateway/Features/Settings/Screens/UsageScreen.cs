@@ -47,7 +47,7 @@ public sealed class UsageScreen(SessionStore store, IAgentLimits limits, IAuditL
             📊 <b>Использование</b>
 
             <b>Расход тарифа</b>
-            {LimitBars.Render(plan, 1.0)}
+            {LimitBars.Render(plan, 1m)}
 
             <i>Расход шлюза с {E(since)}</i>
             Запусков: <b>{total.Runs}</b> · ходов: <b>{total.Turns}</b>
