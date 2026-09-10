@@ -177,6 +177,9 @@ time — `DisplayFormat`. The renderer's own quirks (italics, `snake_case`, esca
   `/api/*` — `pwsh -File scripts\monitor-api.ps1 /api/snapshot`; a screenshot and the page itself —
   `docs/en/monitor.md`. Port `5100` is the **release** instance: it shows old code, your own change
   is on the scratch instance's port.
+- From a session over Telegram the MCP tool list comes from the **running** gateway: after a change
+  to `send_file` (allowed types, description) this session still sees the release's old version —
+  check such a change with the harness or a scratch instance, not by calling the tool.
 
 ## Как работать
 

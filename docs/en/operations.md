@@ -141,6 +141,9 @@ Put the file in the scratchpad and run `dotnet run check.cs`. That is how the in
 handling was checked in a single run: signature sniffing, size caps, the retention sweep, refusals
 and the audit records — and it caught a `Directory.Delete` that failed on a just-deleted file.
 
+A junction left inside the temp folder by a previous run makes `Directory.Delete(recursive: true)`
+fail with «Access to the path 'link' is denied» — remove the link itself before the folder.
+
 ## Larger tasks — use a worktree
 
 The main `AgentsTracker` folder stays on `master` (there is no `main` branch in the repository):
@@ -213,6 +216,9 @@ found".
   script in the scratchpad via Write, run it as a file, check the result with `grep … | cat -v`
   and by building.
 - Sources are UTF-8 **without BOM** (`utf-8-sig` adds one silently).
+- The PowerShell tool rejects a compound command where `Remove-Item` stands next to a path under
+  `C:\Program Files` (7-Zip, for example): the guard reads it as removing `C:\Program`. Split such
+  a command into separate calls.
 - `claude` is not on the tool shells' PATH: call it as
   `& "$env:USERPROFILE\.local\bin\claude.exe" --help` (from Git Bash that path does not execute).
   Undocumented CLI behaviour is quickest to check with a bare `claude -p … --output-format json`
