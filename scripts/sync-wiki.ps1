@@ -43,6 +43,7 @@ $tree = "https://github.com/$Repository/tree/$Branch"
 
 # Какая страница получается из какого файла. Имена латиницей: они попадают в адрес страницы.
 $pages = [ordered]@{
+    'use-cases'          = 'use-cases'
     'deployment'         = 'deployment'
     'operations'         = 'operations'
     'architecture'       = 'architecture'

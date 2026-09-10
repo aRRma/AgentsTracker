@@ -3,6 +3,7 @@
 Notes for Claude Code working in this repository. This file holds the rules and the map; the
 details are in `docs/en/`:
 
+- `docs/en/use-cases.md` — what the bot is used for besides code: ten scenarios on the user's PC.
 - `docs/en/operations.md` — restarting the gateway, scratch instance, worktree, tooling.
 - `docs/en/architecture.md` — how the gateway is built: the annotated project tree, the message
   path, the gateway ↔ CLI loop, sessions, state and secrets, audit, chat output.
