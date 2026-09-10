@@ -41,6 +41,7 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
 
     private LimitsSnapshot? _cached;
     private DateTimeOffset _lastFetch;
+    private string _scale = "проценты";
 
     /// <summary>
     /// Причина отказа, если окно исчерпано, иначе null. model — модель запуска: недельное
@@ -72,8 +73,8 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
         if (window is null) return null;
 
         logger.LogWarning(
-            "Запуск отклонён: окно {Window} выбрано на {Used:P0}, сброс {ResetsAt}",
-            window.Key, window.Used, window.ResetsAt);
+            "Запуск отклонён: окно {Window} выбрано на {Used:P0}, сброс {ResetsAt}, шкала ответа — {Scale}",
+            window.Key, window.Used, window.ResetsAt, _scale);
 
         var reset = window.ResetsAt is { } at ? $" Сброс {Moment(at)}." : "";
 
@@ -236,7 +237,12 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
                 return new LimitsSnapshot([], null, DateTimeOffset.UtcNow, Describe(response.StatusCode));
             }
 
-            var (windows, extra) = Parse(body);
+            var (windows, extra, percents) = Parse(body);
+
+            // Шкала — в лог: по «выбрано на 100%» не видно, пришла ли сотня процентов или единица,
+            // принятая за долю, а именно на этом шлюз час отказывал на пустом окне (10.09.2026).
+            _scale = percents ? "проценты" : "доли";
+
             return new LimitsSnapshot(windows, extra, DateTimeOffset.UtcNow, null);
         }
         // InvalidOperationException — чтение поля не того вида. Ответ недокументирован, любой
@@ -314,11 +320,11 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
     /// Берём всё, что похоже на окно (five_hour, seven_day, seven_day_&lt;модель&gt;), а не
     /// фиксированный список: набор моделей меняется вместе с тарифами.
     /// </summary>
-    private static (IReadOnlyList<LimitWindow> Windows, ExtraUsageState? ExtraUsage) Parse(string body)
+    private static (IReadOnlyList<LimitWindow> Windows, ExtraUsageState? ExtraUsage, bool Percents) Parse(string body)
     {
         using var document = JsonDocument.Parse(body);
 
-        if (document.RootElement.ValueKind is not JsonValueKind.Object) return ([], null);
+        if (document.RootElement.ValueKind is not JsonValueKind.Object) return ([], null, true);
 
         var raws = new List<(string Key, double Utilization, DateTimeOffset? ResetsAt)>();
         ExtraUsageState? extra = null;
@@ -353,7 +359,10 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
         // Шкала — одна на весь ответ, поэтому окна собираем только после разбора всех.
         var percents = LooksLikePercents(raws.Select(r => r.Utilization));
 
-        return ([.. raws.Select(r => new LimitWindow(r.Key, Fraction(r.Utilization, percents), r.ResetsAt))], extra);
+        return (
+            [.. raws.Select(r => new LimitWindow(r.Key, Fraction(r.Utilization, percents), r.ResetsAt))],
+            extra,
+            percents);
     }
 
     private static ExtraUsageState? ParseExtraUsage(JsonElement value)
