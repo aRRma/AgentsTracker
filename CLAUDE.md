@@ -45,8 +45,9 @@ There are no tests. Anything touching the CLI contract is checked by hand: start
 watch the log. Host logic that needs no live bot is checked by a file-based C# harness with fakes
 instead of a channel — `docs/en/operations.md`.
 
-**The working gateway on this machine is the published release** (`C:\AgentsTracker-<версия>-win-x64`;
-the path is shown by `Get-Process AgentsTracker.Gateway`). Do not stop it and do not rebuild over it:
+**The working gateway on this machine is the published release** (`C:\AgentsTracker-win-x64`; a
+release archive unpacks as `AgentsTracker-<version>-win-x64`, so check the path with
+`Get-Process AgentsTracker.Gateway`). Do not stop it and do not rebuild over it:
 that is the stable service the user chats with, and new code reaches it only through a new release. A
 change is checked live by a **scratch instance from `bin\Debug` on its own ports** — a separate build
 folder, `Gateway__McpPort`/`Gateway__MonitorPort` other than `5099`/`5100`, a fake bot token and its
