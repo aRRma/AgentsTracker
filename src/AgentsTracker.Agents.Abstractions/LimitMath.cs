@@ -12,8 +12,12 @@ namespace AgentsTracker.Agents;
 /// </summary>
 public static class LimitMath
 {
-    /// <summary>Израсходованная доля окна 0..1 в проценты 0..100.</summary>
-    public static int Percent(decimal used) => Math.Clamp((int)Math.Ceiling(used * 100), 0, 100);
+    /// <summary>
+    /// Израсходованная доля окна 0..1 в проценты 0..100. Обрезаем долю, а не результат:
+    /// у decimal перевод в int бросает на выходе за диапазон, и мусорное <c>utilization</c>
+    /// из недокументированного эндпоинта роняло бы <c>/api/limits</c> и шапку меню.
+    /// </summary>
+    public static int Percent(decimal used) => (int)Math.Ceiling(Math.Clamp(used, 0m, 1m) * 100);
 
     /// <summary>Остаток окна в процентах: ровно то, что не попало в <see cref="Percent"/>.</summary>
     public static int Left(decimal used) => 100 - Percent(used);
