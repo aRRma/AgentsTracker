@@ -60,8 +60,10 @@ it to `routes`), `python -m http.server <port> --bind 127.0.0.1` from the scratc
   mock.
 - Checking states, dark theme, a narrow window, and computed styles — in one call to
   `browser_run_code_unsafe`; the same call checks the live `http://127.0.0.1:5100/`. `/api/*`
-  itself without a browser — `pwsh -File scripts\monitor-api.ps1 api/snapshot` (`curl` and
-  `Invoke-WebRequest` are in `deny`, loopback is not an exception).
+  itself without a browser — `pwsh -File scripts\monitor-api.ps1 "api/snapshot"` (`curl` and
+  `Invoke-WebRequest` are in `deny`, loopback is not an exception). Call it from the **PowerShell**
+  tool and without a leading `/`: from Bash, MSYS rewrites `/api/snapshot` into
+  `C:/Program Files/Git/api/snapshot`, and the script refuses an argument like that.
 - Port `5100` is the **working** gateway, on this machine the release: it serves the page from
   its own build, so your edit is not there. Look at your own change on a scratch instance
   (`docs/en/operations.md`) — and take the screenshot from its port too.

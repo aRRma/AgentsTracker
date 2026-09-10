@@ -189,10 +189,9 @@ time — `DisplayFormat`. The renderer's own quirks (italics, `snake_case`, esca
   (15 min): with no answer, take the recommended option.
 - The monitor at `http://127.0.0.1:5100` is unreachable from a session via `curl`/`Invoke-RestMethod`
   — they are in `deny` for any address, do not try to work around it. A snapshot and the other
-  `/api/*` — `pwsh -File scripts\monitor-api.ps1 "api/snapshot"` from the **PowerShell** tool: from
-  Bash a leading `/` becomes `C:/Program Files/Git/api/…` and the script refuses it. A screenshot and
-  the page itself — `docs/en/monitor.md`. Port `5100` is the **release** instance: it shows old code,
-  your own change is on the scratch instance's port.
+  `/api/*` — `pwsh -File scripts\monitor-api.ps1 "api/snapshot"` from the **PowerShell** tool, no
+  leading `/` (why, plus screenshots and the page itself — `docs/en/monitor.md`). Port `5100` is the
+  **release** instance: it shows old code, your own change is on the scratch instance's port.
 - From a session over Telegram the MCP tool list comes from the **running** gateway: after a change
   to `send_file` (allowed types, description) this session still sees the release's old version —
   check such a change with the harness or a scratch instance, not by calling the tool.
