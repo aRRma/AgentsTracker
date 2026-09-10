@@ -49,6 +49,10 @@
     <td align="center" width="50%"><img src="docs/images/bot-3.png" width="320" alt="Экран скиллов"><br><sub><b><code>/skills</code>.</b> Скиллы по источникам и плагины Claude Code</sub></td>
     <td align="center" width="50%"><img src="docs/images/bot-2.png" width="320" alt="Экран расхода и лимитов"><br><sub><b><code>/usage</code>.</b> Расход тарифа, расход по дням и моделям</sub></td>
   </tr>
+  <tr>
+    <td align="center" width="50%"><img src="docs/images/bot-5.png" width="320" alt="Картинка, присланная боту, и ответ агента по ней"><br><sub><b>Картинка в чат.</b> Прислали фото с подписью — агент посмотрел и ответил</sub></td>
+    <td align="center" width="50%"><img src="docs/images/bot-6.png" width="320" alt="Архивы, присланные агентом в чат"><br><sub><b>Файлы из проекта.</b> Агент присылает отчёт или набор файлов архивом</sub></td>
+  </tr>
 </table>
 
 ## Как устроено
