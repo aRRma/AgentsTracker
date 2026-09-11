@@ -58,8 +58,7 @@ folder, `Gateway__McpPort`/`Gateway__MonitorPort` other than `5099`/`5100`, a fa
 own `Gateway__DataDirectory`; the recipe and the cleanup are in `docs/en/operations.md`. When the
 gateway does run from `bin\Debug` of the main folder (`AgentsTracker`, branch `master`; there is no
 `main` branch), `dotnet build` fails with `MSB3021` while it runs and switching branches swaps the
-sources out from under the process. From a session started from Telegram you must not restart it —
-hand the commands to the user instead.
+sources out from under the process. Who may restart it and when — «Как работать» below.
 
 ## Layout
 
