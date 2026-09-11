@@ -7,7 +7,7 @@ using AgentsTracker.Gateway.Infrastructure.Monitoring;
 namespace AgentsTracker.Gateway.Features.Approvals;
 
 /// <summary>
-/// Человек в чате глазами бэкенда: карточки разрешений, правила «всегда», вопросы агента
+/// Человек в чате глазами бэкенда: карточки подтверждения, правила «всегда», вопросы агента
 /// и аудит каждого решения. Бэкенду достаётся только решение — где и кем оно принято,
 /// знает лишь хост.
 /// </summary>
@@ -33,7 +33,7 @@ public sealed class OperatorConsole(
 
         // Только начало: в полной команде может быть токен из заголовка curl.
         var brief = Text.Preview(Highlight(toolName, input) ?? "");
-        logger.LogInformation("Запрос разрешения: {Tool} {Key}", toolName, brief);
+        logger.LogInformation("Запрошено подтверждение: {Tool} {Key}", toolName, brief);
 
         // Монитору та же строка, что и логу: в полном вводе Edit/Write лежит содержимое файлов.
         using var pending = monitor.Approval(toolName, brief);
@@ -51,14 +51,14 @@ public sealed class OperatorConsole(
         }
         catch (TimeoutException)
         {
-            logger.LogWarning("Разрешение на {Tool} не получено за отведённое время", toolName);
+            logger.LogWarning("Подтверждение на {Tool} не получено за отведённое время", toolName);
             Audit(AuditKinds.Approval, signature, "timeout");
-            return ApprovalDecision.Deny("Пользователь не ответил на запрос разрешения за отведённое время. Не повторяйте это действие.");
+            return ApprovalDecision.Deny("Пользователь не подтвердил это действие за отведённое время. Не повторяйте его.");
         }
         catch (OperationCanceledException)
         {
             Audit(AuditKinds.Approval, signature, "cancel");
-            return ApprovalDecision.Deny("Запрос отменён пользователем.");
+            return ApprovalDecision.Deny("Отменено пользователем.");
         }
     }
 
@@ -127,7 +127,7 @@ public sealed class OperatorConsole(
         catch (OperationCanceledException)
         {
             Audit(AuditKinds.Approval, $"AskUserQuestion({brief})", "cancel");
-            return QuestionResult.Refused("Запрос отменён пользователем.");
+            return QuestionResult.Refused("Отменено пользователем.");
         }
     }
 

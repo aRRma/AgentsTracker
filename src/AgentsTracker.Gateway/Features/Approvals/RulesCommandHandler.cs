@@ -4,7 +4,7 @@ using AgentsTracker.Gateway.Infrastructure.Chat.Dispatch;
 
 namespace AgentsTracker.Gateway.Features.Approvals;
 
-/// <summary>/rules — показывает и снимает разрешения, выданные кнопкой «Всегда».</summary>
+/// <summary>/rules — показывает и снимает правила «всегда», записанные кнопкой «Всегда».</summary>
 public sealed class RulesCommandHandler(IChatChannel channel, SessionStore store, IAuditLog audit)
     : IChatCommandHandler
 {

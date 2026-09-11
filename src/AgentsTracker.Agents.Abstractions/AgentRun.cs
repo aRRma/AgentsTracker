@@ -13,7 +13,7 @@ namespace AgentsTracker.Agents;
 /// </param>
 /// <param name="Model">Модель или её алиас; null — как решит агент.</param>
 /// <param name="Effort">Уровень усилий; null — как решит агент. У агента без этой настройки игнорируется.</param>
-/// <param name="PermissionMode">Режим разрешений — одно из значений <see cref="AgentCapabilities.PermissionMode"/>.</param>
+/// <param name="PermissionMode">Режим — одно из значений <see cref="AgentCapabilities.PermissionMode"/>.</param>
 /// <param name="Timeout">Предельная длительность: по истечении процесс убивается.</param>
 /// <param name="AttachmentsPath">
 /// Папка с файлами, которые прислал пользователь: она вне <paramref name="ProjectPath"/>,

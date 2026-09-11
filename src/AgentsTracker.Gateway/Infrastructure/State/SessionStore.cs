@@ -307,7 +307,7 @@ public sealed class SessionStore
         });
     }
 
-    /// <summary>Снимает разрешение «всегда». Возвращает false, если такого правила не было.</summary>
+    /// <summary>Снимает правило «всегда». Возвращает false, если такого правила не было.</summary>
     public bool RemoveAlwaysAllow(string signature)
     {
         var removed = false;
@@ -320,7 +320,7 @@ public sealed class SessionStore
         return removed;
     }
 
-    /// <summary>Снимает все разрешения «всегда» текущего проекта. Возвращает, сколько их было.</summary>
+    /// <summary>Снимает все правила «всегда» текущего проекта. Возвращает, сколько их было.</summary>
     public int ClearAlwaysAllow()
     {
         var removed = 0;

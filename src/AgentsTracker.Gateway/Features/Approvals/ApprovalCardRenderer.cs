@@ -5,7 +5,7 @@ using System.Text.Json;
 namespace AgentsTracker.Gateway.Features.Approvals;
 
 /// <summary>
-/// Карточка запроса разрешения: вместо сырого JSON показывает то, что человек реально
+/// Карточка подтверждения: вместо сырого JSON показывает то, что человек реально
 /// решает — команду, файл, суть правки. Незнакомый инструмент показывается общим рендером.
 /// </summary>
 public static class ApprovalCardRenderer
