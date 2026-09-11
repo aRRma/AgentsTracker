@@ -25,7 +25,7 @@ public sealed class HelpCommandHandler(IChatChannel channel, IAgentBackend agent
             /sessions — сессия
             /agent — модель, effort, режим
             /skills — скиллы кнопкой, включение плагинов
-            /project — сменить репозиторий
+            /project — сменить проект
             /usage — лимиты и расход
             /rules — правила «всегда»; /rules del <n>, /rules clear
             /audit [n] — журнал действий

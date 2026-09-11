@@ -6,7 +6,7 @@ namespace AgentsTracker.Gateway.Features.Settings.Screens;
 /// <summary>
 /// Корневой экран: сводка и переходы к остальным. Кнопки — по частоте использования:
 /// сначала то, что нужно в каждой сессии (статус, сессии), потом настройки агента и
-/// скиллы, в конце репозиторий и статистика — их трогают раз в день.
+/// скиллы, в конце проект и расход — их трогают раз в день.
 /// </summary>
 public sealed class RootScreen(SessionStore store, IAgentBackend agent, ChatWorker worker, IAgentLimits limits) : ISettingsScreen
 {
@@ -44,7 +44,7 @@ public sealed class RootScreen(SessionStore store, IAgentBackend agent, ChatWork
         [
             [Button("📟 Статус", "status"), Button("🧵 Сессии", "sess")],
             [Button("🤖 Агент", "agent")],
-            [Button("🧩 Скиллы", "skills"), Button("📁 Репозиторий", "proj")],
+            [Button("🧩 Скиллы", "skills"), Button("📁 Проект", "proj")],
             [Button("📊 Статистика", "usage"), Button("✖️ Закрыть", "close")],
         ]);
 

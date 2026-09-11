@@ -60,7 +60,7 @@ public sealed class GatewayOptions
     /// <summary>Канал связи с человеком: тип и его настройки.</summary>
     public ChannelOptions Channel { get; set; } = new();
 
-    /// <summary>Рабочая папка по умолчанию. Из чата её меняет меню «Репозиторий».</summary>
+    /// <summary>Проект по умолчанию. Из чата его меняет меню «Проект».</summary>
     public string ProjectPath { get; set; } = "";
 
     /// <summary>
@@ -71,9 +71,9 @@ public sealed class GatewayOptions
     public string[] Projects { get; set; } = [];
 
     /// <summary>
-    /// Корень поиска репозиториев для меню: обход идёт вглубь, пока не встретится папка,
-    /// похожая на проект. Нужен, когда репозитории разложены по группам
-    /// (source/repos/ГруппаА/Репозиторий) и соседей <see cref="ProjectPath"/> не хватает.
+    /// Корень поиска проектов для меню: обход идёт вглубь, пока не встретится папка,
+    /// похожая на проект. Нужен, когда проекты разложены по папкам-группам
+    /// (source/repos/ГруппаА/Проект) и соседей <see cref="ProjectPath"/> не хватает.
     /// null — искать среди соседей.
     /// </summary>
     public string? ProjectsRoot { get; set; }

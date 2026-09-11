@@ -4,8 +4,8 @@ using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
 
 /// <summary>
-/// Выбор рабочей папки в два шага: сначала папка-группа, потом репозиторий в ней.
-/// У каждого репозитория своя активная сессия.
+/// Выбор проекта в два шага: сначала папка-группа, потом проект в ней.
+/// У каждого проекта своя активная сессия.
 /// </summary>
 public sealed class ProjectScreen(
     SessionStore store,
@@ -19,7 +19,7 @@ public sealed class ProjectScreen(
 
     private const string GroupPrefix = "g";
 
-    /// <summary>Возврат от репозиториев к списку папок.</summary>
+    /// <summary>Возврат от проектов к списку папок.</summary>
     private const string UpArgument = "up";
 
     private readonly ScreenNavigation _nav = new();
@@ -54,7 +54,7 @@ public sealed class ProjectScreen(
         // По ключу, а не по номеру: между отрисовкой и нажатием список мог измениться,
         // и номер указал бы на другой путь.
         var project = catalog.List(store.ProjectPath).FirstOrDefault(p => Key12(ProjectCatalog.Normalize(p)) == argument);
-        if (project is null) return "Репозитория уже нет в списке";
+        if (project is null) return "Проекта уже нет в списке";
 
         var previous = store.ProjectPath;
         if (ProjectCatalog.Same(project, previous)) return null;
@@ -64,7 +64,7 @@ public sealed class ProjectScreen(
         // Выбранная папка становится первой в списке, показывать пятую страницу незачем.
         _nav.Update(user, p => p with { Page = 0 });
 
-        logger.LogInformation("Рабочая папка переключена на {Project}", project);
+        logger.LogInformation("Проект переключён на {Project}", project);
         audit.Changed(store, user, "project", Path.GetFileName(previous), Path.GetFileName(project));
 
         // Сессии живут в папке, где созданы: у нового проекта своя или ни одной.
@@ -82,7 +82,7 @@ public sealed class ProjectScreen(
         var current = store.ProjectPath;
         var position = _nav.Of(user);
 
-        // Пересобираем на каждый показ: папка могла исчезнуть вместе с репозиториями.
+        // Пересобираем на каждый показ: папка могла исчезнуть вместе с проектами.
         var groups = catalog.Grouped(current);
 
         // Папка одна — промежуточный экран только добавит нажатие.
@@ -113,14 +113,14 @@ public sealed class ProjectScreen(
             + $"<b>{E(group.Name)}</b> — {group.Projects.Count}");
 
         var html = $"""
-            📁 <b>Репозиторий</b>
+            📁 <b>Проект</b>
 
             Сейчас: <b>{E(Path.GetFileName(current))}</b>
             <code>{E(current)}</code>
 
             {string.Join("\n", lines)}
 
-            <i>Выберите папку, потом репозиторий в ней. {Source()}</i>{counter}
+            <i>Выберите папку, потом проект в ней. {Source()}</i>{counter}
             """;
 
         var buttons = page
@@ -138,18 +138,18 @@ public sealed class ProjectScreen(
     private (string Html, Keyboard Keyboard) RenderProjects(
         UserId user, IReadOnlyList<string> all, string? group, string current, int pageIndex)
     {
-        var (page, clamped, counter, pageRow) = Page(all, pageIndex, Key, PagePrefix, "репозиториев");
+        var (page, clamped, counter, pageRow) = Page(all, pageIndex, Key, PagePrefix, "проектов");
         _nav.Update(user, p => p with { Page = clamped });
 
         var lines = page.Select(path =>
             $"{Marker(ProjectCatalog.Same(path, current))} <b>{E(Path.GetFileName(path))}</b>\n   <code>{E(path)}</code>");
 
         var html = $"""
-            📁 <b>{E(group ?? "Репозиторий")}</b>
+            📁 <b>{E(group ?? "Проект")}</b>
 
             {string.Join("\n", lines)}
 
-            <i>У каждой папки своя сессия: переключение не смешивает контексты.{(group is null ? $" {Source()}" : "")}</i>{counter}
+            <i>У каждого проекта своя сессия: переключение не смешивает контексты.{(group is null ? $" {Source()}" : "")}</i>{counter}
             """;
 
         var buttons = page

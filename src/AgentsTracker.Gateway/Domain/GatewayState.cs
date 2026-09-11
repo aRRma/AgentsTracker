@@ -31,7 +31,7 @@ public sealed class GatewayState
 
     /// <summary>
     /// Сигнатуры, разрешённые кнопкой «Всегда», когда CLI не прислал своих правил. Ключ —
-    /// нормализованный путь проекта: «git push --force», разрешённый в одном репозитории,
+    /// нормализованный путь проекта: «git push --force», разрешённый в одном проекте,
     /// не должен действовать во всех остальных.
     /// </summary>
     public Dictionary<string, List<string>> AlwaysAllowByProject { get; set; } = new(StringComparer.OrdinalIgnoreCase);
