@@ -89,7 +89,7 @@ public sealed class StatusScreen(
             🧠 {E(store.EffectiveModel ?? "модель по умолчанию")}{effort} · 🔐 {E(store.EffectivePermissionMode)}
             ♾ Правил «всегда» в проекте: {store.AlwaysAllowRules().Count}
 
-            🚦 <b>Расход тарифа</b>
+            🚦 <b>Лимиты тарифа</b>
             {LimitBars.Render(view, progress)}
             """;
 

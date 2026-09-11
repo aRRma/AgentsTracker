@@ -19,7 +19,7 @@ public static class ChatCommandCatalog
         new("agent", "🤖 агент"),
         new("skills", "🧩 скиллы"),
         new("project", "📁 проект"),
-        new("usage", "📊 лимиты и расход"),
+        new("usage", "📊 расход и лимиты"),
         new("rules", "♾ правила «всегда»"),
         new("audit", "📜 журнал"),
         new("help", "❓ справка"),

@@ -45,7 +45,7 @@ public sealed class RootScreen(SessionStore store, IAgentBackend agent, ChatWork
             [Button("📟 Статус", "status"), Button("🧵 Сессии", "sess")],
             [Button("🤖 Агент", "agent")],
             [Button("🧩 Скиллы", "skills"), Button("📁 Проект", "proj")],
-            [Button("📊 Статистика", "usage"), Button("✖️ Закрыть", "close")],
+            [Button("📊 Расход", "usage"), Button("✖️ Закрыть", "close")],
         ]);
 
         return (html, keyboard);

@@ -21,12 +21,12 @@ public sealed class HelpCommandHandler(IChatChannel channel, IAgentBackend agent
             Шлюз к {agent.DisplayName}. Пишите задачу обычным сообщением.
 
             /menu — всё кнопками
-            /status — что происходит, остаток тарифа
+            /status — что происходит, лимиты тарифа
             /sessions — сессия
             /agent — модель, effort, режим
             /skills — скиллы кнопкой, включение плагинов
             /project — сменить проект
-            /usage — лимиты и расход
+            /usage — расход и лимиты тарифа
             /rules — правила «всегда»; /rules del <n>, /rules clear
             /audit [n] — журнал действий
 

@@ -20,8 +20,8 @@ public sealed class UsageScreen(SessionStore store, IAgentLimits limits, IAuditL
         if (argument != "reset") return null;
 
         store.ResetUsage();
-        audit.Changed(store, user, "usage", "статистика", "обнулена");
-        return "Статистика обнулена";
+        audit.Changed(store, user, "usage", "расход", "обнулён");
+        return "Расход обнулён";
     }
 
     public async Task<(string Html, Keyboard Keyboard)> RenderAsync(UserId user, CancellationToken ct)
@@ -44,9 +44,9 @@ public sealed class UsageScreen(SessionStore store, IAgentLimits limits, IAuditL
         var since = usage.SinceUtc is { } from ? from.ToLocalTime().ToString("d MMMM, HH:mm") : "—";
 
         var html = $"""
-            📊 <b>Использование</b>
+            📊 <b>Расход</b>
 
-            <b>Расход тарифа</b>
+            <b>Лимиты тарифа</b>
             {LimitBars.Render(plan, 1m)}
 
             <i>Расход шлюза с {E(since)}</i>
