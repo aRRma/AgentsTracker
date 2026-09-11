@@ -176,7 +176,7 @@ git worktree add ../AgentsTracker-<задача> -b <ветка>   # основ�
 
 Вики — зеркало `README.md` и русских `docs/*.md`, править её руками бессмысленно: страницы каждый раз
 собираются заново и правки затираются. Обновляет их `.github/workflows/wiki.yml` при пуше
-в `master`, тем же скриптом можно прогнать вручную:
+в `master`, тот же скрипт можно запустить вручную:
 
 ```powershell
 pwsh -File scripts\sync-wiki.ps1 -OutDir C:\Temp\wiki-preview   # посмотреть, что получится
