@@ -258,4 +258,8 @@ session.
   subscription and «предел» is anything technical; «журнал» is `/audit` and «лог» is `ILogger`; a
   live check of a scratch instance is a «смоук-тест» and the instance itself is a «пробный
   экземпляр» — those two are the section titles in `operations.md`, and a third name for either
-  only hides the section from search.
+  only hides the section from search. A rename that touches the UI also ages the screenshots in
+  `docs/images/*.png` used by the README: they cannot be retaken from a session (the monitor on
+  `5100` is the release with the old code, the bot shots need a live chat), so name the stale ones
+  to the user instead of leaving them. Already published `docs/release-notes/*` are history and are
+  never re-worded — exclude them from a glossary sweep.
