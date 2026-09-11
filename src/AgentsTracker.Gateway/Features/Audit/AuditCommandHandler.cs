@@ -46,7 +46,7 @@ public sealed class AuditCommandHandler(IChatChannel channel, IAuditLog audit) :
 
         var tail = shown < entries.Count ? $"\n<i>…и ещё {entries.Count - shown} — смотрите файл журнала.</i>" : "";
         // Перевод строки после заголовка не нужен: каждая строка списка уже начинается с него.
-        var text = $"📜 <b>Последние {shown} записей</b>{body}{tail}";
+        var text = $"📜 <b>Журнал: последние {shown} записей</b>{body}{tail}";
 
         await channel.SendAsync(context.Chat, new OutgoingMessage(text), ct);
     }
