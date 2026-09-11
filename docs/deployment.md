@@ -190,13 +190,13 @@ netstat -ano | grep -E ':(5099|5100)\s.*LISTENING'
 Неудачная команда и кнопка «Всегда» не дотягиваются до остальной системы.
 
 ```powershell
-Copy-Item .env.example .env             # вписать токен, свой id и папку с репозиториями
+Copy-Item .env.example .env             # вписать токен, свой id и папку с проектами
 docker compose up -d --build
 docker compose exec gateway claude      # один раз войти в аккаунт агента
 ```
 
 ```bash
-cp .env.example .env                    # вписать токен, свой id и папку с репозиториями
+cp .env.example .env                    # вписать токен, свой id и папку с проектами
 docker compose up -d --build
 docker compose exec gateway claude      # один раз войти в аккаунт агента
 ```

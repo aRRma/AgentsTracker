@@ -48,7 +48,7 @@ public sealed class AttachmentInbox(
 
     /// <summary>
     /// Скачивает вложения текущего сообщения. Отказ — всегда текстом, а не исключением:
-    /// пользователь должен понять, почему его картинка не попала к агенту.
+    /// пользователь должен понять, почему его вложение не попало к агенту.
     /// </summary>
     public async Task<AttachmentBatch> StoreAsync(
         ChatId chat, UserId user, IReadOnlyList<IncomingAttachment> attachments, CancellationToken ct)
@@ -91,8 +91,10 @@ public sealed class AttachmentInbox(
 
         if (attachment.Size is { } size && size > limit)
         {
+            // «Вложение», а не «картинка»: тип узнаём только по байтам после скачивания,
+            // и документом может прийти что угодно.
             return (null, Refuse(chat, user, project, $"{size.Bytes} > {limit.Bytes}",
-                $"Картинка слишком большая: {size.Bytes}, предел — {limit.Bytes}."));
+                $"Вложение слишком большое: {size.Bytes}, предел — {limit.Bytes}."));
         }
 
         Directory.CreateDirectory(directory);
@@ -122,7 +124,7 @@ public sealed class AttachmentInbox(
         catch (Exception ex) when (IsTooLarge(ex))
         {
             Delete(temp);
-            return (null, Refuse(chat, user, project, $"больше {limit.Bytes}", $"Картинка слишком большая, предел — {limit.Bytes}."));
+            return (null, Refuse(chat, user, project, $"больше {limit.Bytes}", $"Вложение слишком большое, предел — {limit.Bytes}."));
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

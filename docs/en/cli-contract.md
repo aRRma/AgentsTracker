@@ -30,7 +30,7 @@ Two cases:
   returned unchanged in `updatedPermissions`.
 - Otherwise the gateway remembers the exact signature in `state.json`
   (`AlwaysAllowByProject`, key — normalized project path), visible in `/rules`. Gateway rules
-  apply only within their own project: `git push --force` from one repository must not
+  apply only within their own project: `git push --force` from one project must not
   silently pass in the others.
 
 ### Truncated tail
