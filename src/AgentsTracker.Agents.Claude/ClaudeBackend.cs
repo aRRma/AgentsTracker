@@ -110,7 +110,7 @@ public sealed class ClaudeBackend(
         if (cancelled)
         {
             var reason = timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested
-                ? $"Превышен лимит в {request.Timeout.TotalMinutes:0} мин — процесс остановлен."
+                ? $"Превышен предел в {request.Timeout.TotalMinutes:0} мин — процесс остановлен."
                 : "Остановлено.";
 
             return new AgentRunResult
