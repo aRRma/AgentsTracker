@@ -223,7 +223,7 @@ public sealed class OperatorConsole(
         // запретов Claude на чтение. Папка данных шлюза исключена отдельно — она вне проекта,
         // но пусть отказ не зависит от того, куда её перенесли.
         if (!ProjectCatalog.IsInside(full, project) || ProjectCatalog.IsInside(full, DataDirectory))
-            return Refuse(full, $"Файл вне папки текущего проекта ({project}). Отправлять можно только файлы из неё.");
+            return Refuse(full, $"Файл вне текущего проекта ({project}). Отправлять можно только файлы из него.");
 
         var extension = Path.GetExtension(full);
         if (!AllowedExtensions.TryGetValue(extension, out var isImage))
@@ -263,7 +263,7 @@ public sealed class OperatorConsole(
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            return Refuse(full, "Запрос отменён пользователем.");
+            return Refuse(full, "Отправка отменена пользователем.");
         }
         catch (Exception ex)
         {

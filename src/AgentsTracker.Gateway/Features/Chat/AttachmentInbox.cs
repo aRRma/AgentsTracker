@@ -48,7 +48,7 @@ public sealed class AttachmentInbox(
 
     /// <summary>
     /// Скачивает вложения текущего сообщения. Отказ — всегда текстом, а не исключением:
-    /// пользователь должен понять, почему его файл не попал к агенту.
+    /// пользователь должен понять, почему его картинка не попала к агенту.
     /// </summary>
     public async Task<AttachmentBatch> StoreAsync(
         ChatId chat, UserId user, IReadOnlyList<IncomingAttachment> attachments, CancellationToken ct)
@@ -56,7 +56,7 @@ public sealed class AttachmentInbox(
         if (attachments.Count == 0) return new AttachmentBatch([], null);
 
         if (!_options.Enabled)
-            return new AttachmentBatch([], "Приём файлов выключен в настройках шлюза (Gateway:Attachments:Enabled).");
+            return new AttachmentBatch([], "Приём вложений выключен в настройках шлюза (Gateway:Attachments:Enabled).");
 
         var project = store.ProjectPath;
         var directory = SessionDirectory(chat, project);
@@ -92,7 +92,7 @@ public sealed class AttachmentInbox(
         if (attachment.Size is { } size && size > limit)
         {
             return (null, Refuse(chat, user, project, $"{size.Bytes} > {limit.Bytes}",
-                $"Файл слишком большой: {size.Bytes}, предел — {limit.Bytes}."));
+                $"Картинка слишком большая: {size.Bytes}, предел — {limit.Bytes}."));
         }
 
         Directory.CreateDirectory(directory);
@@ -122,7 +122,7 @@ public sealed class AttachmentInbox(
         catch (Exception ex) when (IsTooLarge(ex))
         {
             Delete(temp);
-            return (null, Refuse(chat, user, project, $"больше {limit.Bytes}", $"Файл слишком большой, предел — {limit.Bytes}."));
+            return (null, Refuse(chat, user, project, $"больше {limit.Bytes}", $"Картинка слишком большая, предел — {limit.Bytes}."));
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -133,7 +133,7 @@ public sealed class AttachmentInbox(
         {
             Delete(temp);
             logger.LogWarning(ex, "Не удалось принять вложение");
-            return (null, Refuse(chat, user, project, ex.Message, $"Не удалось скачать файл: {ex.Message}"));
+            return (null, Refuse(chat, user, project, ex.Message, $"Не удалось скачать вложение: {ex.Message}"));
         }
     }
 

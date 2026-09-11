@@ -145,7 +145,7 @@ public static class ApprovalCardRenderer
         "WebFetch" => "загрузить страницу",
         "WebSearch" => "поиск в интернете",
         "Agent" or "Task" => "запустить сабагента",
-        "Skill" => "вызвать навык",
+        "Skill" => "вызвать скилл",
         "TodoWrite" => "обновить список задач",
         "ExitPlanMode" => "утвердить план",
         _ when toolName.StartsWith("mcp__", StringComparison.Ordinal) => "MCP-инструмент",
@@ -239,7 +239,7 @@ public static class ApprovalCardRenderer
 
             case "Skill":
                 if (Str(input, "skill") is not { } skill) return false;
-                card.Append("Навык: <code>").Append(E(skill, ValueBudget)).Append("</code>\n");
+                card.Append("Скилл: <code>").Append(E(skill, ValueBudget)).Append("</code>\n");
                 if (Str(input, "args") is { } args) card.Append("<pre>").Append(E(args, ValueBudget)).Append("</pre>");
                 return true;
 
