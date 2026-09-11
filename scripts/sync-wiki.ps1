@@ -49,6 +49,7 @@ $pages = [ordered]@{
     'operations'         = 'operations'
     'architecture'       = 'architecture'
     'extending'          = 'extending'
+    'glossary'           = 'glossary'
     'monitor'            = 'monitor'
     'cli-contract'       = 'cli-contract'
     'claude-permissions' = 'claude-permissions'

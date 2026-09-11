@@ -13,6 +13,8 @@ details are in `docs/en/`:
   mechanism, a config key.
 - `docs/en/deployment.md` — production run: publish, install/uninstall, Docker, ports, secrets.
 - `docs/en/cli-contract.md` — the CLI contract: approvals, stream-json, sessions, limits, skills.
+- `docs/en/glossary.md` — the glossary: one Russian word per concept for buttons, messages, the
+  monitor and the docs, plus the synonyms not to use.
 - `docs/en/monitor.md` — web monitor: endpoints, mock, styling, accessibility.
 - `docs/en/claude-permissions.md` — Claude Code permissions on this machine: `allow`/`ask`/`deny`,
   the `docs/examples/claude-settings.example.json` sample, the project-level `.claude/settings.json`.
@@ -246,7 +248,14 @@ session.
   hand; a scratch instance on its own ports is fine, it does not touch the working one. From VS Code you
   may, but **before** Stop-Process check `git status`: someone else's uncommitted changes have broken
   the build right after the process was stopped.
-- **Terminology.** Checking by a live run of a scratch instance is «смоук-тест», not «дымовой прогон»
-  and not «дымовая проверка»: in the chat and in the docs alike. The instance itself is a "scratch
-  instance" in English and «пробный экземпляр» in Russian — those are the section titles in
-  `operations.md`, and a third name for it only hides the section from search.
+- **Terminology comes from the glossary.** Every text a person sees — a button, a screen title, a
+  chat message, a monitor caption, a line of documentation, a release note — takes its words from
+  `docs/en/glossary.md`: one Russian word per concept, and the table's right column lists the
+  synonyms that are not used. A new concept goes into the glossary (both languages) before the code
+  that uses it. The traps that cost the most: a working folder is «проект» and never «репозиторий»;
+  the user writes a «задача», the agent performs a «запуск» (never «прогон»); the card is a
+  «карточка подтверждения», while «режим» means only `--permission-mode`; «лимит» is the
+  subscription and «предел» is anything technical; «журнал» is `/audit` and «лог» is `ILogger`; a
+  live check of a scratch instance is a «смоук-тест» and the instance itself is a «пробный
+  экземпляр» — those two are the section titles in `operations.md`, and a third name for either
+  only hides the section from search.
