@@ -47,7 +47,7 @@
   </tr>
   <tr>
     <td align="center" width="50%"><img src="docs/images/bot-3.png" width="320" alt="Экран скиллов"><br><sub><b><code>/skills</code>.</b> Скиллы по источникам и плагины Claude Code</sub></td>
-    <td align="center" width="50%"><img src="docs/images/bot-2.png" width="320" alt="Экран расхода и лимитов"><br><sub><b><code>/usage</code>.</b> Расход тарифа, расход по дням и моделям</sub></td>
+    <td align="center" width="50%"><img src="docs/images/bot-2.png" width="320" alt="Экран расхода и лимитов"><br><sub><b><code>/usage</code>.</b> Лимиты тарифа, расход по дням и моделям</sub></td>
   </tr>
   <tr>
     <td align="center" width="50%"><img src="docs/images/bot-5.png" width="320" alt="Картинка, присланная боту, и ответ агента по ней"><br><sub><b>Картинка в чат.</b> Прислали фото с подписью — агент посмотрел и ответил</sub></td>
@@ -91,11 +91,11 @@
 
 | Раздел | Что показывает |
 |---|---|
-| Сейчас | текущая задача, её шаги, очередь и карточка, которая ждёт ответа |
-| Работа по дням | запуски, ходы, токены, время в CLI; график и выгрузка CSV |
+| Статус | текущая задача, её шаги, очередь и карточка, которая ждёт ответа |
+| Расход по дням | запуски, ходы, токены, время в CLI; график и выгрузка CSV |
 | Запуски · Сессии | история последних запусков с исходом и расходом; сессии по проектам |
-| Аудит · Лог | кто что разрешил и подробный лог шлюза |
-| Слева на рейке | занят или свободен, расход тарифа шкалами, версия шлюза и CLI, модель и режим |
+| Журнал · Лог | кто что разрешил и подробный лог шлюза |
+| Слева на рейке | выполняется или простаивает, лимиты тарифа шкалами, версия шлюза и CLI, модель и режим |
 
 <p align="center">
   <img src="docs/images/monitor.png" width="900" alt="Веб-монитор AgentsTracker">
@@ -201,13 +201,13 @@ dotnet publish src/AgentsTracker.Gateway -c Release -o /c/Apps/AgentsTracker
 шлюз на macOS и Linux, пока для них нет своей установки.
 
 ```powershell
-Copy-Item .env.example .env             # токен, свой id, папка с репозиториями
+Copy-Item .env.example .env             # токен, свой id, папка с проектами
 docker compose up -d --build
 docker compose exec gateway claude      # один раз войти в аккаунт агента
 ```
 
 ```bash
-cp .env.example .env                    # токен, свой id, папка с репозиториями
+cp .env.example .env                    # токен, свой id, папка с проектами
 docker compose up -d --build
 docker compose exec gateway claude      # один раз войти в аккаунт агента
 ```
@@ -224,13 +224,13 @@ docker compose exec gateway claude      # один раз войти в акка
 |---|---|
 | любой текст | задача агенту |
 | `/menu` | все настройки кнопками (то же самое — `/settings`) |
-| `/status` · `/usage` | что происходит сейчас · остаток тарифа |
-| `/new` · `/stop` | начать разговор заново · прервать задачу |
+| `/status` · `/usage` | что происходит сейчас · расход и лимиты тарифа |
+| `/new` · `/stop` | начать разговор заново · прервать запуск |
 | `/sessions` | сессии проекта: переключить, новая, остановить |
-| `/agent` | модель, effort, режим разрешений (или `/model`, `/effort`, `/mode` текстом) |
-| `/project` | сменить папку проекта |
+| `/agent` | модель, effort, режим (или `/model`, `/effort`, `/mode` текстом) |
+| `/project` | сменить проект |
 | `/skills` | скиллы и плагины Claude Code |
-| `/rules` | правила «Всегда» этого репозитория; `/rules del <n>` и `/rules clear` — снять |
+| `/rules` | правила «Всегда» этого проекта; `/rules del <n>` и `/rules clear` — снять |
 | `/audit` · `/help` | последние действия · справка (её же даёт `/start`) |
 
 ## Подробнее
@@ -336,7 +336,7 @@ schtasks //Run //TN "AgentsTracker Gateway"
 
   Кнопка «Всегда» такие запреты не обходит. Рекомендуемый набор правил для всей машины
   (секреты, сеть, необратимое в git) и готовый файл — [docs/claude-permissions.md](docs/claude-permissions.md);
-- правила «Всегда» привязаны к репозиторию: разрешённое в одном не действует в другом;
+- правила «Всегда» привязаны к проекту: разрешённое в одном не действует в другом;
 - «Плагины» в `/skills` правят ваш `~/.claude/settings.json` — то же, что `/plugin` в самом
   Claude Code;
 - если команда или правка не влезла в карточку, перед ней приходит файл с полным текстом —
@@ -354,7 +354,7 @@ schtasks //Run //TN "AgentsTracker Gateway"
 | Бот молчит | не заполнен `Channel:Settings:AllowedUserIds`, неверный токен или Telegram недоступен без прокси |
 | `Gateway:BotToken больше не читается` | настройки канала переехали в `Gateway:Channel:Settings`; перенести — `pwsh -File scripts\migrate-channel-settings.ps1` (рядом останется `.backup`) |
 | Правка настроек не подействовала | нужен перезапуск |
-| В меню не все репозитории | не задан `ProjectsRoot`; список листается `◀ ▶` |
+| В меню не все проекты | не задан `ProjectsRoot`; список листается `◀ ▶` |
 | `claude` не найден | не поставлен CLI или не открыто новое окно PowerShell; крайний случай — `Claude:Executable` |
 | Агент просит войти в аккаунт | запустите `claude` в PowerShell и войдите; бот использует этот вход |
 | Сборка падает с `MSB3021` | шлюз запущен и держит файлы. Установленный — `AgentsTracker.Gateway.exe uninstall` (снимает и останавливает), запущенный вручную — `Get-Process AgentsTracker.Gateway \| Stop-Process -Force` (в bash `taskkill //F //IM AgentsTracker.Gateway.exe`) |

@@ -77,8 +77,8 @@ it to `routes`), `python -m http.server <port> --bind 127.0.0.1` from the scratc
 Fluent 2 "Mica" with Grafana/Elastic techniques: `--canvas` as the backdrop, content in `.card`
 cards, the `--brand` accent only on the chart, links, and tool labels; signals are
 `--run`/`--wait`/`--fail`; fonts are Segoe UI Variable and Cascadia. A rail on the left
-(status, plan limits as bars, section navigation), panels on the right: «Сейчас» (Now),
-statistics, tables, audit, log.
+(status, subscription limits as bars, section navigation), panels on the right: «Статус» (Status),
+«Расход по дням» (usage per day), tables, «Журнал» (the audit trail), «Лог».
 
 Worth knowing when editing the markup:
 

@@ -130,11 +130,11 @@ $env:Gateway__ProjectPath = 'C:\Users\aRRma99\source\repos\ME\AgentsTracker'
 Сначала `AppPaths.UseDirectory(<папка во временных>)`, затем
 `Options.Create(new GatewayOptions { … })`, `NullLogger<T>.Instance` и свои
 `IChatChannel`/`IAuditLog` (остальные методы канала — `throw new NotSupportedException()`).
-Файл кладётся в scratchpad и запускается `dotnet run check.cs`. Так за один прогон проверена
+Файл кладётся в scratchpad и запускается `dotnet run check.cs`. Так за один запуск проверена
 работа с присланными файлами: определение типа по сигнатуре, пределы размера, чистка по возрасту,
 отказы и записи аудита — и там же нашёлся `Directory.Delete`, падавший на только что удалённом файле.
 
-Junction, оставшийся во временной папке от прошлого прогона, роняет `Directory.Delete(recursive: true)`
+Junction, оставшийся во временной папке от прошлого запуска, роняет `Directory.Delete(recursive: true)`
 с «Access to the path 'link' is denied» — снимайте саму ссылку перед удалением папки.
 
 ## Крупные задачи — в worktree

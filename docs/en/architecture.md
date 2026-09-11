@@ -2,7 +2,8 @@
 
 When to read this: you need to find where something lives, or to understand why a piece is where
 it is. The checklists for adding a command, a screen, an agent or a channel are in
-`extending.md`; the undocumented parts of the CLI contract are in `cli-contract.md`.
+`extending.md`; the undocumented parts of the CLI contract are in `cli-contract.md`. The words all
+of this is called by in buttons, messages and here are in `glossary.md`.
 
 ## The projects
 
@@ -12,7 +13,7 @@ src/AgentsTracker.Agents.Abstractions/   agent contracts, no Telegram and no spe
   AgentRun.cs           request (prompt, folder, session, model, effort, mode, timeout, attachments folder), observer, result
   AgentCapabilities     which models/efforts/modes the agent supports (effort null — not supported)
   IOperatorConsole      what the agent asks a human for: ApproveAsync, AskAsync, SendFileAsync; PersistentRule — an "always" rule
-  IAgentLimits          plan limits; IAgentSkillCatalog — slash commands
+  IAgentLimits          subscription limits («лимиты тарифа»); IAgentSkillCatalog — slash commands
   IAgentBackendModule   AddServices + MapEndpoints; AgentHost — data directory, port, proxy, card timeout from the host
 src/AgentsTracker.Agents.Claude/         Claude Code behind those contracts:
   ClaudeBackend         the claude -p process: arguments, stream-json, "session not found", limit
@@ -138,7 +139,7 @@ as `null`: otherwise a config edit would be silently overridden by an old select
 
 `ProjectCatalog`: the `Gateway:Projects` list, otherwise a walk of `Gateway:ProjectsRoot` down to
 `ProjectsRootDepth`, otherwise the neighbours of `ProjectPath`. `ProjectScreen` selects in two
-steps (folder → repository) in pages of 12. The current project comes first in its group, and after
+steps (folder → project) in pages of 12. The current project comes first in its group, and after
 a selection the page resets to the first one — otherwise the `▶` marker could end up off-screen.
 
 ## State, secrets, configuration layers

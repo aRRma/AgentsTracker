@@ -2,7 +2,8 @@
 
 Когда читать: нужно найти, где что лежит, или понять, почему кусок стоит именно здесь. Чек-листы
 добавления команды, экрана, агента и канала — в [extending.md](extending.md); недокументированная
-часть договора с CLI — в [cli-contract.md](cli-contract.md).
+часть договора с CLI — в [cli-contract.md](cli-contract.md). Слова, которыми всё это называется в
+кнопках, сообщениях и здесь, — в [glossary.md](glossary.md).
 
 ## Проекты
 
@@ -12,7 +13,7 @@ src/AgentsTracker.Agents.Abstractions/   контракты агента, без
   AgentRun.cs           запрос (промпт, папка, сессия, модель, усилие, режим, таймаут, папка вложений), наблюдатель, результат
   AgentCapabilities     какие модели/усилия/режимы агент поддерживает (усилие null — не поддерживает)
   IOperatorConsole      что агент просит у человека: ApproveAsync, AskAsync, SendFileAsync; PersistentRule — правило «всегда»
-  IAgentLimits          лимиты плана; IAgentSkillCatalog — слэш-команды
+  IAgentLimits          лимиты тарифа; IAgentSkillCatalog — слэш-команды
   IAgentBackendModule   AddServices + MapEndpoints; AgentHost — папка данных, порт, прокси, таймаут карточки от хоста
 src/AgentsTracker.Agents.Claude/         Claude Code за этими контрактами:
   ClaudeBackend         процесс claude -p: аргументы, stream-json, «сессия не найдена», лимит
@@ -47,7 +48,7 @@ src/AgentsTracker.Gateway/
                         AppVersion — номер сборки для лога, монитора и «Шлюз запущен»,
                         Cli/ (install, uninstall), Autostart/ (задача Планировщика через schtasks)
   Features/             вертикальные срезы, у каждого свой *Module:
-    Approvals/          карточки согласований, ApprovalBroker, /rules
+    Approvals/          карточки подтверждения, ApprovalBroker, /rules
     Chat/               ChatWorker (очередь, запуск, сессии), RunStatusMessage, /new /stop,
                         AttachmentInbox — картинки из чата: скачивание, проверки, папка inbox, чистка
     Settings/           SettingsMenuCoordinator + Screens/*, /menu /status /sessions /agent /skills /project /usage
@@ -66,7 +67,7 @@ src/AgentsTracker.Gateway/
 тоже отказ). Текст разбирается по порядку:
 
 1. слэш-команда из `IChatCommandHandler.Commands` — **в первую очередь**, иначе `/stop` ушёл бы в
-   ожидающий свободный ответ, и прервать зависший прогон было бы нечем;
+   ожидающий свободный ответ, и прервать зависший запуск было бы нечем;
 2. цепочка `IChatTextHandler` в порядке модулей: ответ на карточку (`ApprovalTextHandler`) →
    аргументы скилла (`SkillArgumentsTextHandler`) → в очередь агента (`ChatEnqueueTextHandler`,
    всегда `true`). Поэтому `ChatModule` последний. Незнакомые слэш-команды — команды самого Claude
@@ -75,19 +76,19 @@ src/AgentsTracker.Gateway/
 Порядок держится и для подписи к картинке: `/stop` должен работать с приложенной картинкой, и тогда
 картинка не сохраняется, а диспетчер об этом говорит, а не молча её теряет. Сообщение с вложением —
 не аргументы скилла: `SkillArgumentsTextHandler` пропускает его дальше и продолжает ждать.
-`ApprovalTextHandler`, наоборот, забирает его себе (повисшая карточка заморозила бы прогон) и
+`ApprovalTextHandler`, наоборот, забирает его себе (повисшая карточка заморозила бы запуск) и
 предупреждает, что картинка никуда не пошла.
 
 В обработчик приходит целиком `IncomingMessage`: кроме текста в нём могут быть вложения. Картинки
 забирает `ChatEnqueueTextHandler` через `AttachmentInbox` — скачивает в
 `<папка данных>\inbox\<чат>\<проект>\`, проверяет тип по сигнатурным байтам и подставляет абсолютные
-пути в промпт; прогон получает эту папку чата в `--add-dir`, и ничего больше. Подробности —
+пути в промпт; запуск получает эту папку чата в `--add-dir`, и ничего больше. Подробности —
 [cli-contract.md](cli-contract.md).
 
 Кнопки: цепочка `IChatButtonHandler` (`Dispatch/`), каждый узнаёт своё по префиксу в `CanHandle`:
 `cfg:` — меню (`SettingsCallbackHandler`), всё остальное (шестнадцатеричный id запроса) —
 `ApprovalCallbackHandler` → `ApprovalBroker`. `ActiveChat` у брокера ставит `ChatWorker` перед
-прогоном, иначе карточки ушли бы в чужой чат.
+запуском, иначе карточки ушли бы в чужой чат.
 
 ## Петля шлюз → CLI → шлюз
 
@@ -136,7 +137,7 @@ README — руководство пользователя: меняя защи�
 
 `ProjectCatalog`: список `Gateway:Projects`, иначе обход `Gateway:ProjectsRoot` до
 `ProjectsRootDepth`, иначе соседи `ProjectPath`. `ProjectScreen` выбирает в два шага (папка →
-репозиторий) страницами по 12. Текущий проект идёт первым в своей группе, а после выбора страница
+проект) страницами по 12. Текущий проект идёт первым в своей группе, а после выбора страница
 сбрасывается на первую — иначе метка `▶` могла оказаться за пределами экрана.
 
 ## Состояние, секреты, слои конфигурации
@@ -213,7 +214,7 @@ README — руководство пользователя: меняя защи�
 - `Channel.CreateUnbounded` в `ChatWorker` без `SingleReader`: с ним `Reader.Count` бросает
   исключение и `/status` разваливается.
 - `_runCts` в `ChatWorker` ставится прямо перед `agent.RunAsync`, после отправки статусного
-  сообщения: чистит его только `finally` прогона, а падение выше оставило бы `IsBusy` до
+  сообщения: чистит его только `finally` запуска, а падение выше оставило бы `IsBusy` до
   перезапуска.
 - `HttpClient` только через `IHttpClientFactory`. `ClaudeLimits.HttpClientName` — один таймаут, без
   повторов. Клиент Telegram (`TelegramClientFactory`) — синглтон, DNS обновляет

@@ -168,7 +168,7 @@ content.
 ## Sessions
 
 Sessions are keyed by the normalized project path (`ProjectCatalog.Normalize`): `--resume`
-only works in the folder where the session was created; switching repositories also switches
+only works in the folder where the session was created; switching projects also switches
 the active session. `ChatWorker` fixes the session and `ProjectPath` in `AgentRunRequest`
 before starting — otherwise switching mid-run would split the working directory from the
 session's project.

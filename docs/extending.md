@@ -16,8 +16,8 @@
 
 В «Меню» только экраны — `/new /stop /model /effort /mode` работают текстом, но в списке их нет:
 то же самое есть кнопками на экранах «Сессии» и «Агент», а длинный список хуже короткого. Список
-команд и справка идут одним порядком: статус и сессии, агент и скиллы, репозиторий, статистика,
-правила, журналы. `RootScreen` повторяет его до статистики включительно — кнопок для `/rules` и
+команд и справка идут одним порядком: статус и сессии, агент и скиллы, проект, расход,
+правила, журналы. `RootScreen` повторяет его до расхода включительно — кнопок для `/rules` и
 `/audit` в меню нет.
 
 Все прочие слэш-команды уходят в CLI как есть: незнакомая команда — это команда самого Claude Code.
@@ -52,7 +52,7 @@
 
 Проект `src/AgentsTracker.Agents.<Name>` со ссылкой на `Agents.Abstractions`: `IAgentBackendModule`
 регистрирует `IAgentBackend`, `IAgentLimits` (или `NoAgentLimits`), `IAgentSkillCatalog` (или
-`NoAgentSkills`) и свой канал согласований через `IOperatorConsole`. Строка в списке `agents` в
+`NoAgentSkills`) и свой канал подтверждений через `IOperatorConsole`. Строка в списке `agents` в
 `Program.cs`, ссылка в `Gateway.csproj` и строка `COPY` в `Dockerfile`.
 
 `grep -rn Claude src/AgentsTracker.Gateway --include=*.cs` должен находить только `Program.cs` и

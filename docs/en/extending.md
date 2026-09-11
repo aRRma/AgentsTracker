@@ -19,8 +19,8 @@ Taken: `/start /help` (Help), `/new /stop` (Chat), `/rules` (Approvals), `/audit
 The «Меню» screen holds screens only — `/new /stop /model /effort /mode` work as text but are not
 in the list: the same thing is available as buttons on the «Сессии» and «Агент» screens, and a
 long list reads worse than a short one. The command list and the help share one order: status and
-sessions, agent and skills, repository, statistics, rules, logs. `RootScreen` repeats it up to and
-including statistics — there are no menu buttons for `/rules` and `/audit`.
+sessions, agent and skills, project, usage, rules, logs. `RootScreen` repeats it up to and
+including usage — there are no menu buttons for `/rules` and `/audit`.
 
 Every other slash command goes to the CLI as-is: unknown slash commands are Claude Code's own.
 
@@ -54,7 +54,7 @@ returns `true`.
 
 A project `src/AgentsTracker.Agents.<Name>` referencing `Agents.Abstractions`: an
 `IAgentBackendModule` registers `IAgentBackend`, `IAgentLimits` (or `NoAgentLimits`),
-`IAgentSkillCatalog` (or `NoAgentSkills`) and its own approval channel through `IOperatorConsole`.
+`IAgentSkillCatalog` (or `NoAgentSkills`) and its own confirmation channel through `IOperatorConsole`.
 A line in the `agents` list in `Program.cs`, a reference in `Gateway.csproj` and a `COPY` line in
 the `Dockerfile`.
 
