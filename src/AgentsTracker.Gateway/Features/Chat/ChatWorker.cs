@@ -333,10 +333,13 @@ public sealed class ChatWorker(
         else return "";
 
         // Разбивка контекста модель не звала — подписывать её моделью значило бы соврать.
+        // Effort в скобках вплотную к модели: «opus-5(H)» — это одна характеристика ответа,
+        // отдельным пунктом подпись длиннее, а буква без модели читается как загадка.
         if (kind != AgentRunKind.ContextReport)
         {
-            if ((result.Usage?.PrimaryModel ?? model) is { Length: > 0 } answered) parts.Add(answered);
-            if (effort.EffortShort is { Length: > 0 } level) parts.Add(level);
+            var answered = result.Usage?.PrimaryModel ?? model ?? "";
+            var level = effort.EffortShort is { Length: > 0 } letters ? $"({letters})" : "";
+            if (answered.Length + level.Length > 0) parts.Add(answered + level);
         }
 
         if (result.Usage is { Turns: > 0 } usage) parts.Add($"{usage.Turns} х");

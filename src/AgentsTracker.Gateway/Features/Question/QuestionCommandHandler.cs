@@ -1,10 +1,12 @@
+using AgentsTracker.Gateway.Features.Settings;
 using AgentsTracker.Gateway.Infrastructure.Chat.Dispatch;
 
 namespace AgentsTracker.Gateway.Features.Question;
 
 /// <summary>/ask &lt;текст&gt; — вопрос вне сессии; без текста — ждать его следующим сообщением.</summary>
 public sealed class QuestionCommandHandler(
-    IChatChannel channel, QuestionLauncher launcher, IOptions<GatewayOptions> options) : IChatCommandHandler
+    IChatChannel channel, QuestionLauncher launcher, SkillLauncher skills, IOptions<GatewayOptions> options)
+    : IChatCommandHandler
 {
     public IReadOnlyCollection<string> Commands { get; } = ["/ask"];
 
@@ -21,6 +23,9 @@ public sealed class QuestionCommandHandler(
     {
         if (launcher.Refusal is { } refusal) return refusal;
 
+        // Как и у кнопки «Вопрос»: иначе следующий текст мог достаться ожиданию аргументов
+        // скилла (тот в цепочке раньше) — вопрос пропал бы, а скилл ушёл бы с ним аргументом.
+        skills.Cancel(user);
         launcher.Expect(user);
         return Invitation(options.Value.Question.Model);
     }

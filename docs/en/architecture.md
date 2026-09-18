@@ -218,8 +218,8 @@ the agent's file in `ApprovalBroker` — both through `RateLimitRetry.OnceAsync`
 The footer under an answer (`ChatWorker.Footer`): the session id (or «💬 вопрос»), the model that
 **actually** answered — the one with the most output tokens in `modelUsage`, shortened to
 `opus-5`/`haiku-4-5` (`RunUsage.PrimaryModel`); the chosen alias only if the CLI said nothing —
-then the effort that was **passed** as one to three letters (`DisplayFormat.EffortShort`: L, M, H,
-XH, MAX; the CLI does not report it back), turns and time. A context breakdown has no model in its
+right after it, in brackets, the effort that was **passed** as one to three letters (`opus-5(H)`;
+`DisplayFormat.EffortShort`: L, M, H, XH, MAX; the CLI does not report it back), then turns and time. A context breakdown has no model in its
 footer: the model was not called.
 
 ### Numbers
