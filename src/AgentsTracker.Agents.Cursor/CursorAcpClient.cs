@@ -189,15 +189,16 @@ internal sealed class CursorAcpClient : IAsyncDisposable
             {
                 await SendAsync("session/load", new { sessionId, cwd, mcpServers = Array.Empty<object>() }, ct);
             }
-            catch (CursorAcpException ex) when (LooksUnsupported(ex.Message, "session/load"))
+            catch (CursorRpcException ex) when (LooksUnsupported(ex.Message, "session/load"))
             {
                 // Часть CLI отдаёт только session/resume без переигрывания истории.
                 await SendAsync("session/resume", new { sessionId, cwd, mcpServers = Array.Empty<object>() }, ct);
             }
         }
-        catch (CursorAcpException ex)
+        catch (CursorRpcException ex)
         {
-            // Любой отказ — битый id: иначе он переживёт перезапуск и будет валить каждый запуск.
+            // Любой отказ CLI — битый id: иначе он переживёт перезапуск и будет валить каждый
+            // запуск. Упавший процесс сюда не попадает — из-за сбоя историю не выбрасываем.
             throw new CursorSessionLostException(sessionId, ex);
         }
 
@@ -272,11 +273,15 @@ internal sealed class CursorAcpClient : IAsyncDisposable
         {
             await SendAsync("session/set_mode", new { sessionId, modeId = mode }, ct);
         }
-        catch (Exception ex)
+        catch (CursorRpcException ex) when (mode == "agent")
         {
-            // Старые CLI без set_mode всё равно работают в agent; plan/ask тогда не включатся —
-            // лучше предупредить, чем уронить запуск.
+            // Полный режим у CLI и так по умолчанию: старый agent без set_mode работать может.
             _logger.LogWarning(ex, "Не удалось поставить режим ACP {Mode}", mode);
+        }
+        catch (CursorRpcException ex)
+        {
+            // Человек выбрал «только читает» — молча отработать в полном режиме нельзя.
+            throw new CursorAcpException($"Cursor CLI не включил режим {mode} — обновите agent.", ex);
         }
     }
 
@@ -413,7 +418,7 @@ internal sealed class CursorAcpClient : IAsyncDisposable
             var message = error.TryGetProperty("message", out var msg) && msg.ValueKind == JsonValueKind.String
                 ? msg.GetString() ?? "ошибка ACP"
                 : "ошибка ACP";
-            tcs.TrySetException(new CursorAcpException(message));
+            tcs.TrySetException(new CursorRpcException(message));
             return;
         }
 
@@ -508,8 +513,9 @@ internal sealed class CursorAcpClient : IAsyncDisposable
         var suggested = AlwaysOption(parameters);
         var decision = await _console.ApproveAsync(new ApprovalRequest(title, input, suggested), CancellationToken.None);
 
+        // Без варианта отказа — «cancelled» по спеке ACP: выдуманный id CLI мог бы понять как угодно.
         if (!decision.Allowed)
-            return Selected(HasOption(parameters, "reject-once") ? "reject-once" : "reject_once");
+            return HasOption(parameters, "reject-once") ? Selected("reject-once") : new { outcome = new { outcome = "cancelled" } };
 
         if (decision.PersistRules && HasOption(parameters, "allow-always"))
             return Selected("allow-always");
@@ -752,21 +758,6 @@ internal sealed class CursorAcpClient : IAsyncDisposable
             || text.Contains("unknown method", StringComparison.OrdinalIgnoreCase)
             || text.Contains("method not found", StringComparison.OrdinalIgnoreCase));
 
-    internal static bool LooksLost(string text, string sessionId)
-    {
-        if (!text.Contains(sessionId, StringComparison.OrdinalIgnoreCase)
-            && !text.Contains("session", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        string[] markers =
-        [
-            "not found", "unknown session", "no session", "failed to load",
-            "unable to load", "invalid session", "does not exist",
-        ];
-
-        return markers.Any(marker => text.Contains(marker, StringComparison.OrdinalIgnoreCase));
-    }
-
     private sealed record QuestionMap(string Id, IReadOnlyList<(string Id, string Label)> Options);
 }
 
@@ -779,6 +770,9 @@ internal class CursorAcpException : Exception
 
     public CursorAcpException(string message, Exception inner) : base(message, inner) { }
 }
+
+/// <summary>Ответ CLI с полем <c>error</c> — в отличие от сбоя транспорта (процесс умер, stdout закрылся).</summary>
+internal sealed class CursorRpcException(string message) : CursorAcpException(message);
 
 internal sealed class CursorSessionLostException : CursorAcpException
 {

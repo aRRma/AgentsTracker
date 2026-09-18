@@ -316,8 +316,11 @@ An unknown agent request — JSON-RPC `-32601`, otherwise the CLI waits forever.
 **off** the stdout reader thread: otherwise the pipe fills and the process hangs.
 
 `/stop`: `session/cancel`, then kill the process tree. Cursor writes the session id
-(`SessionStarted`); ACP does not take the host's `NewSessionId`. A failed `session/load` is
-`SessionLost`. There is no effort, no `acceptEdits`, no plan-window gauges (`NoAgentLimits`): the
+(`SessionStarted`); ACP does not take the host's `NewSessionId`. A CLI refusal of `session/load`
+(a reply with `error`) is `SessionLost`; a dead process or a closed stdout is an ordinary failure
+and the session stays. A failed `session/set_mode` for `plan`/`ask` aborts the launch ("update
+agent"): silently working in full mode when "read only" was chosen is not allowed; for `agent` it
+is only a warning. No `reject-once` option — the answer is `cancelled`. There is no effort, no `acceptEdits`, no plan-window gauges (`NoAgentLimits`): the
 limit sign is looked for only in the error of a failed launch and its stderr (`429`, `usage limit`,
 `rate limit`, `too many requests`) → `RateLimited`, the queue is dropped. A finished turn is never a
 limit: otherwise a "429" in an answer about code would drop the queue, and `max_tokens` and

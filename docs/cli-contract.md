@@ -293,8 +293,11 @@ CLI может читать его в этот момент), комментар
 потоке чтения stdout: иначе пайп заполняется и процесс зависает.
 
 `/stop`: `session/cancel`, затем убийство дерева процесса. Id сессии пишет Cursor
-(`SessionStarted`); хостовый `NewSessionId` ACP не принимает. Неудачный `session/load` —
-`SessionLost`. Effort нет, `acceptEdits` нет, шкал лимита нет (`NoAgentLimits`): признак лимита
+(`SessionStarted`); хостовый `NewSessionId` ACP не принимает. Отказ CLI на `session/load`
+(ответ с `error`) — `SessionLost`; упавший процесс или закрытый stdout — обычный сбой, сессия
+остаётся. Не удался `session/set_mode` для `plan`/`ask` — запуск прерывается («обновите agent»):
+молча работать в полном режиме, когда выбрано «только читает», нельзя; для `agent` — только
+предупреждение. Нет варианта `reject-once` — ответ `cancelled`. Effort нет, `acceptEdits` нет, шкал лимита нет (`NoAgentLimits`): признак лимита
 ищется только в ошибке сорвавшегося запуска и её stderr (`429`, `usage limit`, `rate limit`,
 `too many requests`) → `RateLimited`, очередь снимается. Завершённый ход лимитом не бывает: слово
 «429» в ответе про код иначе сняло бы очередь, а `max_tokens` и `max_turn_requests` — пределы одного
