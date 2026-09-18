@@ -58,7 +58,8 @@ otherwise it couldn't answer.
 ## 4. Permissions Piled Up and the Questions Stopped
 
 The «Всегда» ("Always") button is convenient and quietly turns into "do whatever you want with this
-command". Plus the `auto` mode, where no cards arrive at all.
+command". Plus the `auto` mode, where no cards arrive at all. With Claude, `auto` at least has its
+own classifier checking actions; with Cursor, `auto` allows everything, with no check of any kind.
 
 **How to close it:**
 
@@ -67,7 +68,7 @@ command". Plus the `auto` mode, where no cards arrive at all.
 - «Всегда» is bound to the folder: what's allowed in one doesn't apply in another. That works in
   your favour — don't copy such rules around "just in case";
 - keep the `default` mode (buttons arrive). `auto` is for when you're sitting right there watching
-  the chat;
+  the chat, and with Cursor better not turned on at all;
 - denials beat any permission: what's in `deny` the «Всегда» button will not get around;
 - `/audit` shows the latest actions — who allowed what, and what was run.
 

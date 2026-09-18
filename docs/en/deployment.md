@@ -196,7 +196,8 @@ No firewall rules are needed: the ports don't face outward.
 ## Docker
 
 The container gives you what an on-machine install doesn't: the agent sees only mounted volumes.
-A failed command and the «Всегда» (Always) button can't reach the rest of the system.
+A failed command and the «Всегда» (Always) button can't reach the rest of the system. Only Claude
+Code is installed in the image: `Gateway:Agent=cursor` is not supported in a container yet.
 
 ```powershell
 Copy-Item .env.example .env             # fill in the token, your id, and the folder with projects

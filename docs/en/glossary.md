@@ -69,7 +69,8 @@ branch with an empty one.
 **задача / вопрос.** A задача goes into the project's session and continues it. A вопрос is a
 one-off, outside any session and project, answered by its own model, and leaves nothing behind. It
 is not a «режим»: that word belongs to `--permission-mode`. When the agent itself asks, that is a
-«вопрос агента» — a card with options, not the user's вопрос.
+«вопрос агента» — a card with options, not the user's вопрос. Cursor has an `ask` mode ("only
+answers") — that is a режим value, written as is, `ask`, and never called a «вопрос».
 
 **лимит / предел.** A лимит belongs to the subscription: «Лимит тарифа исчерпан», the windows,
 the bars. A предел is technical and has nothing to do with money: a file size, a message length,

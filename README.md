@@ -299,7 +299,7 @@ schtasks //Run //TN "AgentsTracker Gateway"
 | `Cursor:Executable` | путь к `agent`, если автопоиск не нашёл |
 | `Cursor:ApiKey` | необязательно; лучше `agent login`. Шифруется `protect-secrets` |
 | `Model`, `Effort` | модель и глубина размышлений по умолчанию. У Cursor `Effort` нет — кнопка в меню скрыта; модели в меню — Grok 4.6 Extra High Fast и Composer 2.5 |
-| `PermissionMode` | что можно без спроса. У Claude из чата: `plan`, `default`, `acceptEdits`, `auto`. У Cursor: `plan`, `ask`, `default`, `auto`. Полное снятие (`dontAsk`, у Claude ещё `bypassPermissions`) — только здесь, в файле |
+| `PermissionMode` | что можно без спроса. У Claude из чата: `plan`, `default`, `acceptEdits`, `auto`. У Cursor: `plan`, `ask`, `default`, `auto` (у Cursor `auto` разрешает всё без какой-либо проверки). Полное снятие (`dontAsk`, у Claude ещё `bypassPermissions`) — только здесь, в файле |
 | `Proxy` | общий прокси машины: агент и канал, у которого нет своего |
 | `MonitorPort` | порт веб-монитора (5100), `0` — выключить |
 | `MonitorBind` | где слушать монитор: `loopback` (по умолчанию) или `any` для контейнера |

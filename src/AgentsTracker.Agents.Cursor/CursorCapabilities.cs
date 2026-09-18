@@ -69,8 +69,8 @@ internal static class CursorPermissionModes
         ["plan"] = "plan",
         ["read"] = "plan",
         ["чтение"] = "plan",
+        // Без «вопрос»: по глоссарию это только /ask — разовый запуск вне сессии, не режим.
         ["ask"] = "ask",
-        ["вопрос"] = "ask",
         ["default"] = "default",
         ["спрашивать"] = "default",
         ["auto"] = "auto",
@@ -82,9 +82,9 @@ internal static class CursorPermissionModes
     public static string Describe(string mode) => mode switch
     {
         "plan" => "plan — только читает и планирует, файлы не меняет",
-        "ask" => "ask — отвечает на вопросы, файлы не меняет",
+        "ask" => "ask — только отвечает, файлы не меняет",
         "default" => "default — спрашивает всё, что не разрешено правилами",
-        "auto" => "auto — разрешает инструменты без карточки",
+        "auto" => "auto — разрешает всё без карточки и без проверки",
         "dontAsk" => "dontAsk — без подтверждений",
         _ => mode,
     };
