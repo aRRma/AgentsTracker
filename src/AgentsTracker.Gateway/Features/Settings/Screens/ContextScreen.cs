@@ -28,6 +28,11 @@ public sealed class ContextScreen(
     {
         var session = store.SessionId;
 
+        // Кнопки у такого агента скрыты, но старая клавиатура в чате переживает смену
+        // Gateway:Agent — и подпись «контекст: сжать» ушла бы агенту обычной задачей.
+        if (argument is "info" or Compact or "yes:" + Compact && !agent.Capabilities.Context)
+            return $"{agent.DisplayName} не умеет разбирать и сжимать контекст";
+
         switch (argument)
         {
             case "info":

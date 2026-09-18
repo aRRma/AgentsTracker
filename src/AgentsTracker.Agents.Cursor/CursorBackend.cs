@@ -27,6 +27,12 @@ public sealed class CursorBackend(
     public async Task<AgentRunResult> RunAsync(AgentRunRequest request, IAgentRunObserver observer, CancellationToken ct)
     {
         var started = Stopwatch.StartNew();
+
+        // Разбивки, сжатия и вопроса вне сессии в ACP нет (Capabilities их не объявляют):
+        // без проверки служебная подпись запуска ушла бы агенту обычной задачей.
+        if (request.Kind != AgentRunKind.Task)
+            return AgentRunResult.Failure($"Cursor не умеет запуск «{request.Kind}».", started.Elapsed);
+
         var cwd = Path.GetFullPath(request.ProjectPath);
         var resumed = request.ResumeSessionId is { Length: > 0 } id ? id : null;
 
