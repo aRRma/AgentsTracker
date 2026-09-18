@@ -2,9 +2,10 @@ namespace AgentsTracker.Gateway.Infrastructure.Chat;
 
 /// <summary>
 /// Список команд для подсказки в интерфейсе канала (у Telegram — кнопка «Меню»): без него бот
-/// выглядит как окно без подсказок. Здесь только экраны: /new, /stop, /model, /effort, /mode
+/// выглядит как окно без подсказок. Здесь экраны и /ask: /new, /stop, /model, /effort, /mode
 /// работают текстом, но в списке их нет — то же самое есть кнопками на экранах «Сессии»
-/// и «Агент», а длинный список хуже короткого.
+/// и «Агент», а длинный список хуже короткого. /ask в списке, потому что вопрос набирают
+/// вместе с командой, а кнопка «Вопрос» спрятана в меню.
 /// </summary>
 public static class ChatCommandCatalog
 {
@@ -16,6 +17,7 @@ public static class ChatCommandCatalog
         new("menu", "⚙️ меню"),
         new("status", "📟 статус"),
         new("sessions", "🧵 сессия"),
+        new("ask", "💬 вопрос вне сессии"),
         new("agent", "🤖 агент"),
         new("skills", "🧩 скиллы"),
         new("project", "📁 проект"),

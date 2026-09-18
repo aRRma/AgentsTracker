@@ -23,6 +23,7 @@ public sealed class HelpCommandHandler(IChatChannel channel, IAgentBackend agent
             /menu — всё кнопками
             /status — что происходит, лимиты тарифа
             /sessions — сессия
+            /ask <вопрос> — ответ вне сессии и проекта, текущий разговор не затронется
             /agent — модель, effort, режим
             /skills — скиллы кнопкой, включение плагинов
             /project — сменить проект
@@ -35,6 +36,9 @@ public sealed class HelpCommandHandler(IChatChannel channel, IAgentBackend agent
 
             Картинку (PNG, JPEG) можно прислать прямо в чат — подпись станет задачей.
             Если на скриншоте мелкий текст, отправляйте «как файл»: Telegram жмёт фото.
+
+            В меню «📦 Контекст» — насколько заполнен контекст сессии, из чего он состоит, сжать его или начать новую сессию.
+            Под каждым ответом — сессия, модель, которая ответила, и effort: L, M, H, XH, MAX (low … max).
 
             Когда агенту нужно подтверждение, придёт карточка с кнопками.
             Слэш-команды самого {agent.DisplayName} (например /init или /plugin:skill) передаются агенту как есть.

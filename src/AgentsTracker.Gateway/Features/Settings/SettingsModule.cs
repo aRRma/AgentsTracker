@@ -12,6 +12,8 @@ public sealed class SettingsModule : IFeatureModule
         services.AddSingleton<ISettingsScreen, RootScreen>();
         services.AddSingleton<ISettingsScreen, StatusScreen>();
         services.AddSingleton<ISettingsScreen, SessionsScreen>();
+        services.AddSingleton<ISettingsScreen, ContextScreen>();
+        services.AddSingleton<ISettingsScreen, QuestionScreen>();
         services.AddSingleton<ISettingsScreen, AgentScreen>();
         services.AddSingleton<ISettingsScreen, SkillsScreen>();
         services.AddSingleton<ISettingsScreen, ProjectScreen>();
