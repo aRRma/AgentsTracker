@@ -10,7 +10,11 @@ namespace AgentsTracker.Agents.Claude;
 public static class ClaudeStreamEvent
 {
     /// <summary>Что в строке: итог, вызовы инструментов, другое событие или вообще не JSON.</summary>
-    public sealed record Line(bool IsJson, bool IsResult, IReadOnlyList<RunActivity> ToolCalls)
+    /// <param name="ContextTokens">Размер контекста на этом ходе основной ветки; null — ход не основной или без usage.</param>
+    /// <param name="Compaction">Событие сжатия контекста: сколько было и сколько стало.</param>
+    public sealed record Line(
+        bool IsJson, bool IsResult, IReadOnlyList<RunActivity> ToolCalls,
+        long? ContextTokens = null, ContextCompaction? Compaction = null)
     {
         public static readonly Line Text = new(false, false, []);
         public static readonly Line Other = new(true, false, []);
@@ -28,10 +32,50 @@ public static class ClaudeStreamEvent
         return String(root, "type") switch
         {
             "result" => Line.Result,
-            "assistant" => ToolCalls(root) is { Count: > 0 } calls ? new Line(true, false, calls) : Line.Other,
+            "assistant" => new Line(true, false, ToolCalls(root), ContextTokens(root)),
+            "system" when String(root, "subtype") == "compact_boundary" => new Line(true, false, [], Compaction: Compaction(root)),
             _ => Line.Other,
         };
     }
+
+    /// <summary>
+    /// Контекст хода — всё, что модель получила на входе: новые токены плюс прочитанные
+    /// и записанные в кэш. Ходы сабагентов не считаем: у них своё окно. «&lt;synthetic&gt;» —
+    /// ответ локальной команды вроде /context, модель не вызывалась и нули в usage не значат
+    /// «контекст пуст».
+    /// </summary>
+    private static long? ContextTokens(JsonElement root)
+    {
+        if (root.TryGetProperty("parent_tool_use_id", out var parent) && parent.ValueKind == JsonValueKind.String)
+            return null;
+
+        if (!root.TryGetProperty("message", out var message)
+            || String(message, "model") == "<synthetic>"
+            || !message.TryGetProperty("usage", out var usage)
+            || usage.ValueKind != JsonValueKind.Object)
+            return null;
+
+        var total = Number(usage, "input_tokens") + Number(usage, "cache_read_input_tokens")
+                    + Number(usage, "cache_creation_input_tokens");
+        return total > 0 ? total : null;
+    }
+
+    /// <summary>compact_metadata события compact_boundary (проверено на CLI 2.1.261).</summary>
+    private static ContextCompaction? Compaction(JsonElement root)
+    {
+        if (!root.TryGetProperty("compact_metadata", out var metadata) || metadata.ValueKind != JsonValueKind.Object)
+            return null;
+
+        var before = Number(metadata, "pre_tokens");
+        var after = Number(metadata, "post_tokens");
+        return before > 0 ? new ContextCompaction(before, after) : null;
+    }
+
+    private static long Number(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number
+        && value.TryGetInt64(out var number)
+            ? number
+            : 0;
 
     /// <summary>
     /// Вызовы инструментов из события — единственное, что стоит показывать. Текст

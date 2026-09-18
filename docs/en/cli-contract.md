@@ -20,6 +20,10 @@ raw payload is logged only at Debug: at Information, for Edit/Write that would b
 `questions` and `answers` (key — the question text); it reaches the host as
 `IOperatorConsole.AskAsync`.
 
+CLI 2.1.261 `--help` drifted, the flags did not: it shows `default` as `manual` (the CLI still
+accepts `default` — `manual` is an alias) and no longer lists `--permission-prompt-tool` on its
+own (only inside `--permission-prompts`), yet the flag works. Re-check both after a CLI update.
+
 ### The «Всегда» ("Always") button
 
 Two cases:
@@ -30,7 +34,7 @@ Two cases:
   returned unchanged in `updatedPermissions`.
 - Otherwise the gateway remembers the exact signature in `state.json`
   (`AlwaysAllowByProject`, key — normalized project path), visible in `/rules`. Gateway rules
-  apply only within their own project: `git push --force` from one repository must not
+  apply only within their own project: `git push --force` from one project must not
   silently pass in the others.
 
 ### Truncated tail
@@ -40,8 +44,8 @@ something (the command, the sides of an edit, the remaining `MultiEdit` edits, t
 `Write`), `OperatorConsole` sends the full text as a file before the card
 (`ApprovalBroker.SendAttachmentAsync`), and the card warns «показано не всё» ("not everything
 is shown"). The file name and content are decided by `ApprovalCardRenderer`
-(`ApprovalAttachment`): usually `<tool>-input.txt` with a «=== фрагмент ===» ("=== fragment
-===") summary, an `ExitPlanMode` plan — in full, as `plan.md` (`Truncated.AddDocument`). Cards
+(`ApprovalAttachment`): usually `<tool>-input.txt` with every truncated field under its own «=== <field> ===» header
+(«=== Команда ===», «=== Было ===» / «=== Станет ===», «=== Вход целиком ===»), an `ExitPlanMode` plan — in full, as `plan.md` (`Truncated.AddDocument`). Cards
 are assembled via `EscapeCapped` with a limit per fragment: an overflowing message would fail
 on send, and the exception would become a denial.
 
@@ -88,8 +92,11 @@ inside the current project's folder (`ProjectCatalog.Normalize` on both sides,
 file itself nor the folders between it and the project root may be a symbolic link or
 junction — the path is checked as a string, while the OS opens the file following links, and a
 link inside the project pointing outward would hand over someone else's file; the extension is
-from a whitelist in code (`.md .txt .json .cs .js .html` — as a document, `.png .jpg .jpeg` —
-as a photo); size and caption — per the channel's `ChannelLimits`. Refusals also go into the
+from a whitelist in code (`.md .txt .json .cs .js .html .zip .7z` — as a document,
+`.png .jpg .jpeg` — as a photo; an archive's contents are not inspected, and the path checks
+apply to the archive itself only — anything the agent could reach may travel inside it, files
+outside the project included); size and caption — per the channel's `ChannelLimits`. Refusals
+also go into the
 `file.send` audit with outcome `refused`.
 
 The tool is passed in `--allowedTools mcp__tg__send_file` so the CLI doesn't call
@@ -166,7 +173,7 @@ content.
 ## Sessions
 
 Sessions are keyed by the normalized project path (`ProjectCatalog.Normalize`): `--resume`
-only works in the folder where the session was created; switching repositories also switches
+only works in the folder where the session was created; switching projects also switches
 the active session. `ChatWorker` fixes the session and `ProjectPath` in `AgentRunRequest`
 before starting — otherwise switching mid-run would split the working directory from the
 session's project.
@@ -183,26 +190,73 @@ during the run.
 position in the list: a run finishing between rendering and the button press would shift the
 numbers.
 
+## Context: fill, breakdown, compaction
+
+Checked on CLI 2.1.261.
+
+- **Fill.** The `usage` of the `result` line is the sum over all turns, not the context size. The
+  size is the `usage` of the **last** `assistant` event with `parent_tool_use_id: null`:
+  `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`. Events with
+  `"model": "<synthetic>"` are answers of local commands with zeros in `usage` — skipped. The
+  window is `modelUsage.<model>.contextWindow` of the result (1 000 000 for `sonnet-5`, 200 000 for
+  `haiku-4-5`); `canonicalModel` next to it is the name without the build date.
+- **`/context` in `-p`** works with `--resume`: the model is not called (`num_turns: 0`, empty
+  `modelUsage`), the answer is markdown in `result` — a header with `Tokens: 46.6k / 200k (23%)`, the
+  «Estimated usage by category» table and then per-tool tables for MCP and skills, hundreds of lines.
+  `ClaudeBackend.ContextSummary` cuts everything after the category table. The numbers depend on the
+  run's flags (`--mcp-config`, `--model`), so the breakdown is run with the same arguments as a task.
+- **`/compact` in `-p`** works with `--resume` and keeps the session id. It emits
+  `{"type":"system","subtype":"compact_boundary","compact_metadata":{"pre_tokens":…,"post_tokens":…}}`,
+  the `result` text is empty, `num_turns: 0`, but `modelUsage` is not — compaction is a model call
+  and spends the plan. After it the context size is `post_tokens` until the next real turn.
+- Testing this from Git Bash: MSYS turns a leading `/context` into `C:/Program Files/Git/context`,
+  and the model gets a path instead of a command. `MSYS_NO_PATHCONV=1`, or test from PowerShell;
+  `ProcessStartInfo.ArgumentList` in the gateway is not affected.
+
+## A question with no session (`Kind = Question`)
+
+`--no-session-persistence` (only with `-p`: nothing is written to `~/.claude/projects`, `--resume`
+is impossible), no `--resume`/`--session-id`, `--tools WebSearch,WebFetch` (built-ins only; `""`
+disables all) and `--strict-mcp-config`: only the gateway's own `tg` server from `--mcp-config` is
+loaded — the user's MCP servers cost ~40k tokens of context per question otherwise (48k vs 9.6k on
+a one-word answer). `--permission-mode` and `--permission-prompt-tool` are passed as always. The
+working folder is an empty `%TEMP%\AgentsTracker-question`: not the project (its CLAUDE.md would load)
+and not the data directory (secrets).
+
 ## Plan limits
 
 The only limiter is `IAgentLimits`, with windows `five_hour`, `seven_day`,
 `seven_day_<model>`; checked in `ChatWorker.ProcessAsync` before starting a run. The remaining
 budget on one line — `ShortSummaryAsync` (menu summary); the windows for the gauges —
-`ViewAsync`. `LimitGauge.Used` is the **consumed** fraction 0..1: the `LimitBars` gauges on
-`/status` and the meters in the monitor fill with consumption, a full bar means the window is
-exhausted. Consumption is rounded up (so as not to flatter), the remainder is 100 minus that
-rather than its own rounding — **one formula** in `LimitBars`, in the monitor and in
-`ClaudeLimits.Left`. In double `1 - 0.67` is `0.32999999999999996`, and independent rounding
-diverged on 14 values out of 1001: the menu showed «неделя 32%» against «осталось 33%» in the
-very same `/status`.
+`ViewAsync`. `LimitGauge.Used` is the **consumed** fraction 0..1 as a `decimal`: the `LimitBars`
+gauges on `/status` and the meters in the monitor fill with consumption, a full bar means the
+window is exhausted.
+
+Percentages are produced **only** by `LimitMath` (`Agents.Abstractions`) — the single rounding
+rule for the whole gateway: `Percent` rounds consumption up to a whole number and clamps it to
+0..100, `Left` is `100 - Percent` rather than its own rounding. It is used by the chat gauges, by
+the menu summary (`ClaudeLimits.Left`) and by `/api/limits`: the monitor page receives `percent`
+and `left` ready-made and no longer has its own formula in JS — JavaScript has no `decimal`, and
+that formula diverged from the chat. Independent rounding diverged on 14 values out of 1001: the
+menu showed «неделя 32%» against «осталось 33%» in the very same `/status`.
 
 `ClaudeLimits` calls the **undocumented** `api.anthropic.com/api/oauth/usage` with the token
 from `~/.claude/.credentials.json`: it requires a plausible User-Agent, responds 429 on
 frequent polling (3 min cache), and can disappear in any version — on any error the run is
 **skipped**, not blocked, otherwise the gateway would go completely silent. Fields are read via
-`ClaudeLimits.Number` with a `ValueKind` check: `TryGetDouble` on `null` throws, and
+`ClaudeLimits.Number` with a `ValueKind` check: `TryGetDecimal` on `null` throws, and
 `utilization: null` would reach the user as «Внутренняя ошибка шлюза» ("Internal gateway
 error").
+
+The scale of `utilization` (percent 0..100 or a fraction 0..1) is decided for the **whole
+response at once** — `ClaudeLimits.LooksLikePercents`: any value of 1 or above, or all values
+integral, means percent; only fractional values below one mean fractions. A single window cannot
+tell them apart: `utilization: 1` is both "1% after the reset" and "fully consumed". While the
+decision was made per window, on 10.09.2026 the bot spent an hour refusing runs on an **empty**
+five-hour window, showing the new window's reset as the time to wait. An exact 1 counts as percent
+on purpose: in an ambiguous response ("1" for one window and "0.5" for another) the fraction
+reading would produce that very refusal on an empty window. The price: on the fraction scale an
+exhausted window does not hold a run back — the CLI itself runs into the limit.
 
 Credits ("extra usage") are forbidden to the agent: `ClaudeBackend` sets
 `DISABLE_EXTRA_USAGE_COMMAND=1`, and when a run is aborted by the limit, `ChatWorker` clears

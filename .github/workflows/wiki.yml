@@ -27,13 +27,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Вики живёт в отдельном репозитории <репозиторий>.wiki. Встроенного github.token
       # для пуша в неё может не хватить: тогда заведите секрет WIKI_TOKEN — personal access
       # token с правом на содержимое репозитория, остальное менять не нужно.
       - name: Клон вики
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ github.repository }}.wiki
           token: ${{ secrets.WIKI_TOKEN || github.token }}

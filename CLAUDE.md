@@ -3,7 +3,10 @@
 Notes for Claude Code working in this repository. This file holds the rules and the map; the
 details are in `docs/en/`:
 
-- `docs/en/operations.md` — restarting the gateway, scratch instance, worktree, tooling.
+- `docs/en/use-cases.md` — what non-programmers use the bot for: five everyday scenarios.
+- `docs/en/safety.md` — the risks of that, in plain words, and what closes each one.
+- `docs/en/operations.md` — restarting the gateway, scratch instance, the harness without Telegram,
+  worktree, the two-language docs and the wiki, tooling.
 - `docs/en/architecture.md` — how the gateway is built: the annotated project tree, the message
   path, the gateway ↔ CLI loop, sessions, state and secrets, audit, chat output.
 - `docs/en/extending.md` — checklists for adding: a chat command, a settings screen, a feature, an
@@ -11,6 +14,8 @@ details are in `docs/en/`:
   mechanism, a config key.
 - `docs/en/deployment.md` — production run: publish, install/uninstall, Docker, ports, secrets.
 - `docs/en/cli-contract.md` — the CLI contract: approvals, stream-json, sessions, limits, skills.
+- `docs/en/glossary.md` — the glossary: one Russian word per concept for buttons, messages, the
+  monitor and the docs, plus the synonyms not to use.
 - `docs/en/monitor.md` — web monitor: endpoints, mock, styling, accessibility.
 - `docs/en/claude-permissions.md` — Claude Code permissions on this machine: `allow`/`ask`/`deny`,
   the `docs/examples/claude-settings.example.json` sample, the project-level `.claude/settings.json`.
@@ -45,16 +50,16 @@ There are no tests. Anything touching the CLI contract is checked by hand: start
 watch the log. Host logic that needs no live bot is checked by a file-based C# harness with fakes
 instead of a channel — `docs/en/operations.md`.
 
-**The working gateway on this machine is the published release** (`C:\AgentsTracker-<версия>-win-x64`;
-the path is shown by `Get-Process AgentsTracker.Gateway`). Do not stop it and do not rebuild over it:
+**The working gateway on this machine is the published release** (`C:\AgentsTracker-win-x64`; a
+release archive unpacks as `AgentsTracker-<version>-win-x64`, so check the path with
+`Get-Process AgentsTracker.Gateway`). Do not stop it and do not rebuild over it:
 that is the stable service the user chats with, and new code reaches it only through a new release. A
-change is checked live by a **scratch instance from `bin\Debug` on its own ports** — a separate build
-folder, `Gateway__McpPort`/`Gateway__MonitorPort` other than `5099`/`5100`, a fake bot token and its
+change is checked live by a **scratch instance built into a separate folder, on its own ports** —
+`Gateway__McpPort`/`Gateway__MonitorPort` other than `5099`/`5100`, a fake bot token and its
 own `Gateway__DataDirectory`; the recipe and the cleanup are in `docs/en/operations.md`. When the
 gateway does run from `bin\Debug` of the main folder (`AgentsTracker`, branch `master`; there is no
 `main` branch), `dotnet build` fails with `MSB3021` while it runs and switching branches swaps the
-sources out from under the process. From a session started from Telegram you must not restart it —
-hand the commands to the user instead.
+sources out from under the process. Who may restart it and when — «Как работать» below.
 
 ## Layout
 
@@ -65,7 +70,7 @@ src/AgentsTracker.Agents.Cursor/         Cursor CLI behind the same contracts, A
 src/AgentsTracker.Channels.Abstractions/ channel contracts, no specific messenger
 src/AgentsTracker.Channels.Telegram/     Telegram behind those contracts
 src/AgentsTracker.Gateway/               Program.cs (agents, channels, features), Domain/, Infrastructure/,
-                                         Features/ — vertical slices: Approvals, Chat, Settings, Help, Audit, Monitor
+                                         Features/ — vertical slices: Approvals, Chat, Settings, Question, Help, Audit, Monitor
 ```
 
 What each file inside them is for — `docs/en/architecture.md`. Layering rules, and breaking one is
@@ -83,19 +88,16 @@ kills startup.
 
 ### How a message travels
 
-`ChatDispatcher` lets through only `IChatChannel.AllowedUsers` and private chats. A slash command
-from `IChatCommandHandler.Commands` is matched **before** the text handlers — otherwise `/stop`
-would go to a waiting free-form answer and there would be nothing left to interrupt a stuck run
-with. Then the `IChatTextHandler` chain in module order: an answer to a card → skill arguments →
-into the agent's queue (always `true`, hence `ChatModule` last). Unknown slash commands are the
-agent's own, they go to the CLI. Buttons: the `IChatButtonHandler` chain, `cfg:` — the menu,
-everything else — approvals.
+`ChatDispatcher` admits only `IChatChannel.AllowedUsers` in private chats. Slash commands
+(`IChatCommandHandler.Commands`) match **before** the text handlers — otherwise `/stop` would feed a
+waiting answer and nothing could interrupt a stuck run. Then the `IChatTextHandler` chain in module
+order: card answer → skill arguments → вопрос text after a bare `/ask` → the agent's queue (always
+`true`, so `ChatModule` is last). Unknown slash commands are the agent's own and go to the CLI.
+Buttons: `cfg:` — the menu, anything else — approvals.
 
-A handler receives the whole `IncomingMessage`: besides the text it may carry attachments. Pictures
-go through `AttachmentInbox` into `<data directory>\inbox\<chat>\<project>\`, and the run gets that
-chat folder in `--add-dir`. A command wins over a picture — `/stop` must work with a picture
-attached, and then the picture is not saved and the user is told so rather than left guessing.
-Details — `docs/en/architecture.md`.
+Pictures go through `AttachmentInbox` into `<data directory>\inbox\<chat>\<project>\`; the run gets
+the chat folder in `--add-dir`. A command wins over a picture: `/stop` works with one attached, the
+picture is dropped and the user is told so. Details — `docs/en/architecture.md`.
 
 ### The gateway → CLI → gateway loop
 
@@ -111,8 +113,14 @@ and the timeouts — `docs/en/architecture.md`; the undocumented parts of the co
   other tools there — that bypasses the cards past the machine's config.
 - `--add-dir` carries exactly one folder — the chat's `inbox`. Never the data directory itself
   (`state.json`, `appsettings.Local.json` with the secrets, the MCP token) and never the project
-  subfolder: `/project` may change while the message waits in the queue. Cursor gets the same
-  flag on `agent acp`.
+  subfolder: `/project` may change while the message waits in the queue. A вопрос (`/ask`) gets no
+  `--add-dir` at all. Cursor gets the same flag on `agent acp`.
+- A вопрос (`AgentRunKind.Question`) runs with `--no-session-persistence`, `--tools WebSearch,WebFetch`
+  and `--strict-mcp-config` in an empty `%TEMP%\AgentsTracker-question` — never in the project or the
+  data directory, and its `SessionId` never reaches `SessionStore`. Its model is `Gateway:Question`,
+  not the chat selection. `/context` and `/compact` are the backend's `ContextReport`/`Compact` kinds,
+  not prompts the host types. Details — `docs/en/cli-contract.md`, "Context" and "A question".
+  Cursor declares neither (`Context`/`Questions` stay `false`), so the host hides both.
 - CLI arguments go through `ProcessStartInfo.ArgumentList`, do not concatenate a string.
 
 ### `--permission-mode` is always passed
@@ -129,15 +137,18 @@ chosen yet). Cursor has no `--permission-mode`: `CursorBackend` maps `plan`/`ask
 
 ### Sessions, state, audit
 
-Sessions are keyed by the **normalized project path**; the chat-side selection (`SessionStore`)
-stores a value equal to the config as `null`, otherwise a config edit would be silently overridden
-by an old selection. A new Claude session id is issued by the gateway (`--session-id`), a Cursor
-session by ACP (`SessionStarted`). State, secrets and the `audit\` journal live in
-`%LOCALAPPDATA%\AgentsTracker\`, the config comes in layers up to the `Gateway__*` environment
-variables. The audit gets what a human is answerable for ("who, where, what" — no secrets, no full
-texts, addresses as `channel:value` keys, kinds in `AuditKinds`), the log gets what is needed for
-debugging. All three — `docs/en/architecture.md`, the user-facing side of the config —
-`docs/en/deployment.md`.
+Sessions are keyed by the **normalized project path**. A chat selection equal to the config is
+stored as `null` (`SessionStore`), or a config edit would be silently overridden. A new Claude
+session id is issued by the gateway (`--session-id`), a Cursor session by ACP (`SessionStarted`).
+State, secrets and
+the `audit\` journal live in `%LOCALAPPDATA%\AgentsTracker\`; config layers end with the `Gateway__*`
+environment variables. The audit is what a human answers for (who, where, what — no secrets, no full
+texts, addresses as `channel:value`, kinds in `AuditKinds`); the log is for debugging. Details —
+`docs/en/architecture.md`, the user-facing config — `docs/en/deployment.md`.
+
+Context fill lives on `SessionRecord` (`ContextTokens`/`ContextWindow`), taken from the last
+main-branch turn of a run — `usage` of the `result` line is a sum over turns, not the context.
+Irreversible menu buttons («Сжать», «Новая сессия» on «Контекст») ask first via `PendingConfirmations`.
 
 ### Limits and money
 
@@ -147,15 +158,19 @@ run; if the poll fails, the run is **skipped**, not blocked. There is no money i
 tokens and time. Do not return dollar estimates. Credits ("extra usage") are forbidden to the agent.
 Details — `docs/en/cli-contract.md`.
 
+A false refusal is diagnosed from the outside: `limit.refused` in `audit\audit-<YYYY-MM>.jsonl` (when
+and how many times) and `monitor-api.ps1 "api/limits"` (the parsed windows with `resetsAt`). The
+endpoint's raw answer is out of reach from a session — a direct HTTP call, reading
+`~/.claude/.credentials.json` and grepping `claude.exe` are all denied; reason from the parsed
+numbers instead, remembering that usage inside one window never falls until the reset.
+
 ### Chat output
 
-`MarkdownRenderer` converts markdown into `ChatHtml` and cuts it to `IChatChannel.Limits`
-(`MessageLength`, 3800 for Telegram) — cut the **source markdown before the conversion**, otherwise
-tags get torn apart. A code block longer than the limit is sent as a file. Any 400 from the channel
-makes the send retry itself without markup, a 429 is waited out and the same part repeated
-(`RateLimitRetry.OnceAsync`) — otherwise part of the answer would vanish silently. Sums, tokens and
-time — `DisplayFormat`. The renderer's own quirks (italics, `snake_case`, escaping budget) —
-`docs/en/architecture.md`.
+`MarkdownRenderer` cuts the **source markdown** to `IChatChannel.Limits.MessageLength` (3800 for
+Telegram) before converting it to `ChatHtml` — otherwise tags get torn apart. An oversized code block
+goes as a file. A 400 from the channel retries without markup, a 429 is waited out and the same part
+repeated (`RateLimitRetry.OnceAsync`) — otherwise part of the answer vanishes silently. Tokens and
+time — `DisplayFormat`; the renderer's quirks — `docs/en/architecture.md`.
 
 ## Keep in mind
 
@@ -166,6 +181,12 @@ time — `DisplayFormat`. The renderer's own quirks (italics, `snake_case`, esca
   (needed in a container) is published only on the host's `127.0.0.1`.
 - `HttpClient` only through `IHttpClientFactory`; the retry rules differ per client and are spelled
   out in `docs/en/architecture.md` — a blind retry on a Bot API POST is a duplicate in the chat.
+- **Fractional numbers are `decimal`**, never `double`/`float` — including what is read out of JSON
+  (`TryGetDecimal`). Rounding a share into percent happens in exactly one place,
+  `LimitMath.Percent`/`Left`; do not write a second formula, and do not compute percentages in the
+  monitor's JS — `/api/limits` sends them ready-made. `double` is left only where the BCL itself
+  counts that way (`TimeSpan.Total*`) and the result goes straight into a caption. Why —
+  `docs/en/architecture.md`, "Numbers".
 - A release is a `v*` tag push, and the release notes go into `docs/release-notes/<tag>.md`
   **before** the tag, otherwise a list of commits ends up in the release. The notes are written
   **short and in plain human words**, for the person using the bot: what changed and what it gives
@@ -180,9 +201,17 @@ time — `DisplayFormat`. The renderer's own quirks (italics, `snake_case`, esca
   (15 min): with no answer, take the recommended option.
 - The monitor at `http://127.0.0.1:5100` is unreachable from a session via `curl`/`Invoke-RestMethod`
   — they are in `deny` for any address, do not try to work around it. A snapshot and the other
-  `/api/*` — `pwsh -File scripts\monitor-api.ps1 /api/snapshot`; a screenshot and the page itself —
-  `docs/en/monitor.md`. Port `5100` is the **release** instance: it shows old code, your own change
-  is on the scratch instance's port.
+  `/api/*` — `pwsh -File scripts\monitor-api.ps1 "api/snapshot"` from the **PowerShell** tool, no
+  leading `/` (why, plus screenshots and the page itself — `docs/en/monitor.md`). Port `5100` is the
+  **release** instance: it shows old code, your own change is on the scratch instance's port.
+- From a session over Telegram the MCP tool list comes from the **running** gateway: after a change
+  to `send_file` (allowed types, description) this session still sees the release's old version —
+  check such a change with the harness or a scratch instance, not by calling the tool.
+- Working in a worktree: the PowerShell tool's cwd stays the main folder — give `dotnet build`,
+  `git -C` and scripts the worktree's absolute path, or you build and test `master`.
+- `claude` is not on PATH in a session: call `~/.local/bin/claude.exe` directly.
+- Passing a slash command to `claude -p` from Bash needs `MSYS_NO_PATHCONV=1` — MSYS rewrites a
+  leading `/context` into a Windows path.
 
 ## Как работать
 
@@ -195,7 +224,7 @@ session.
   anything longer than a couple of paragraphs: temporary in the scratchpad, permanent in `docs/`
   (only if it really is documentation). A Latin, kebab-case name. The answer carries the gist and the
   link; from Telegram — the file into the chat through `mcp__tg__send_file` (from the project folder
-  only: `.md .txt .json .cs .js .html`, screenshots `.png .jpg .jpeg`).
+  only: `.md .txt .json .cs .js .html`, archives `.zip .7z`, screenshots `.png .jpg .jpeg`).
   From plan mode the file is saved before `ExitPlanMode` as well.
 - **Subagents only with `model: "sonnet"`.** In every `Agent` call and in a Workflow `agent()`. Do not
   inherit the parent's model, do not take opus/fable — it saves the plan limits.
@@ -214,9 +243,10 @@ session.
   `/project` to the new folder. Something small in one or two commits goes straight into the main
   folder. After the branch is finally merged into `master`, remove the worktree folder
   (`git worktree remove ..\AgentsTracker-<task>`) and the branch too.
-- **A review in a worktree needs the branch name.** `/code-review` without an argument takes the
-  uncommitted diff of the main folder, not the worktree branch: on 07.09.2026 it reviewed and fixed
-  another session's changes in `master` that way. Call `code-review medium --fix <branch>`.
+- **A review in a worktree needs the branch name.** `/code-review` without an argument works on the
+  main folder: its uncommitted diff, or — when the tree is clean — the commits ahead of
+  `origin/master`, never the worktree branch. On 07.09.2026 it reviewed and fixed another session's
+  changes in `master` that way. Call `code-review medium --fix <branch>`.
 - **After changes — the documentation.** Check CLAUDE.md, the README and the config comments: new
   flags and commands, changes to the CLI contract, non-obvious decisions and their reasons. Do not
   add what is obvious from the code, or a history of the edits.
@@ -233,7 +263,19 @@ session.
   hand; a scratch instance on its own ports is fine, it does not touch the working one. From VS Code you
   may, but **before** Stop-Process check `git status`: someone else's uncommitted changes have broken
   the build right after the process was stopped.
-- **Terminology.** Checking by a live run of a scratch instance is «смоук-тест», not «дымовой прогон»
-  and not «дымовая проверка»: in the chat and in the docs alike. The instance itself is a "scratch
-  instance" in English and «пробный экземпляр» in Russian — those are the section titles in
-  `operations.md`, and a third name for it only hides the section from search.
+- **Terminology comes from the glossary.** Every text a person sees — a button, a screen title, a
+  chat message, a monitor caption, a line of documentation, a release note — takes its words from
+  `docs/en/glossary.md`: one Russian word per concept, and the table's right column lists the
+  synonyms that are not used. A new concept goes into the glossary (both languages) before the code
+  that uses it. The traps that cost the most: a working folder is «проект» and never «репозиторий»;
+  the user writes a «задача», the agent performs a «запуск» (never «прогон»); the card is a
+  «карточка подтверждения», while «режим» means only `--permission-mode`; a one-off `/ask` is a
+«вопрос», never a «режим»; «сессия» is the branch, «контекст» is how much of the window it takes; «лимит» is the
+  subscription and «предел» is anything technical; «журнал» is `/audit` and «лог» is `ILogger`; a
+  live check of a scratch instance is a «смоук-тест» and the instance itself is a «пробный
+  экземпляр» — those two are the section titles in `operations.md`, and a third name for either
+  only hides the section from search. A rename that touches the UI also ages the screenshots in
+  `docs/images/*.png` used by the README: they cannot be retaken from a session (the monitor on
+  `5100` is the release with the old code, the bot shots need a live chat), so name the stale ones
+  to the user instead of leaving them. Already published `docs/release-notes/*` are history and are
+  never re-worded — exclude them from a glossary sweep.

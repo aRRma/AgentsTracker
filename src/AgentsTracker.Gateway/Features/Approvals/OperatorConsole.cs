@@ -7,7 +7,7 @@ using AgentsTracker.Gateway.Infrastructure.Monitoring;
 namespace AgentsTracker.Gateway.Features.Approvals;
 
 /// <summary>
-/// Человек в чате глазами бэкенда: карточки разрешений, правила «всегда», вопросы агента
+/// Человек в чате глазами бэкенда: карточки подтверждения, правила «всегда», вопросы агента
 /// и аудит каждого решения. Бэкенду достаётся только решение — где и кем оно принято,
 /// знает лишь хост.
 /// </summary>
@@ -33,7 +33,7 @@ public sealed class OperatorConsole(
 
         // Только начало: в полной команде может быть токен из заголовка curl.
         var brief = Text.Preview(Highlight(toolName, input) ?? "");
-        logger.LogInformation("Запрос разрешения: {Tool} {Key}", toolName, brief);
+        logger.LogInformation("Запрошено подтверждение: {Tool} {Key}", toolName, brief);
 
         // Монитору та же строка, что и логу: в полном вводе Edit/Write лежит содержимое файлов.
         using var pending = monitor.Approval(toolName, brief);
@@ -51,14 +51,14 @@ public sealed class OperatorConsole(
         }
         catch (TimeoutException)
         {
-            logger.LogWarning("Разрешение на {Tool} не получено за отведённое время", toolName);
+            logger.LogWarning("Подтверждение на {Tool} не получено за отведённое время", toolName);
             Audit(AuditKinds.Approval, signature, "timeout");
-            return ApprovalDecision.Deny("Пользователь не ответил на запрос разрешения за отведённое время. Не повторяйте это действие.");
+            return ApprovalDecision.Deny("Пользователь не подтвердил это действие за отведённое время. Не повторяйте его.");
         }
         catch (OperationCanceledException)
         {
             Audit(AuditKinds.Approval, signature, "cancel");
-            return ApprovalDecision.Deny("Запрос отменён пользователем.");
+            return ApprovalDecision.Deny("Отменено пользователем.");
         }
     }
 
@@ -127,7 +127,7 @@ public sealed class OperatorConsole(
         catch (OperationCanceledException)
         {
             Audit(AuditKinds.Approval, $"AskUserQuestion({brief})", "cancel");
-            return QuestionResult.Refused("Запрос отменён пользователем.");
+            return QuestionResult.Refused("Отменено пользователем.");
         }
     }
 
@@ -177,9 +177,13 @@ public sealed class OperatorConsole(
 
     /// <summary>
     /// Что агент может отправить в чат. Список в коде, а не в конфиге: расширять его —
-    /// решение с последствиями (архив или exe из проекта уйдут наружу одним вызовом).
+    /// решение с последствиями (exe из проекта ушёл бы наружу одним вызовом).
     /// Картинки уходят фото, остальное — документом. Тот же список продублирован словами
     /// в описании инструмента (ClaudeSendFileTool): меняя здесь — поправьте там.
+    /// Архивы (<c>.zip</c>, <c>.7z</c>) — сознательная уступка ради переноса наборов файлов:
+    /// содержимое не разбирается, и проверки пути относятся только к самому архиву. Внутрь
+    /// упаковано может быть что угодно, до чего дотянулся агент, — файл вне проекта, из папки
+    /// данных или запрещённый правилами Claude. Собирать такой архив и просить отправить — нельзя.
     /// </summary>
     private static readonly Dictionary<string, bool> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -189,6 +193,8 @@ public sealed class OperatorConsole(
         [".cs"] = false,
         [".js"] = false,
         [".html"] = false,
+        [".zip"] = false,
+        [".7z"] = false,
         [".png"] = true,
         [".jpg"] = true,
         [".jpeg"] = true,
@@ -217,7 +223,7 @@ public sealed class OperatorConsole(
         // запретов Claude на чтение. Папка данных шлюза исключена отдельно — она вне проекта,
         // но пусть отказ не зависит от того, куда её перенесли.
         if (!ProjectCatalog.IsInside(full, project) || ProjectCatalog.IsInside(full, DataDirectory))
-            return Refuse(full, $"Файл вне папки текущего проекта ({project}). Отправлять можно только файлы из неё.");
+            return Refuse(full, $"Файл вне текущего проекта ({project}). Отправлять можно только файлы из него.");
 
         var extension = Path.GetExtension(full);
         if (!AllowedExtensions.TryGetValue(extension, out var isImage))
@@ -257,7 +263,7 @@ public sealed class OperatorConsole(
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            return Refuse(full, "Запрос отменён пользователем.");
+            return Refuse(full, "Отправка отменена пользователем.");
         }
         catch (Exception ex)
         {

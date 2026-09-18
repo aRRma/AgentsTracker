@@ -13,12 +13,16 @@ namespace AgentsTracker.Agents;
 /// </param>
 /// <param name="Model">Модель или её алиас; null — как решит агент.</param>
 /// <param name="Effort">Уровень усилий; null — как решит агент. У агента без этой настройки игнорируется.</param>
-/// <param name="PermissionMode">Режим разрешений — одно из значений <see cref="AgentCapabilities.PermissionMode"/>.</param>
+/// <param name="PermissionMode">Режим — одно из значений <see cref="AgentCapabilities.PermissionMode"/>.</param>
 /// <param name="Timeout">Предельная длительность: по истечении процесс убивается.</param>
 /// <param name="AttachmentsPath">
 /// Папка с файлами, которые прислал пользователь: она вне <paramref name="ProjectPath"/>,
 /// и агенту нужно открыть к ней доступ (у Claude Code — <c>--add-dir</c>). null или
 /// несуществующая — вложений не было.
+/// </param>
+/// <param name="Kind">
+/// Что за запуск. У <see cref="AgentRunKind.ContextReport"/> и <see cref="AgentRunKind.Compact"/>
+/// промпт бэкенд подставляет сам: команда своя у каждого агента.
 /// </param>
 public sealed record AgentRunRequest(
     string Prompt,
@@ -29,7 +33,30 @@ public sealed record AgentRunRequest(
     string? Effort,
     string PermissionMode,
     TimeSpan Timeout,
-    string? AttachmentsPath = null);
+    string? AttachmentsPath = null,
+    AgentRunKind Kind = AgentRunKind.Task);
+
+public enum AgentRunKind
+{
+    /// <summary>Задача пользователя в сессии проекта.</summary>
+    Task,
+
+    /// <summary>
+    /// Вопрос вне сессии: без продолжения, без записи сессии на диск и без инструментов,
+    /// которые трогают файлы. <see cref="AgentRunResult.SessionId"/> у него всегда null —
+    /// иначе хост сделал бы разовый id активной сессией.
+    /// </summary>
+    Question,
+
+    /// <summary>Разбивка контекста сессии по частям. Модель не вызывается.</summary>
+    ContextReport,
+
+    /// <summary>Сжатие контекста сессии: разговор пересказывается кратко, сессия та же.</summary>
+    Compact,
+}
+
+/// <summary>Контекст сессии до и после сжатия, в токенах.</summary>
+public sealed record ContextCompaction(long Before, long After);
 
 /// <summary>
 /// Что бэкенд сообщает по ходу запуска. <see cref="Activity"/> зовётся из потока чтения
@@ -73,6 +100,9 @@ public sealed record AgentRunResult
 
     /// <summary>Расход запуска. null — агент ничего не сказал (например, не смог стартовать).</summary>
     public RunUsage? Usage { get; init; }
+
+    /// <summary>Итог сжатия контекста. null — сжатия в запуске не было.</summary>
+    public ContextCompaction? Compaction { get; init; }
 
     public static AgentRunResult Failure(string text, TimeSpan duration) =>
         new() { Ok = false, Text = text, Duration = duration };

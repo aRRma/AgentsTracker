@@ -20,7 +20,7 @@ public sealed class ClaudeSendFileTool(IOperatorConsole console, ILogger<ClaudeS
     [McpServerTool(Name = McpConfigFile.SendFileToolName)]
     [Description("Sends a file from the current project folder to the user in the chat. "
         + "Use it to deliver reports, documents, source files and screenshots. "
-        + "Allowed: .md .txt .json .cs .js .html as documents, .png .jpg .jpeg as photos. "
+        + "Allowed: .md .txt .json .cs .js .html .zip .7z as documents, .png .jpg .jpeg as photos. "
         + "Files outside the project folder are refused.")]
     public async Task<string> SendFile(
         [Description("Path to the file: absolute or relative to the project folder")] string path,

@@ -53,6 +53,20 @@ public sealed class AttachmentOptions
     }
 }
 
+/// <summary>
+/// Вопрос вне сессии (<c>/ask</c>): разовый запуск без проекта и без продолжения. Модель своя,
+/// из чата не меняется — вопрос заведён ради дешёвого ответа, и выбор тяжёлой модели для
+/// сессий не должен тянуть его за собой.
+/// </summary>
+public sealed class QuestionOptions
+{
+    /// <summary>Модель или её алиас; null — как решит агент.</summary>
+    public string? Model { get; set; } = "sonnet";
+
+    /// <summary>Уровень усилий; null — как решит агент.</summary>
+    public string? Effort { get; set; }
+}
+
 public sealed class GatewayOptions
 {
     public const string SectionName = "Gateway";
@@ -60,7 +74,7 @@ public sealed class GatewayOptions
     /// <summary>Канал связи с человеком: тип и его настройки.</summary>
     public ChannelOptions Channel { get; set; } = new();
 
-    /// <summary>Рабочая папка по умолчанию. Из чата её меняет меню «Репозиторий».</summary>
+    /// <summary>Проект по умолчанию. Из чата его меняет меню «Проект».</summary>
     public string ProjectPath { get; set; } = "";
 
     /// <summary>
@@ -71,9 +85,9 @@ public sealed class GatewayOptions
     public string[] Projects { get; set; } = [];
 
     /// <summary>
-    /// Корень поиска репозиториев для меню: обход идёт вглубь, пока не встретится папка,
-    /// похожая на проект. Нужен, когда репозитории разложены по группам
-    /// (source/repos/ГруппаА/Репозиторий) и соседей <see cref="ProjectPath"/> не хватает.
+    /// Корень поиска проектов для меню: обход идёт вглубь, пока не встретится папка,
+    /// похожая на проект. Нужен, когда проекты разложены по папкам-группам
+    /// (source/repos/ГруппаА/Проект) и соседей <see cref="ProjectPath"/> не хватает.
     /// null — искать среди соседей.
     /// </summary>
     public string? ProjectsRoot { get; set; }
@@ -94,7 +108,7 @@ public sealed class GatewayOptions
     public string? Effort { get; set; }
 
     /// <summary>
-    /// Режим разрешений по умолчанию; из чата меняется через /mode. Допустимые значения
+    /// Режим по умолчанию; из чата меняется через /mode. Допустимые значения
     /// объявляет бэкенд (<see cref="AgentCapabilities.PermissionMode"/>), проверка — при
     /// старте, когда бэкенд уже выбран. Задаётся всегда: без флага у Claude Code сработал бы
     /// defaultMode из настроек пользователя, и при "auto" кнопок в чате не будет.
@@ -145,6 +159,9 @@ public sealed class GatewayOptions
 
     /// <summary>Приём картинок из чата.</summary>
     public AttachmentOptions Attachments { get; set; } = new();
+
+    /// <summary>Вопрос вне сессии: его модель и effort.</summary>
+    public QuestionOptions Question { get; set; } = new();
 
     public IReadOnlyList<string> Validate()
     {
@@ -215,14 +232,19 @@ public sealed class GatewayOptions
         if (!capabilities.PermissionMode.IsValid(PermissionMode))
             errors.Add($"{SectionName}:PermissionMode = '{PermissionMode}'. Допустимо: {string.Join(", ", capabilities.PermissionMode.Values)}.");
 
-        if (Effort is { Length: > 0 } effort)
-        {
-            if (capabilities.Effort is null)
-                errors.Add($"{SectionName}:Effort задан, а агент уровень усилий не поддерживает.");
-            else if (capabilities.Effort.Resolve(effort) is null)
-                errors.Add($"{SectionName}:Effort = '{effort}'. Допустимо: {string.Join(", ", capabilities.Effort.Values)}.");
-        }
+        ValidateEffort(capabilities, "Effort", Effort, errors);
+        ValidateEffort(capabilities, "Question:Effort", Question.Effort, errors);
 
         return errors;
+    }
+
+    private static void ValidateEffort(AgentCapabilities capabilities, string key, string? effort, List<string> errors)
+    {
+        if (effort is not { Length: > 0 }) return;
+
+        if (capabilities.Effort is null)
+            errors.Add($"{SectionName}:{key} задан, а агент уровень усилий не поддерживает.");
+        else if (capabilities.Effort.Resolve(effort) is null)
+            errors.Add($"{SectionName}:{key} = '{effort}'. Допустимо: {string.Join(", ", capabilities.Effort.Values)}.");
     }
 }

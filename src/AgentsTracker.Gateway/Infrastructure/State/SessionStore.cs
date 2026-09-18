@@ -197,6 +197,24 @@ public sealed class SessionStore
     }
 
     /// <summary>
+    /// Заполненность контекста сессии после запуска. Сессию не создаёт: запись заводит
+    /// <see cref="RegisterSession"/>, а без неё показывать цифру негде.
+    /// </summary>
+    public void RecordContext(string sessionId, long tokens, long window)
+    {
+        Mutate(s =>
+        {
+            var record = s.Sessions.FirstOrDefault(r => string.Equals(r.Id, sessionId, StringComparison.Ordinal));
+            if (record is null) return;
+
+            record.ContextTokens = tokens;
+            // Окно не сообщает только запуск без модели — прошлое значение вернее нуля.
+            if (window > 0) record.ContextWindow = window;
+            record.ContextUtc = DateTimeOffset.UtcNow;
+        });
+    }
+
+    /// <summary>
     /// Итог запуска для монитора. Отдельно от <see cref="RecordRun"/>: расход приходит
     /// от агента, а исход, превью промпта и число вызовов знает ChatWorker.
     /// </summary>
@@ -307,7 +325,7 @@ public sealed class SessionStore
         });
     }
 
-    /// <summary>Снимает разрешение «всегда». Возвращает false, если такого правила не было.</summary>
+    /// <summary>Снимает правило «всегда». Возвращает false, если такого правила не было.</summary>
     public bool RemoveAlwaysAllow(string signature)
     {
         var removed = false;
@@ -320,7 +338,7 @@ public sealed class SessionStore
         return removed;
     }
 
-    /// <summary>Снимает все разрешения «всегда» текущего проекта. Возвращает, сколько их было.</summary>
+    /// <summary>Снимает все правила «всегда» текущего проекта. Возвращает, сколько их было.</summary>
     public int ClearAlwaysAllow()
     {
         var removed = 0;
@@ -482,6 +500,9 @@ public sealed class SessionStore
         CreatedUtc = record.CreatedUtc,
         LastActivityUtc = record.LastActivityUtc,
         Turns = record.Turns,
+        ContextTokens = record.ContextTokens,
+        ContextWindow = record.ContextWindow,
+        ContextUtc = record.ContextUtc,
     };
 
     private static RunRecord Clone(RunRecord record) => new()

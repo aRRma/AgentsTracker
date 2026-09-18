@@ -60,8 +60,10 @@ it to `routes`), `python -m http.server <port> --bind 127.0.0.1` from the scratc
   mock.
 - Checking states, dark theme, a narrow window, and computed styles — in one call to
   `browser_run_code_unsafe`; the same call checks the live `http://127.0.0.1:5100/`. `/api/*`
-  itself without a browser — `pwsh -File scripts\monitor-api.ps1 api/snapshot` (`curl` and
-  `Invoke-WebRequest` are in `deny`, loopback is not an exception).
+  itself without a browser — `pwsh -File scripts\monitor-api.ps1 "api/snapshot"` (`curl` and
+  `Invoke-WebRequest` are in `deny`, loopback is not an exception). Call it from the **PowerShell**
+  tool and without a leading `/`: from Bash, MSYS rewrites `/api/snapshot` into
+  `C:/Program Files/Git/api/snapshot`, and the script refuses an argument like that.
 - Port `5100` is the **working** gateway, on this machine the release: it serves the page from
   its own build, so your edit is not there. Look at your own change on a scratch instance
   (`docs/en/operations.md`) — and take the screenshot from its port too.
@@ -75,14 +77,16 @@ it to `routes`), `python -m http.server <port> --bind 127.0.0.1` from the scratc
 Fluent 2 "Mica" with Grafana/Elastic techniques: `--canvas` as the backdrop, content in `.card`
 cards, the `--brand` accent only on the chart, links, and tool labels; signals are
 `--run`/`--wait`/`--fail`; fonts are Segoe UI Variable and Cascadia. A rail on the left
-(status, plan limits as bars, section navigation), panels on the right: «Сейчас» (Now),
-statistics, tables, audit, log.
+(status, subscription limits as bars, section navigation), panels on the right: «Статус» (Status),
+«Расход по дням» (usage per day), tables, «Журнал» (the audit trail), «Лог».
 
 Worth knowing when editing the markup:
 
 - the limit bars fill with **consumption** (a full bar means the window is exhausted), the
-  remainder goes into the caption below; the rounding and the color threshold are the same as
-  `LimitBars` in chat — the numbers on the page and in chat must not diverge;
+  remainder goes into the caption below; the percentages arrive ready-made in `/api/limits`
+  (`percent`, `left`, computed by `LimitMath` on the gateway side) — do not put a rounding
+  formula of your own in JS: JavaScript has no `decimal`, and the page's numbers would diverge
+  from the chat's;
 - sparklines are drawn only where there's a daily series `stats.byDay` (14 days);
 - selects and links go in `.band-head` next to `<h2>`, not inside the heading;
 - the `.tape` feed: time · tool · argument. `splitStep` takes the tool name as the first word

@@ -41,6 +41,7 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
 
     private LimitsSnapshot? _cached;
     private DateTimeOffset _lastFetch;
+    private string _scale = "проценты";
 
     /// <summary>
     /// Причина отказа, если окно исчерпано, иначе null. model — модель запуска: недельное
@@ -65,15 +66,15 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
 
         // Снимку до трёх минут, поэтому окно с прошедшим сбросом уже не считается.
         var window = snapshot.Windows
-            .Where(w => w.Used >= 1.0 && Applies(w.Key, model) && !Passed(w.ResetsAt))
+            .Where(w => w.Used >= 1.0m && Applies(w.Key, model) && !Passed(w.ResetsAt))
             .OrderBy(w => w.ResetsAt ?? DateTimeOffset.MaxValue)
             .FirstOrDefault();
 
         if (window is null) return null;
 
         logger.LogWarning(
-            "Запуск отклонён: окно {Window} выбрано на {Used:P0}, сброс {ResetsAt}",
-            window.Key, window.Used, window.ResetsAt);
+            "Запуск отклонён: окно {Window} выбрано на {Used:P0}, сброс {ResetsAt}, шкала ответа — {Scale}",
+            window.Key, window.Used, window.ResetsAt, _scale);
 
         var reset = window.ResetsAt is { } at ? $" Сброс {Moment(at)}." : "";
 
@@ -132,7 +133,7 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
         [
             .. Live(snapshot, model).Select(w => new LimitGauge(
                 Describe(w.Key),
-                Math.Clamp(w.Used, 0.0, 1.0),
+                Math.Clamp(w.Used, 0m, 1m),
                 w.ResetsAt,
                 w.ResetsAt is { } at ? Moment(at) : null))
         ], null);
@@ -147,15 +148,9 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
             .Where(w => Applies(w.Key, model) && !Passed(w.ResetsAt))
             .OrderBy(w => w.ResetsAt ?? DateTimeOffset.MaxValue);
 
-    /// <summary>
-    /// Остаток окна в процентах: 100 минус расход, округлённый вверх (чтобы не обнадёживать) —
-    /// той же формулой, что и шкалы <c>LimitBars</c>. Своё округление вниз расходилось с ними на
-    /// 14 значениях из 1001: у 0.67 доля остатка в double равна 0.32999999999999996, и в меню
-    /// выходило «неделя 32%» против «осталось 33%» в том же `/status`. Поправка 1e-9 гасит ту же
-    /// погрешность в другую сторону: без неё 0.67 даёт 67.00000000000001 и остаток 32%.
-    /// </summary>
-    private static string Left(double used) =>
-        (100 - (int)Math.Ceiling(Math.Clamp(used, 0.0, 1.0) * 100 - 1e-9)).ToString(CultureInfo.InvariantCulture) + "%";
+    /// <summary>Остаток окна в процентах — общим правилом <see cref="LimitMath"/>, как и шкалы.</summary>
+    private static string Left(decimal used) =>
+        LimitMath.Left(used).ToString(CultureInfo.InvariantCulture) + "%";
 
     /// <summary>
     /// Окно без модели в ключе действует на любой запуск, окно модели — только на её запуск.
@@ -236,7 +231,12 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
                 return new LimitsSnapshot([], null, DateTimeOffset.UtcNow, Describe(response.StatusCode));
             }
 
-            var (windows, extra) = Parse(body);
+            var (windows, extra, percents) = Parse(body);
+
+            // Шкала — в лог: по «выбрано на 100%» не видно, пришла ли сотня процентов или единица,
+            // принятая за долю, а именно на этом шлюз час отказывал на пустом окне (10.09.2026).
+            _scale = percents ? "проценты" : "доли";
+
             return new LimitsSnapshot(windows, extra, DateTimeOffset.UtcNow, null);
         }
         // InvalidOperationException — чтение поля не того вида. Ответ недокументирован, любой
@@ -314,13 +314,13 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
     /// Берём всё, что похоже на окно (five_hour, seven_day, seven_day_&lt;модель&gt;), а не
     /// фиксированный список: набор моделей меняется вместе с тарифами.
     /// </summary>
-    private static (IReadOnlyList<LimitWindow> Windows, ExtraUsageState? ExtraUsage) Parse(string body)
+    private static (IReadOnlyList<LimitWindow> Windows, ExtraUsageState? ExtraUsage, bool Percents) Parse(string body)
     {
         using var document = JsonDocument.Parse(body);
 
-        if (document.RootElement.ValueKind is not JsonValueKind.Object) return ([], null);
+        if (document.RootElement.ValueKind is not JsonValueKind.Object) return ([], null, true);
 
-        var windows = new List<LimitWindow>();
+        var raws = new List<(string Key, decimal Utilization, DateTimeOffset? ResetsAt)>();
         ExtraUsageState? extra = null;
 
         foreach (var property in document.RootElement.EnumerateObject())
@@ -347,10 +347,16 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
                     ? moment
                     : null;
 
-            windows.Add(new LimitWindow(property.Name, Fraction(raw), resets));
+            raws.Add((property.Name, raw, resets));
         }
 
-        return (windows, extra);
+        // Шкала — одна на весь ответ, поэтому окна собираем только после разбора всех.
+        var percents = LooksLikePercents(raws.Select(r => r.Utilization));
+
+        return (
+            [.. raws.Select(r => new LimitWindow(r.Key, Fraction(r.Utilization, percents), r.ResetsAt))],
+            extra,
+            percents);
     }
 
     private static ExtraUsageState? ParseExtraUsage(JsonElement value)
@@ -363,22 +369,37 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
     }
 
     /// <summary>
-    /// Числовое поле или <c>null</c>. Вид проверяем сами: <c>TryGetDouble</c> на JSON-null
+    /// Числовое поле или <c>null</c>. Вид проверяем сами: <c>TryGetDecimal</c> на JSON-null
     /// не возвращает false, а бросает <see cref="InvalidOperationException"/>, и одно пустое
-    /// поле сорвало бы разбор всего ответа.
+    /// поле сорвало бы разбор всего ответа. Число не по размеру decimal (такого у процентов
+    /// расхода быть не может) читается как отсутствующее — окно просто не ограничивает запуск.
     /// </summary>
-    private static double? Number(JsonElement owner, string name) =>
+    private static decimal? Number(JsonElement owner, string name) =>
         owner.TryGetProperty(name, out var field)
         && field.ValueKind is JsonValueKind.Number
-        && field.TryGetDouble(out var value)
+        && field.TryGetDecimal(out var value)
             ? value
             : null;
 
+    private static decimal Fraction(decimal raw, bool percents) => percents ? raw / 100m : raw;
+
     /// <summary>
-    /// <c>utilization</c> приходит то долей (0..1), то процентами — всё, что больше единицы,
-    /// считаем процентами.
+    /// Шкала <c>utilization</c> выбирается на весь ответ сразу, а не для каждого окна отдельно:
+    /// в одном окне значение 1 не отличить от доли 1.0, и «1%» через пять минут после сброса
+    /// читалось как «окно выбрано полностью» — 10.09.2026 бот час отказывал на пустом пятичасовом
+    /// окне («сброс в 21:19», хотя окно началось в 16:19). Эндпоинт отдаёт проценты, но набор полей
+    /// недокументирован: значение от единицы и выше или все значения целые — проценты, только
+    /// дробные меньше единицы — доли. Единица считается процентом намеренно: в спорном ответе
+    /// («1» у одного окна и «0.5» у другого) доли дали бы тот самый отказ на пустом окне. Ошибка
+    /// в сторону процентов лишь пропустит запуск — в лимит упрётся сам CLI, ошибка в сторону долей
+    /// глушит бота на часы. Цена решения: на шкале долей исчерпанное окно запуск не задержит.
     /// </summary>
-    private static double Fraction(double raw) => raw > 1.0 ? raw / 100.0 : raw;
+    private static bool LooksLikePercents(IEnumerable<decimal> values)
+    {
+        var all = values.ToList();
+
+        return all.Any(v => v >= 1.0m) || all.TrueForAll(v => v == Math.Truncate(v));
+    }
 
     private static bool IsWindow(string key) =>
         key.StartsWith("five_hour", StringComparison.Ordinal) || key.StartsWith("seven_day", StringComparison.Ordinal);

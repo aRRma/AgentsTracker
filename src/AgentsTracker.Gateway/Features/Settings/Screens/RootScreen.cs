@@ -1,4 +1,5 @@
 using AgentsTracker.Gateway.Features.Chat;
+using AgentsTracker.Gateway.Features.Question;
 using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
@@ -6,13 +7,18 @@ namespace AgentsTracker.Gateway.Features.Settings.Screens;
 /// <summary>
 /// Корневой экран: сводка и переходы к остальным. Кнопки — по частоте использования:
 /// сначала то, что нужно в каждой сессии (статус, сессии), потом настройки агента и
-/// скиллы, в конце репозиторий и статистика — их трогают раз в день.
+/// скиллы, в конце проект и расход — их трогают раз в день.
 /// </summary>
-public sealed class RootScreen(SessionStore store, IAgentBackend agent, ChatWorker worker, IAgentLimits limits) : ISettingsScreen
+public sealed class RootScreen(
+    SessionStore store, IAgentBackend agent, ChatWorker worker, IAgentLimits limits, QuestionLauncher question) : ISettingsScreen
 {
     public string Key => "root";
 
     public string? Apply(string argument, UserId user, ChatId chat) => null;
+
+    // «Назад» с экрана «Вопрос» ведёт сюда: ожидание вопроса снимаем, иначе следующая
+    // задача ушла бы вопросом мимо сессии.
+    public void Open(UserId user) => question.Cancel(user);
 
     public async Task<(string Html, Keyboard Keyboard)> RenderAsync(UserId user, CancellationToken ct)
     {
@@ -36,6 +42,7 @@ public sealed class RootScreen(SessionStore store, IAgentBackend agent, ChatWork
             🧠 Модель: <b>{E(store.EffectiveModel is { } selected ? agent.Capabilities.Model.Describe(selected) : "по умолчанию")}</b>{effort}
             🔐 Режим: <b>{E(store.EffectivePermissionMode)}</b>
             🧵 Сессия: {(session is null ? "<i>новая</i>" : $"<b>{E(session.Title)}</b>")}
+            📦 Контекст: {(session is { ContextTokens: > 0, ContextWindow: > 0 } ? ContextScreen.Fill(session, bar: false) : "—")}
             🚦 Осталось: <b>{E(plan.Length > 0 ? plan : "—")}</b>
             ⚙️ {(worker.IsBusy ? "выполняется" : "простаивает")}, в очереди: {worker.QueueLength}
             """;
@@ -43,9 +50,10 @@ public sealed class RootScreen(SessionStore store, IAgentBackend agent, ChatWork
         var keyboard = new Keyboard(
         [
             [Button("📟 Статус", "status"), Button("🧵 Сессии", "sess")],
+            [Button("📦 Контекст", "ctx"), Button("💬 Вопрос", "ask")],
             [Button("🤖 Агент", "agent")],
-            [Button("🧩 Скиллы", "skills"), Button("📁 Репозиторий", "proj")],
-            [Button("📊 Статистика", "usage"), Button("✖️ Закрыть", "close")],
+            [Button("🧩 Скиллы", "skills"), Button("📁 Проект", "proj")],
+            [Button("📊 Расход", "usage"), Button("✖️ Закрыть", "close")],
         ]);
 
         return (html, keyboard);

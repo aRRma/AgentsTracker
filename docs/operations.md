@@ -130,9 +130,18 @@ $env:Gateway__ProjectPath = 'C:\Users\aRRma99\source\repos\ME\AgentsTracker'
 Сначала `AppPaths.UseDirectory(<папка во временных>)`, затем
 `Options.Create(new GatewayOptions { … })`, `NullLogger<T>.Instance` и свои
 `IChatChannel`/`IAuditLog` (остальные методы канала — `throw new NotSupportedException()`).
-Файл кладётся в scratchpad и запускается `dotnet run check.cs`. Так за один прогон проверена
+Файл кладётся в scratchpad и запускается `dotnet run check.cs`. Так за один запуск проверена
 работа с присланными файлами: определение типа по сигнатуре, пределы размера, чистка по возрасту,
 отказы и записи аудита — и там же нашёлся `Directory.Delete`, падавший на только что удалённом файле.
+
+Junction, оставшийся во временной папке от прошлого запуска, роняет `Directory.Delete(recursive: true)`
+с «Access to the path 'link' is denied» — снимайте саму ссылку перед удалением папки.
+
+Скрипту, который гоняет настоящий CLI (`ChatWorker` + `ClaudeBackend`), нужны ещё
+`#:property PublishAot=false` и `#:property JsonSerializerIsReflectionEnabledByDefault=true`
+(`McpConfigFile` сериализует через рефлексию) и заглушка MCP-сервера на `McpPort` скрипта с
+инструментом `approve` (`AddMcpServer().WithHttpTransport().WithTools<…>()`, `MapMcp("/mcp")`) —
+без `mcp__tg__approve` CLI не стартует. Модель — `haiku`, чтобы беречь лимиты.
 
 ## Крупные задачи — в worktree
 
@@ -173,7 +182,7 @@ git worktree add ../AgentsTracker-<задача> -b <ветка>   # основ�
 
 Вики — зеркало `README.md` и русских `docs/*.md`, править её руками бессмысленно: страницы каждый раз
 собираются заново и правки затираются. Обновляет их `.github/workflows/wiki.yml` при пуше
-в `master`, тем же скриптом можно прогнать вручную:
+в `master`, тот же скрипт можно запустить вручную:
 
 ```powershell
 pwsh -File scripts\sync-wiki.ps1 -OutDir C:\Temp\wiki-preview   # посмотреть, что получится
@@ -203,6 +212,9 @@ pwsh -File scripts/sync-wiki.ps1                                # собрать
   `\r` в путях съедаются молча и неотличимы от опечатки. Скрипт — в scratchpad через Write,
   запуск файлом, результат проверять `grep … | cat -v` и сборкой.
 - Исходники — UTF-8 **без BOM** (`utf-8-sig` добавит его молча).
+- Инструмент PowerShell отклоняет составную команду, где `Remove-Item` соседствует с путём внутри
+  `C:\Program Files` (например, 7-Zip): защита читает это как удаление `C:\Program`. Разбивайте
+  такую команду на отдельные вызовы.
 - `claude` нет в PATH оболочек инструментов: зовите как
   `& "$env:USERPROFILE\.local\bin\claude.exe" --help` (из Git Bash этот путь не запускается).
   Недокументированное поведение CLI быстрее всего проверять голым
@@ -217,8 +229,10 @@ pwsh -File scripts/sync-wiki.ps1                                # собрать
   подтверждении легко отклонить не глядя — многошаговую проверку кладите в скрипт и
   запускайте `pwsh -File`.
 - `curl`, `Invoke-WebRequest`, `Invoke-RestMethod` в `deny` — и для `127.0.0.1` тоже. Снимок
-  монитора из сессии: `pwsh -File scripts\monitor-api.ps1 /api/snapshot` (только loopback,
-  разрешён в `.claude/settings.json`); страницу целиком — `browser_run_code_unsafe` Playwright.
+  монитора из сессии: `pwsh -File scripts\monitor-api.ps1 "api/snapshot"` (только loopback,
+  разрешён в `.claude/settings.json`) — из инструмента PowerShell: из Bash ведущий `/`
+  превращается в `C:/Program Files/Git/api/…`, и скрипт отклоняет аргумент; страницу целиком —
+  `browser_run_code_unsafe` Playwright.
 - `modern-web-guidance` (`npx.cmd -y modern-web-guidance@latest search "…"`) — из инструмента
   PowerShell: из Git Bash `npx.cmd` молча отдаёт пустой вывод.
 - Промышленная установка и Docker (публикация, порты, секреты, обновление) — `deployment.md`.

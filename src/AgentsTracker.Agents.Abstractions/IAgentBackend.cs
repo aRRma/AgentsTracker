@@ -5,7 +5,7 @@ public sealed record AgentProbe(string Executable, string? Version);
 
 /// <summary>
 /// Агент, которого запускает шлюз: Claude Code, в будущем Codex или Cursor. Хост знает
-/// только этот контракт — как запускается процесс, чем отвечает и как просит разрешения,
+/// только этот контракт — как запускается процесс, чем отвечает и как просит подтверждения,
 /// остаётся внутри бэкенда.
 /// </summary>
 public interface IAgentBackend

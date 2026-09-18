@@ -1,13 +1,13 @@
 
 namespace AgentsTracker.Gateway.Infrastructure.Configuration;
 
-/// <summary>Папка над репозиториями («ME», «MF») — уровень, на котором меню предлагает выбор.</summary>
+/// <summary>Папка над проектами («ME», «MF») — уровень, на котором меню предлагает выбор.</summary>
 public sealed record ProjectGroup(string Name, IReadOnlyList<string> Projects);
 
 /// <summary>
 /// Папки, между которыми можно переключаться из чата: Gateway:Projects, иначе обход
 /// Gateway:ProjectsRoot вглубь, иначе соседи Gateway:ProjectPath. Пересобирается на каждый
-/// показ меню — свежесклонированный репозиторий появится без перезапуска.
+/// показ меню — свежесклонированный проект появится без перезапуска.
 /// </summary>
 public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<ProjectCatalog> logger)
 {
@@ -60,7 +60,7 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
     }
 
     /// <summary>
-    /// Тот же список по папкам-владельцам: репозиториев больше, чем влезает в клавиатуру,
+    /// Тот же список по папкам-владельцам: проектов больше, чем влезает в клавиатуру,
     /// а лежат они группами (<c>repos\ME\…</c>, <c>repos\MF\…</c>). Порядок из
     /// <see cref="List"/> сохраняется, текущая папка и её группа идут первыми — иначе
     /// её пришлось бы искать перелистыванием.
@@ -73,7 +73,7 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
             .ThenBy(group => group.Name, StringComparer.OrdinalIgnoreCase)];
 
     /// <summary>
-    /// Папка, в которой лежит репозиторий. Под корнем поиска берём путь относительно корня:
+    /// Папка, в которой лежит проект. Под корнем поиска берём путь относительно корня:
     /// глубже одного уровня имя папки склеило бы в одну группу «work\api» и «pet\api».
     /// </summary>
     private string GroupOf(string path)
@@ -104,7 +104,7 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
 
     /// <summary>
     /// Обход дерева под корнем. Спуск останавливается на папке, похожей на проект: внутри
-    /// репозитория искать нечего, а node_modules и bin дали бы тысячи путей. Текущую папку
+    /// проекта искать нечего, а node_modules и bin дали бы тысячи путей. Текущую папку
     /// добавляем отдельно — она может лежать вне корня.
     /// </summary>
     private IEnumerable<string> Walk(string root)

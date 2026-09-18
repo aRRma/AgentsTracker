@@ -10,7 +10,9 @@ public static class ClaudeCapabilities
         Model: new AgentSetting(ModelAliases, ModelAliases, ResolveModel, model => model),
         Effort: new AgentSetting(EffortLevels.All, EffortLevels.All, EffortLevels.Resolve, EffortLevels.Describe),
         PermissionMode: new AgentSetting(
-            PermissionModes.All, PermissionModes.Selectable, PermissionModes.Resolve, PermissionModes.Describe));
+            PermissionModes.All, PermissionModes.Selectable, PermissionModes.Resolve, PermissionModes.Describe),
+        Context: true,
+        Questions: true);
 
     /// <summary>Модель — любая непустая строка: CLI сам скажет, если такой нет.</summary>
     private static string? ResolveModel(string value) =>

@@ -29,15 +29,18 @@ public sealed class ChatWorker(
 
     private CancellationTokenSource? _runCts;
 
-    private sealed record QueuedPrompt(ChatId Chat, UserId User, string Text);
+    /// <param name="Text">
+    /// Задача; у команд контекста — только подпись для журнала и монитора, промпт подставит бэкенд.
+    /// </param>
+    private sealed record QueuedPrompt(ChatId Chat, UserId User, string Text, AgentRunKind Kind);
 
     public bool IsBusy => _runCts is not null;
 
     public int QueueLength => _queue.Reader.Count;
 
-    public void Enqueue(ChatId chat, UserId user, string text)
+    public void Enqueue(ChatId chat, UserId user, string text, AgentRunKind kind = AgentRunKind.Task)
     {
-        _queue.Writer.TryWrite(new QueuedPrompt(chat, user, text));
+        _queue.Writer.TryWrite(new QueuedPrompt(chat, user, text, kind));
         monitor.Enqueued(Text.Preview(text));
     }
 
@@ -82,14 +85,33 @@ public sealed class ChatWorker(
     {
         monitor.Dequeued();
 
+        var kind = prompt.Kind;
+        var question = kind == AgentRunKind.Question;
+
+        // Вопрос идёт своей моделью из конфига, а не выбранной в меню: ради него и заведён
+        // отдельный запуск — не тратить лимит тяжёлой модели на простой ответ.
+        var model = question ? options.Value.Question.Model : store.EffectiveModel;
+        var effort = question ? options.Value.Question.Effort : store.EffectiveEffort;
+
         // Лимит проверяем здесь, а не при постановке в очередь: пока сообщение ждало,
         // предыдущие запуски могли выбрать окно. На исчерпанном тарифе CLI ушёл бы
-        // на кредиты, а это запрещено.
-        if (await limits.RefusalAsync(store.EffectiveModel, stoppingToken) is { } exhausted)
+        // на кредиты, а это запрещено. Разбивка контекста модель не зовёт — ей лимит
+        // не помеха, и как раз на исчерпанном тарифе полезно понять, чем забит контекст.
+        if (kind != AgentRunKind.ContextReport && await limits.RefusalAsync(model, stoppingToken) is { } exhausted)
         {
             Audit(prompt, AuditKinds.LimitRefused, "лимит тарифа");
             await SendPlainAsync(prompt.Chat, exhausted, stoppingToken);
             await DropQueueAsync(prompt.Chat, stoppingToken);
+            return;
+        }
+
+        var session = question ? null : store.SessionId;
+
+        // Пока команда ждала в очереди, /new мог снять сессию: разбирать и сжимать нечего,
+        // а запуск без сессии создал бы новую ради одной команды.
+        if (kind is AgentRunKind.ContextReport or AgentRunKind.Compact && session is null)
+        {
+            await SendPlainAsync(prompt.Chat, "Активной сессии нет — контекст пуст.", stoppingToken);
             return;
         }
 
@@ -99,20 +121,18 @@ public sealed class ChatWorker(
 
         using var runCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
 
-        var session = store.SessionId;
-        var thread = session is { Length: > 0 } ? session.ShortId : "новая сессия";
+        var thread = question ? "вопрос" : session is { Length: > 0 } ? session.ShortId : "новая сессия";
 
         Audit(prompt, AuditKinds.RunStart,
-            $"{store.EffectiveModel ?? "модель по умолчанию"}, {store.EffectivePermissionMode}, effort {store.EffectiveEffort ?? "—"}",
+            $"{(question ? "вопрос, " : "")}{model ?? "модель по умолчанию"}, {store.EffectivePermissionMode}, effort {effort ?? "—"}",
             session);
 
         var status = await RunStatusMessage.StartAsync(channel, prompt.Chat, thread, logger, stoppingToken);
 
         var startedUtc = DateTimeOffset.UtcNow;
-        var project = store.ProjectPath;
-        var model = store.EffectiveModel;
+        var project = question ? QuestionDirectory() : store.ProjectPath;
         var preview = Text.Preview(prompt.Text);
-        monitor.RunStarted(new RunStart(project, session, preview, model, store.EffectivePermissionMode, store.EffectiveEffort));
+        monitor.RunStarted(new RunStart(project, session, preview, model, store.EffectivePermissionMode, effort));
 
         // В state.json, а не только в памяти: если шлюз убьют посреди запуска, следующему
         // экземпляру нужно знать, кому и про что сказать «прервано».
@@ -135,12 +155,14 @@ public sealed class ChatWorker(
             ResumeSessionId: session,
             NewSessionId: Guid.NewGuid().ToString(),
             Model: model,
-            Effort: store.EffectiveEffort,
+            Effort: effort,
             PermissionMode: PermissionMode(),
             Timeout: TimeSpan.FromMinutes(options.Value.RunTimeoutMinutes),
             // Папка чата, а не проекта: пока сообщение ждало очереди, /project мог смениться,
-            // а путь к картинке в промпте уже записан.
-            AttachmentsPath: inbox.ChatDirectory(prompt.Chat));
+            // а путь к картинке в промпте уже записан. Вопросу картинки не передаются —
+            // команда /ask с картинкой картинку не сохраняет.
+            AttachmentsPath: question ? null : inbox.ChatDirectory(prompt.Chat),
+            Kind: kind);
 
         // Тот же id нужен после запуска: активной станет только сессия, с которой он шёл,
         // иначе итог перетёр бы /new или смену сессии по ходу работы.
@@ -168,10 +190,15 @@ public sealed class ChatWorker(
         }
 
         // Неудачный запуск тоже расходует тариф, поэтому пишем и его — если агент успел сказать.
-        if (result.Usage is { } usage)
+        // Разбивка контекста модель не звала: в статистике она была бы запуском без расхода.
+        if (result.Usage is { } usage && kind != AgentRunKind.ContextReport)
             store.RecordRun(project, prompt.Text, result.SessionId, usage);
 
-        var note = SettleSession(prompt.Chat, project, session, runSessionId, result);
+        if (result.SessionId is { Length: > 0 } reported && result.Usage is { ContextTokens: > 0 } context)
+            store.RecordContext(reported, context.ContextTokens, context.ContextWindow);
+
+        // Вопрос сессию не создавал и не продолжал — трогать активную нечего.
+        var note = question ? "" : SettleSession(prompt.Chat, project, session, runSessionId, result);
 
         var outcome = result switch
         {
@@ -198,12 +225,37 @@ public sealed class ChatWorker(
             OutputTokens = result.Usage?.OutputTokens ?? 0,
         });
 
-        var text = result.Ok ? result.Text : $"⚠️ {result.Text}";
-        await SendRenderedAsync(prompt.Chat, text + note + Footer(result), stoppingToken);
+        await SendRenderedAsync(prompt.Chat, Answer(kind, result) + note + Footer(kind, result, model, effort), stoppingToken);
 
         // Упёрлись в лимит — следующие задачи упрутся в него же; очередь чистим,
         // чтобы не жечь её на отказах.
         if (result.RateLimited) await DropQueueAsync(prompt.Chat, stoppingToken);
+    }
+
+    /// <summary>
+    /// Текст ответа. У /compact своего текста нет — CLI возвращает пустой итог, и без
+    /// подстановки в чат ушло бы «(пустой ответ)» вместо «сжато».
+    /// </summary>
+    private static string Answer(AgentRunKind kind, AgentRunResult result) => (kind, result) switch
+    {
+        (_, { Ok: false }) => $"⚠️ {result.Text}",
+        (AgentRunKind.Compact, { Compaction: { } c }) =>
+            $"🗜 Контекст сжат: {c.Before.Tokens} → {c.After.Tokens} токенов. Сессия та же, разговор продолжается.",
+        (AgentRunKind.Compact, _) => "🗜 Сжатие завершено, но агент не сообщил, сколько стало.",
+        (AgentRunKind.ContextReport, _) => "📦 **Контекст сессии**\n\n" + result.Text,
+        _ => result.Text,
+    };
+
+    /// <summary>
+    /// Рабочая папка вопроса. Не проект: иначе подтянулись бы его CLAUDE.md и настройки,
+    /// а вопрос к проекту не относится. И не папка данных: там state.json и секреты.
+    /// Пустая папка во временных — нечего читать и нечего испортить.
+    /// </summary>
+    private static string QuestionDirectory()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "AgentsTracker-question");
+        Directory.CreateDirectory(path);
+        return path;
     }
 
     /// <summary>
@@ -268,13 +320,27 @@ public sealed class ChatWorker(
     /// <summary>
     /// Подпись под ответом: id сессии, которой отвечал агент. По нему ответ находится
     /// в <c>/sessions</c> и <c>/status</c>, и по нему же сессию можно продолжить
-    /// из терминала в той же папке.
+    /// из терминала в той же папке. Модель и effort — чтобы по ответу было видно, кто
+    /// и с каким усилием его дал: модель фактическая, со слов агента, а effort — переданный,
+    /// агент его не сообщает.
     /// </summary>
-    private static string Footer(AgentRunResult result)
+    private static string Footer(AgentRunKind kind, AgentRunResult result, string? model, string? effort)
     {
-        if (result.SessionId is not { Length: > 0 } session) return "";
+        var parts = new List<string>();
 
-        var parts = new List<string> { $"🧵 `{session}`" };
+        if (kind == AgentRunKind.Question) parts.Add("💬 вопрос");
+        else if (result.SessionId is { Length: > 0 } session) parts.Add($"🧵 `{session}`");
+        else return "";
+
+        // Разбивка контекста модель не звала — подписывать её моделью значило бы соврать.
+        // Effort в скобках вплотную к модели: «opus-5(H)» — это одна характеристика ответа,
+        // отдельным пунктом подпись длиннее, а буква без модели читается как загадка.
+        if (kind != AgentRunKind.ContextReport)
+        {
+            var answered = result.Usage?.PrimaryModel ?? model ?? "";
+            var level = effort.EffortShort is { Length: > 0 } letters ? $"({letters})" : "";
+            if (answered.Length + level.Length > 0) parts.Add(answered + level);
+        }
 
         if (result.Usage is { Turns: > 0 } usage) parts.Add($"{usage.Turns} х");
         parts.Add(result.Duration.Elapsed);

@@ -10,17 +10,19 @@
 Класс с `IChatCommandHandler` в папке фичи, `AddSingleton` в её `*Module`, запись в
 `ChatCommandCatalog` (подсказки команд в канале) и в тексте `HelpCommandHandler`.
 
-Заняты: `/start /help` (Help), `/new /stop` (Chat), `/rules` (Approvals), `/audit` (Audit),
-`/menu /settings /status /sessions /agent /model /effort /mode /skills /project /usage`
-(Settings). **Дубль в двух фичах роняет запуск.**
+Заняты: `/start /help` (Help), `/new /stop` (Chat), `/ask` (Question), `/rules` (Approvals),
+`/audit` (Audit), `/menu /settings /status /sessions /agent /model /effort /mode /skills /project
+/usage` (Settings). **Дубль в двух фичах роняет запуск.**
 
-В «Меню» только экраны — `/new /stop /model /effort /mode` работают текстом, но в списке их нет:
-то же самое есть кнопками на экранах «Сессии» и «Агент», а длинный список хуже короткого. Список
-команд и справка идут одним порядком: статус и сессии, агент и скиллы, репозиторий, статистика,
-правила, журналы. `RootScreen` повторяет его до статистики включительно — кнопок для `/rules` и
+В списке «Меню» экраны и `/ask` — `/new /stop /model /effort /mode` работают текстом, но в списке
+их нет: то же самое есть кнопками на экранах «Сессии» и «Агент», а длинный список хуже короткого.
+`/ask` в списке, потому что вопрос набирают сразу после команды. Список команд и справка идут одним
+порядком: статус и сессии, вопрос, агент и скиллы, проект, расход, правила, журналы. `RootScreen`
+повторяет его до расхода включительно, «Контекст» — рядом с «Вопросом»; кнопок для `/rules` и
 `/audit` в меню нет.
 
 Все прочие слэш-команды уходят в CLI как есть: незнакомая команда — это команда самого Claude Code.
+Поэтому у экрана «Контекст» нет своей команды `/context`: она заслонила бы команду Claude Code.
 
 ## Экран настроек
 
@@ -37,6 +39,9 @@
   (`SkillsScreen`), и ответ уйдёт тому, кто нажал кнопку.
 - Позиция в списке живёт в `ScreenNavigation` по пользователям: экраны — синглтоны, пользователей
   может быть несколько.
+- Необратимая кнопка (потерять контекст, забыть список) сначала спрашивает: `PendingConfirmations`
+  помнит действие и сессию по пользователю, кнопка «Да» несёт `yes:<действие>`, а `Open` снимает
+  висящий вопрос. Пример — `ContextScreen`.
 - Страницы и ключи callback_data — `SettingsKeyboard.Page`/`Key12`. Однобуквенный префикс аргумента
   экрана не должен быть шестнадцатеричным символом, иначе его спутают с ключом. Длину callback_data
   (64 байта) проверяет `TelegramChannel.Markup` и называет в ошибке кнопку — это ошибка экрана, а не
@@ -52,7 +57,7 @@
 
 Проект `src/AgentsTracker.Agents.<Name>` со ссылкой на `Agents.Abstractions`: `IAgentBackendModule`
 регистрирует `IAgentBackend`, `IAgentLimits` (или `NoAgentLimits`), `IAgentSkillCatalog` (или
-`NoAgentSkills`) и свой канал согласований через `IOperatorConsole`. Строка в списке `agents` в
+`NoAgentSkills`) и свой канал подтверждений через `IOperatorConsole`. Строка в списке `agents` в
 `Program.cs`, ссылка в `Gateway.csproj` и строка `COPY` в `Dockerfile`.
 
 `grep -rn Claude src/AgentsTracker.Gateway --include=*.cs` должен находить только `Program.cs` и
@@ -93,6 +98,10 @@
 продублировала бы эту проверку лишним нажатием. Больше в `--allowedTools` не место ничему: это
 обход карточек мимо настроек машины.
 
+Белый список типов файлов `send_file` живёт сразу в пяти местах — таблица в `OperatorConsole`,
+описание инструмента в `ClaudeSendFileTool` (CLI видит описание **работающего** шлюза),
+`README.md`, `docs/cli-contract.md` и `docs/en/cli-contract.md`. Меняете тип — меняйте все пять.
+
 ## Эндпоинт монитора
 
 `api.MapGet` в `MonitorModule.MapEndpoints`, только чтение — [monitor.md](monitor.md).
@@ -106,7 +115,7 @@
 
 Команды отрабатывают до сборки хоста: DI и канал им недоступны, ответ идёт только в `output`, код
 возврата — 0 или 1. Заняты: `protect-secrets`, `install`, `uninstall`, `help`. Всё, что начинается
-с дефиса, — не команда, а аргумент конфигурации.
+с дефиса или слэша, — не команда, а аргумент конфигурации.
 
 ## Механизм автозапуска (launchd, systemd)
 

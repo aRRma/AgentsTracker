@@ -7,7 +7,7 @@ using ModelContextProtocol.Server;
 namespace AgentsTracker.Agents.Claude.Mcp;
 
 /// <summary>
-/// Инструмент, который CLI зовёт вместо интерактивного запроса разрешения (через
+/// Инструмент, который CLI зовёт вместо интерактивного запроса подтверждения (через
 /// --permission-prompt-tool). Здесь только перевод: payload CLI →
 /// <see cref="IOperatorConsole"/> → JSON вида {"behavior":"allow","updatedInput":{…}} или
 /// {"behavior":"deny","message":"…"}. Карточки, правила «всегда» и аудит — у хоста.
@@ -30,7 +30,7 @@ public sealed class ClaudePermissionTool(IOperatorConsole console, ILogger<Claud
         // Схема вызова не задокументирована, поэтому на Debug пишем всё как пришло — имена
         // полей потом можно сверить по логу. Выше Debug нельзя: у Edit/Write в payload
         // лежит содержимое файлов.
-        logger.LogDebug("Запрос разрешения: {Payload}",
+        logger.LogDebug("Запрос подтверждения: {Payload}",
             arguments is null ? "(нет аргументов)" : JsonSerializer.Serialize(arguments));
 
         var toolName = tool_name
@@ -54,7 +54,7 @@ public sealed class ClaudePermissionTool(IOperatorConsole console, ILogger<Claud
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Сбой при запросе разрешения на {Tool}", toolName);
+            logger.LogError(ex, "Сбой при запросе подтверждения на {Tool}", toolName);
             return Deny($"Шлюз не смог запросить подтверждение: {ex.Message}");
         }
     }

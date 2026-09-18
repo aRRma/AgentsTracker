@@ -2,7 +2,8 @@
 
 Когда читать: нужно найти, где что лежит, или понять, почему кусок стоит именно здесь. Чек-листы
 добавления команды, экрана, агента и канала — в [extending.md](extending.md); недокументированная
-часть договора с CLI — в [cli-contract.md](cli-contract.md).
+часть договора с CLI — в [cli-contract.md](cli-contract.md). Слова, которыми всё это называется в
+кнопках, сообщениях и здесь, — в [glossary.md](glossary.md).
 
 ## Проекты
 
@@ -12,7 +13,7 @@ src/AgentsTracker.Agents.Abstractions/   контракты агента, без
   AgentRun.cs           запрос (промпт, папка, сессия, модель, усилие, режим, таймаут, папка вложений), наблюдатель, результат
   AgentCapabilities     какие модели/усилия/режимы агент поддерживает (усилие null — не поддерживает)
   IOperatorConsole      что агент просит у человека: ApproveAsync, AskAsync, SendFileAsync; PersistentRule — правило «всегда»
-  IAgentLimits          лимиты плана; IAgentSkillCatalog — слэш-команды
+  IAgentLimits          лимиты тарифа; IAgentSkillCatalog — слэш-команды
   IAgentBackendModule   AddServices + MapEndpoints; AgentHost — папка данных, порт, прокси, таймаут карточки от хоста
 src/AgentsTracker.Agents.Claude/         Claude Code за этими контрактами:
   ClaudeBackend         процесс claude -p: аргументы, stream-json, «сессия не найдена», лимит
@@ -54,10 +55,12 @@ src/AgentsTracker.Gateway/
                         AppVersion — номер сборки для лога, монитора и «Шлюз запущен»,
                         Cli/ (install, uninstall), Autostart/ (задача Планировщика через schtasks)
   Features/             вертикальные срезы, у каждого свой *Module:
-    Approvals/          карточки согласований, ApprovalBroker, /rules
+    Approvals/          карточки подтверждения, ApprovalBroker, /rules
     Chat/               ChatWorker (очередь, запуск, сессии), RunStatusMessage, /new /stop,
                         AttachmentInbox — картинки из чата: скачивание, проверки, папка inbox, чистка
-    Settings/           SettingsMenuCoordinator + Screens/*, /menu /status /sessions /agent /skills /project /usage
+    Settings/           SettingsMenuCoordinator + Screens/*, /menu /status /sessions /agent /skills /project /usage;
+                        PendingConfirmations — второе нажатие для необратимых кнопок («Контекст»)
+    Question/           /ask и кнопка «Вопрос»: разовый запуск без сессии (QuestionLauncher)
     Help/ Audit/ Monitor/   /start /help; /audit; веб-страница (index.html — EmbeddedResource) и /api/*
 ```
 
@@ -73,28 +76,29 @@ src/AgentsTracker.Gateway/
 тоже отказ). Текст разбирается по порядку:
 
 1. слэш-команда из `IChatCommandHandler.Commands` — **в первую очередь**, иначе `/stop` ушёл бы в
-   ожидающий свободный ответ, и прервать зависший прогон было бы нечем;
+   ожидающий свободный ответ, и прервать зависший запуск было бы нечем;
 2. цепочка `IChatTextHandler` в порядке модулей: ответ на карточку (`ApprovalTextHandler`) →
-   аргументы скилла (`SkillArgumentsTextHandler`) → в очередь агента (`ChatEnqueueTextHandler`,
-   всегда `true`). Поэтому `ChatModule` последний. Незнакомые слэш-команды — команды самого Claude
+   аргументы скилла (`SkillArgumentsTextHandler`) → текст вопроса после голого `/ask` или кнопки
+   «Вопрос» (`QuestionTextHandler`) → в очередь агента (`ChatEnqueueTextHandler`, всегда `true`).
+   Поэтому `ChatModule` последний. Незнакомые слэш-команды — команды самого Claude
    Code, они уходят в CLI.
 
 Порядок держится и для подписи к картинке: `/stop` должен работать с приложенной картинкой, и тогда
 картинка не сохраняется, а диспетчер об этом говорит, а не молча её теряет. Сообщение с вложением —
 не аргументы скилла: `SkillArgumentsTextHandler` пропускает его дальше и продолжает ждать.
-`ApprovalTextHandler`, наоборот, забирает его себе (повисшая карточка заморозила бы прогон) и
+`ApprovalTextHandler`, наоборот, забирает его себе (повисшая карточка заморозила бы запуск) и
 предупреждает, что картинка никуда не пошла.
 
 В обработчик приходит целиком `IncomingMessage`: кроме текста в нём могут быть вложения. Картинки
 забирает `ChatEnqueueTextHandler` через `AttachmentInbox` — скачивает в
 `<папка данных>\inbox\<чат>\<проект>\`, проверяет тип по сигнатурным байтам и подставляет абсолютные
-пути в промпт; прогон получает эту папку чата в `--add-dir`, и ничего больше. Подробности —
+пути в промпт; запуск получает эту папку чата в `--add-dir`, и ничего больше. Подробности —
 [cli-contract.md](cli-contract.md).
 
 Кнопки: цепочка `IChatButtonHandler` (`Dispatch/`), каждый узнаёт своё по префиксу в `CanHandle`:
 `cfg:` — меню (`SettingsCallbackHandler`), всё остальное (шестнадцатеричный id запроса) —
 `ApprovalCallbackHandler` → `ApprovalBroker`. `ActiveChat` у брокера ставит `ChatWorker` перед
-прогоном, иначе карточки ушли бы в чужой чат.
+запуском, иначе карточки ушли бы в чужой чат.
 
 ## Петля шлюз → CLI → шлюз
 
@@ -146,9 +150,29 @@ Claude выдаёт шлюз (`--session-id`), Cursor — ACP (`SessionStarted`)
 `EffectiveEffort`, `ProjectPath`. Значение, равное конфигу, хранится как `null`: иначе правка
 конфига молча перебивалась бы старым выбором.
 
+### Контекст и виды запуска
+
+`AgentRunRequest.Kind` говорит бэкенду, что за запуск: `Task` — задача в сессии, `Question` — вопрос
+(без `--resume`, ничего не пишется на диск, `SessionId` в итоге всегда `null`, чтобы хост не сделал
+разовый id активным), `ContextReport` — `/context` (модель не вызывается) и `Compact` — `/compact`
+(сессия та же). Команды двух последних — свои у бэкенда, хост спрашивает только
+`Capabilities.Context`. `ChatWorker` не проверяет лимит для `ContextReport` (он бесплатный и нужнее
+всего как раз на исчерпанном тарифе) и отказывает обоим видам контекста, если сессию сняли, пока они
+ждали в очереди, — запуск без сессии создал бы её впустую.
+
+Заполненность контекста берётся из самого запуска, а не отдельным вызовом: `RunUsage.ContextTokens` —
+вход **последнего** хода основной ветки (у сабагентов своё окно), после `/compact` — его
+`post_tokens`; `ContextWindow` — окно основной модели. `SessionStore.RecordContext` кладёт их в
+`SessionRecord` вместе со временем замера, и экран «Контекст» показывает их без запуска агента.
+Проценты — `LimitMath.Percent`, как везде.
+
+«Сжать» и «Новая сессия» на этом экране идут через `PendingConfirmations`: первое нажатие только
+спрашивает, «Да» срабатывает лишь для того же действия, той же сессии и в пределах 2 минут; вопрос
+снимается по «Нет» и при повторном открытии экрана.
+
 `ProjectCatalog`: список `Gateway:Projects`, иначе обход `Gateway:ProjectsRoot` до
 `ProjectsRootDepth`, иначе соседи `ProjectPath`. `ProjectScreen` выбирает в два шага (папка →
-репозиторий) страницами по 12. Текущий проект идёт первым в своей группе, а после выбора страница
+проект) страницами по 12. Текущий проект идёт первым в своей группе, а после выбора страница
 сбрасывается на первую — иначе метка `▶` могла оказаться за пределами экрана.
 
 ## Состояние, секреты, слои конфигурации
@@ -179,7 +203,7 @@ Claude выдаёт шлюз (`--session-id`), Cursor — ACP (`SessionStarted`)
 мог быть вставлен токен).
 
 Виды перечислены в `AuditKinds`: `access.rejected`, `message`, `run.start`/`run.end`, `approval`,
-`question`, `file.send`, `settings`, `rules`, `session.reset`, `limit.refused`, `gateway`. Экраны
+`question`, `file.send`, `file.receive`, `settings`, `rules`, `session.reset`, `limit.refused`, `gateway`. Экраны
 меню пишут через `SettingsAudit.Changed`.
 
 Это не замена `ILogger`: в аудит идёт то, за что отвечает человек, в лог — то, что нужно для
@@ -201,12 +225,38 @@ Claude выдаёт шлюз (`--session-id`), Cursor — ACP (`SessionStarted`)
 `RateLimitRetry.OnceAsync` (`Channels.Abstractions`), один общий потолок. Суммы, токены и время —
 `DisplayFormat`.
 
+Подпись под ответом (`ChatWorker.Footer`): id сессии (или «💬 вопрос»), модель, которая
+**на самом деле** ответила, — та, у которой больше всего выходных токенов в `modelUsage`, сокращённая
+до `opus-5`/`haiku-4-5` (`RunUsage.PrimaryModel`); выбранный алиас — только если CLI ничего не
+сказал; к ней вплотную в скобках — **переданный** effort одной-тремя буквами (`opus-5(H)`;
+`DisplayFormat.EffortShort`: L, M, H, XH, MAX; CLI его обратно не сообщает), дальше ходы и время. У разбивки контекста модели в подписи нет: модель
+не вызывалась.
+
+### Числа
+
+Всё дробное — `decimal`, а не `double`/`float`: израсходованная доля окна (`LimitWindow.Used`,
+`LimitGauge.Used`), кадры шкал, делители в `DisplayFormat`. `double` округляет там, где этого
+никто не ждёт (`0.67 * 100` — это `67.00000000000001`), а доля лимита не просто показывается:
+по ней сравнивают с границей окна, которое останавливает запуск. Денег в шлюзе нет вовсе:
+`total_cost_usd` не читается (`cli-contract.md`).
+
+Округление доли в проценты живёт **ровно в одном** месте — `LimitMath.Percent`/`Left`
+(`Agents.Abstractions`): расход вверх до целого с обрезкой в 0..100, остаток — `100 - Percent`.
+Зовут его все, кто показывает проценты: шкалы `/status`, сводка меню, `/api/limits` (страница
+монитора получает `percent` и `left` готовыми — в JS нет `decimal`). Вторая формула округления
+где-то ещё — ошибка, даже если на ваших числах она совпадает: независимые округления разошлись
+на 14 значениях из 1001, и в одном сообщении вышло «67% · осталось 32%».
+
+`double` остаётся только там, где так считает сам BCL — `TimeSpan.TotalSeconds` и родня, — и
+только когда результат тут же обрезается до целых единиц для подписи. То, что считается, а не
+показывается, берётся из `Ticks` (`RunStatusMessage`) или из `long`.
+
 ## Мелочи, о которых стоит знать до правки хоста
 
 - `Channel.CreateUnbounded` в `ChatWorker` без `SingleReader`: с ним `Reader.Count` бросает
   исключение и `/status` разваливается.
 - `_runCts` в `ChatWorker` ставится прямо перед `agent.RunAsync`, после отправки статусного
-  сообщения: чистит его только `finally` прогона, а падение выше оставило бы `IsBusy` до
+  сообщения: чистит его только `finally` запуска, а падение выше оставило бы `IsBusy` до
   перезапуска.
 - `HttpClient` только через `IHttpClientFactory`. `ClaudeLimits.HttpClientName` — один таймаут, без
   повторов. Клиент Telegram (`TelegramClientFactory`) — синглтон, DNS обновляет

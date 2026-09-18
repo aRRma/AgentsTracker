@@ -8,7 +8,7 @@ public sealed record ChoiceOption(string Key, string Label);
 public sealed record ChoiceResult(string Key, UserId User);
 
 /// <summary>
-/// Мост между запросом агента и чатом: показывает карточку с кнопками и держит вызывающего,
+/// Мост между агентом и чатом: показывает карточку с кнопками и держит вызывающего,
 /// пока не нажмут кнопку или не выйдет таймаут.
 /// </summary>
 public sealed class ApprovalBroker(
@@ -45,7 +45,7 @@ public sealed class ApprovalBroker(
     public async Task<ChoiceResult> AskChoiceAsync(string html, IReadOnlyList<ChoiceOption> buttons, CancellationToken ct)
     {
         var chat = ActiveChat
-            ?? throw new InvalidOperationException("Нет активного чата — некому показать запрос.");
+            ?? throw new InvalidOperationException("Нет активного чата — некому показать карточку.");
 
         var id = Guid.NewGuid().ToString("N")[..8];
         var keyboard = new Keyboard(
@@ -116,7 +116,7 @@ public sealed class ApprovalBroker(
     public async Task<string> AskTextAsync(string html, CancellationToken ct)
     {
         var chat = ActiveChat
-            ?? throw new InvalidOperationException("Нет активного чата — некому показать запрос.");
+            ?? throw new InvalidOperationException("Нет активного чата — некому задать вопрос.");
 
         var completion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         var prompt = new TextPrompt(completion, chat);
@@ -160,7 +160,7 @@ public sealed class ApprovalBroker(
 
         if (separator <= 0 || !_choices.TryGetValue(data[..separator], out var pending))
         {
-            await SafeAnswerAsync(press, "Запрос уже неактуален");
+            await SafeAnswerAsync(press, "Карточка уже неактуальна");
             return;
         }
 
@@ -168,7 +168,7 @@ public sealed class ApprovalBroker(
         // одобрять действие, которого не видел.
         if (press.Chat != pending.Message.Chat)
         {
-            await SafeAnswerAsync(press, "Этот запрос адресован другому чату");
+            await SafeAnswerAsync(press, "Эта карточка адресована другому чату");
             return;
         }
 

@@ -12,6 +12,21 @@ public sealed record RunUsage
 
     /// <summary>Разбивка по моделям: за один запуск их может быть несколько.</summary>
     public IReadOnlyList<ModelRunUsage> Models { get; init; } = [];
+
+    /// <summary>
+    /// Короткое имя модели, которая отвечала («opus-5»): им подписан ответ. Выбранная
+    /// в меню модель не то же самое — агент вправе подменить её. null — модель не вызывалась.
+    /// </summary>
+    public string? PrimaryModel { get; init; }
+
+    /// <summary>
+    /// Сколько токенов занимал контекст к концу запуска. Не сумма <see cref="InputTokens"/>:
+    /// та копит каждый ход, а контекст — это размер последнего. 0 — неизвестно.
+    /// </summary>
+    public long ContextTokens { get; init; }
+
+    /// <summary>Размер окна контекста основной модели. 0 — неизвестно.</summary>
+    public long ContextWindow { get; init; }
 }
 
 public sealed record ModelRunUsage(

@@ -199,13 +199,13 @@ The container gives you what an on-machine install doesn't: the agent sees only 
 A failed command and the «Всегда» (Always) button can't reach the rest of the system.
 
 ```powershell
-Copy-Item .env.example .env             # fill in the token, your id, and the folder with repositories
+Copy-Item .env.example .env             # fill in the token, your id, and the folder with projects
 docker compose up -d --build
 docker compose exec gateway claude      # sign in to the agent's account once
 ```
 
 ```bash
-cp .env.example .env                    # fill in the token, your id, and the folder with repositories
+cp .env.example .env                    # fill in the token, your id, and the folder with projects
 docker compose up -d --build
 docker compose exec gateway claude      # sign in to the agent's account once
 ```
@@ -223,7 +223,7 @@ What matters:
   in the image), otherwise there'd be nothing to publish the port from. It's exposed outward as
   `127.0.0.1:5100:5100` — the page has no password, and it must not be exposed beyond your own
   machine.
-- **Project paths differ.** Inside it's `/projects/<repository>`. Sessions are keyed by the
+- **Project paths differ.** Inside it's `/projects/<project>`. Sessions are keyed by the
   normalized path, so session history from the host won't be picked up in the container.
 - **Tools.** The agent can do exactly what's in the image: git, ripgrep, and the .NET SDK. Need
   other languages — add a layer in the `Dockerfile`.

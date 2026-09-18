@@ -2,7 +2,8 @@
 
 When to read this: you need to find where something lives, or to understand why a piece is where
 it is. The checklists for adding a command, a screen, an agent or a channel are in
-`extending.md`; the undocumented parts of the CLI contract are in `cli-contract.md`.
+`extending.md`; the undocumented parts of the CLI contract are in `cli-contract.md`. The words all
+of this is called by in buttons, messages and here are in `glossary.md`.
 
 ## The projects
 
@@ -12,7 +13,7 @@ src/AgentsTracker.Agents.Abstractions/   agent contracts, no Telegram and no spe
   AgentRun.cs           request (prompt, folder, session, model, effort, mode, timeout, attachments folder), observer, result
   AgentCapabilities     which models/efforts/modes the agent supports (effort null — not supported)
   IOperatorConsole      what the agent asks a human for: ApproveAsync, AskAsync, SendFileAsync; PersistentRule — an "always" rule
-  IAgentLimits          plan limits; IAgentSkillCatalog — slash commands
+  IAgentLimits          subscription limits («лимиты тарифа»); IAgentSkillCatalog — slash commands
   IAgentBackendModule   AddServices + MapEndpoints; AgentHost — data directory, port, proxy, card timeout from the host
 src/AgentsTracker.Agents.Claude/         Claude Code behind those contracts:
   ClaudeBackend         the claude -p process: arguments, stream-json, "session not found", limit
@@ -57,7 +58,9 @@ src/AgentsTracker.Gateway/
     Approvals/          approval cards, ApprovalBroker, /rules
     Chat/               ChatWorker (queue, launch, sessions), RunStatusMessage, /new /stop,
                         AttachmentInbox — pictures from the chat: download, checks, inbox folder, cleanup
-    Settings/           SettingsMenuCoordinator + Screens/*, /menu /status /sessions /agent /skills /project /usage
+    Settings/           SettingsMenuCoordinator + Screens/*, /menu /status /sessions /agent /skills /project /usage;
+                        PendingConfirmations — the second press for irreversible buttons («Контекст»)
+    Question/           /ask and the «Вопрос» button: a one-off run with no session (QuestionLauncher)
     Help/ Audit/ Monitor/   /start /help; /audit; the web page (index.html — EmbeddedResource) and /api/*
 ```
 
@@ -76,7 +79,8 @@ is a rejection too). Text is processed in order:
 1. a slash command from `IChatCommandHandler.Commands` — **first of all**, otherwise `/stop` would
    go to a waiting free-form answer and there would be nothing left to interrupt a stuck run with;
 2. the `IChatTextHandler` chain in module order: an answer to a card (`ApprovalTextHandler`) →
-   skill arguments (`SkillArgumentsTextHandler`) → into the agent's queue (`ChatEnqueueTextHandler`,
+   skill arguments (`SkillArgumentsTextHandler`) → the text of a вопрос after a bare `/ask` or the
+   «Вопрос» button (`QuestionTextHandler`) → into the agent's queue (`ChatEnqueueTextHandler`,
    always `true`). That is why `ChatModule` is last. Unknown slash commands are Claude Code's own
    commands, they go to the CLI.
 
@@ -148,9 +152,29 @@ The chat-side selection (`SessionStore`) sits on top of the config: `EffectiveMo
 `EffectivePermissionMode`, `EffectiveEffort`, `ProjectPath`. A value equal to the config is stored
 as `null`: otherwise a config edit would be silently overridden by an old selection.
 
+### Context and run kinds
+
+`AgentRunRequest.Kind` tells the backend what the run is: a `Task` in the session, a `Question`
+(no `--resume`, nothing written to disk, `SessionId` in the result is always `null` so the host never
+makes a one-off id active), a `ContextReport` (`/context`, the model is not called) or a `Compact`
+(`/compact`, same session). The commands of the last two are the backend's own — the host only asks
+`Capabilities.Context`. `ChatWorker` skips the limit check for `ContextReport` (it costs nothing and
+is most useful exactly when the plan is exhausted), and refuses both context kinds when the session
+was dropped while they waited in the queue — a run without a session would create one for nothing.
+
+How full the context is comes from the run itself, not from a separate call: `RunUsage.ContextTokens`
+is the input of the **last** main-branch turn (sub-agents have their own window), after a
+`/compact` — its `post_tokens`; `ContextWindow` is the window of the primary model.
+`SessionStore.RecordContext` keeps them on the `SessionRecord` with the measurement time, and the
+«Контекст» screen shows them without starting the agent. Percent — `LimitMath.Percent`, as everywhere.
+
+«Сжать» and «Новая сессия» on that screen go through `PendingConfirmations`: the first press only
+asks, «Да» works only for the same action, the same session and within 2 minutes; the pending
+question is dropped on «Нет» and on reopening the screen.
+
 `ProjectCatalog`: the `Gateway:Projects` list, otherwise a walk of `Gateway:ProjectsRoot` down to
 `ProjectsRootDepth`, otherwise the neighbours of `ProjectPath`. `ProjectScreen` selects in two
-steps (folder → repository) in pages of 12. The current project comes first in its group, and after
+steps (folder → project) in pages of 12. The current project comes first in its group, and after
 a selection the page resets to the first one — otherwise the `▶` marker could end up off-screen.
 
 ## State, secrets, configuration layers
@@ -181,7 +205,7 @@ ready-made keys from `state.json`. No secrets and no full texts (≤200 characte
 is a `Text.Preview` excerpt, 80 characters: a token could have been pasted there).
 
 The kinds are in `AuditKinds`: `access.rejected`, `message`, `run.start`/`run.end`, `approval`,
-`question`, `file.send`, `settings`, `rules`, `session.reset`, `limit.refused`, `gateway`. Menu
+`question`, `file.send`, `file.receive`, `settings`, `rules`, `session.reset`, `limit.refused`, `gateway`. Menu
 screens write through `SettingsAudit.Changed`.
 
 This is not a replacement for `ILogger`: the audit gets what a human is answerable for, the log
@@ -202,6 +226,32 @@ answer would vanish silently. On a 429 in the middle of a multi-part answer
 `ChatWorker.SendPartAsync` waits `RetryAfter` (≤30 s) and repeats the same part; the same goes for
 the agent's file in `ApprovalBroker` — both through `RateLimitRetry.OnceAsync`
 (`Channels.Abstractions`), one shared ceiling. Sums, tokens and time — `DisplayFormat`.
+
+The footer under an answer (`ChatWorker.Footer`): the session id (or «💬 вопрос»), the model that
+**actually** answered — the one with the most output tokens in `modelUsage`, shortened to
+`opus-5`/`haiku-4-5` (`RunUsage.PrimaryModel`); the chosen alias only if the CLI said nothing —
+right after it, in brackets, the effort that was **passed** as one to three letters (`opus-5(H)`;
+`DisplayFormat.EffortShort`: L, M, H, XH, MAX; the CLI does not report it back), then turns and time. A context breakdown has no model in its
+footer: the model was not called.
+
+### Numbers
+
+Anything fractional is `decimal`, never `double`/`float`: the consumed share of a window
+(`LimitWindow.Used`, `LimitGauge.Used`), the gauge frames, the divisors in `DisplayFormat`.
+`double` rounds where nobody expects it — `0.67 * 100` is `67.00000000000001` — and the limit
+share is not just displayed but compared against the edge of a window that stops a run.
+The gateway holds no money at all: `total_cost_usd` is not read (`cli-contract.md`).
+
+Rounding a share into percent happens in **exactly one** place — `LimitMath.Percent`/`Left`
+(`Agents.Abstractions`): consumption up to a whole number and clamped to 0..100, the remainder as
+`100 - Percent`. Everything that shows percentages calls it: the `/status` gauges, the menu
+summary, `/api/limits` (the monitor page gets `percent` and `left` ready-made — JS has no
+`decimal`). A second rounding formula somewhere is a bug even when it agrees on your numbers:
+independent rounding diverged on 14 values out of 1001, and one message showed «67% · осталось 32%».
+
+What stays `double` is the BCL's own arithmetic — `TimeSpan.TotalSeconds` and its kin — and only
+where the result is immediately truncated to whole units for a caption. Anything counted, rather
+than displayed, is derived from `Ticks` (`RunStatusMessage`) or from `long`.
 
 ## Details worth knowing before touching the host
 

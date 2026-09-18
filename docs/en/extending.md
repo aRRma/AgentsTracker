@@ -12,17 +12,19 @@ A class implementing `IChatCommandHandler` in the feature folder, `AddSingleton`
 an entry in `ChatCommandCatalog` (the channel's command hints) and in the `HelpCommandHandler`
 text.
 
-Taken: `/start /help` (Help), `/new /stop` (Chat), `/rules` (Approvals), `/audit` (Audit),
-`/menu /settings /status /sessions /agent /model /effort /mode /skills /project /usage`
-(Settings). **A duplicate across two features kills startup.**
+Taken: `/start /help` (Help), `/new /stop` (Chat), `/ask` (Question), `/rules` (Approvals),
+`/audit` (Audit), `/menu /settings /status /sessions /agent /model /effort /mode /skills /project
+/usage` (Settings). **A duplicate across two features kills startup.**
 
-The «Меню» screen holds screens only — `/new /stop /model /effort /mode` work as text but are not
-in the list: the same thing is available as buttons on the «Сессии» and «Агент» screens, and a
-long list reads worse than a short one. The command list and the help share one order: status and
-sessions, agent and skills, repository, statistics, rules, logs. `RootScreen` repeats it up to and
-including statistics — there are no menu buttons for `/rules` and `/audit`.
+The «Меню» list holds screens plus `/ask` — `/new /stop /model /effort /mode` work as text but are
+not in the list: the same thing is available as buttons on the «Сессии» and «Агент» screens, and a
+long list reads worse than a short one. `/ask` is there because the question is typed right after
+the command. The command list and the help share one order: status and sessions, the question,
+agent and skills, project, usage, rules, logs. `RootScreen` repeats it up to and including usage,
+with «Контекст» next to «Вопрос» — there are no menu buttons for `/rules` and `/audit`.
 
-Every other slash command goes to the CLI as-is: unknown slash commands are Claude Code's own.
+Every other slash command goes to the CLI as-is: unknown slash commands are Claude Code's own. That
+is why the «Контекст» screen has no `/context` command of its own: it would shadow Claude Code's.
 
 ## A settings screen
 
@@ -39,6 +41,9 @@ A class implementing `ISettingsScreen` in `Features/Settings/Screens/`, registra
   the answer goes to whoever pressed the button.
 - The list position lives in `ScreenNavigation` per user: screens are singletons, there can be
   several users.
+- An irreversible button (lose the context, forget the list) asks first: `PendingConfirmations`
+  remembers the action and the session per user, the «Да» button carries `yes:<action>`, and
+  `Open` drops the pending question. `ContextScreen` is the example.
 - Pages and callback_data keys — `SettingsKeyboard.Page`/`Key12`. The one-letter prefix of a
   screen argument must not be a hex character, or it will be confused with a key. The
   callback_data length (64 bytes) is checked by `TelegramChannel.Markup`, which names the button
@@ -54,7 +59,7 @@ returns `true`.
 
 A project `src/AgentsTracker.Agents.<Name>` referencing `Agents.Abstractions`: an
 `IAgentBackendModule` registers `IAgentBackend`, `IAgentLimits` (or `NoAgentLimits`),
-`IAgentSkillCatalog` (or `NoAgentSkills`) and its own approval channel through `IOperatorConsole`.
+`IAgentSkillCatalog` (or `NoAgentSkills`) and its own confirmation channel through `IOperatorConsole`.
 A line in the `agents` list in `Program.cs`, a reference in `Gateway.csproj` and a `COPY` line in
 the `Dockerfile`.
 
@@ -97,6 +102,10 @@ That is the case for `mcp__tg__send_file`: the host checks the folder, the type 
 itself, and an "allow?" card would only duplicate that check with an extra button press. Nothing
 else belongs in `--allowedTools`: it bypasses the cards past the machine's config.
 
+The `send_file` file-type whitelist lives in five places at once — the map in `OperatorConsole`, the
+tool description in `ClaudeSendFileTool` (the CLI sees the description of the **running** gateway),
+`README.md`, `docs/cli-contract.md` and `docs/en/cli-contract.md`. Change a type — change all five.
+
 ## A monitor endpoint
 
 `api.MapGet` in `MonitorModule.MapEndpoints`, read-only — `monitor.md`.
@@ -110,7 +119,7 @@ A class in `Infrastructure/Cli/` (`protect-secrets` lives in `Security/`, next t
 
 Commands run before the host is built: DI and the channel are unavailable to them, the answer goes
 to `output` only, the exit code is 0 or 1. Taken: `protect-secrets`, `install`, `uninstall`,
-`help`. Anything starting with a dash is not a command — those are configuration arguments.
+`help`. Anything starting with a dash or a slash is not a command — those are configuration arguments.
 
 ## An autostart mechanism (launchd, systemd)
 

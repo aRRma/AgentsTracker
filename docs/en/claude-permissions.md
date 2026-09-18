@@ -102,9 +102,9 @@ to know about:
   read it;
 - `appsettings.Local.json` — the bot token: reading and editing both require a question. If
   `protect-secrets` has already run, it holds `dpapi:…`, but the rule is cheaper than checking;
-- `dotnet run`, `AgentsTracker.Gateway.exe`, `schtasks`, `docker compose`, `Stop-Process` — with
-  a question: from a session started through Telegram, these would stop or duplicate the
-  gateway itself (`operations.md`);
+- `dotnet run`, `AgentsTracker.Gateway.exe`, `schtasks`, `docker compose`, `Stop-Process`,
+  `Stop-ScheduledTask` — with a question: from a session started through Telegram, these would
+  stop or duplicate the gateway itself (`operations.md`);
 - `scripts\monitor-api.ps1` — no question. The `curl`/`Invoke-RestMethod` deny doesn't
   distinguish the internet from `127.0.0.1`, and the agent kept running into it session after
   session trying to read the monitor's `/api/snapshot`. The script only reaches loopback and

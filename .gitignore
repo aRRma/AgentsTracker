@@ -24,3 +24,7 @@ appsettings.Local.json.backup
 
 # Личные правила Claude Code для этого проекта; общие — в .claude/settings.json
 .claude/settings.local.json
+
+# Архивы, собранные для отправки в чат.
+/*.zip
+/*.7z
