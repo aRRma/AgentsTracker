@@ -57,8 +57,9 @@
 
 Проект `src/AgentsTracker.Agents.<Name>` со ссылкой на `Agents.Abstractions`: `IAgentBackendModule`
 регистрирует `IAgentBackend`, `IAgentLimits` (или `NoAgentLimits`), `IAgentSkillCatalog` (или
-`NoAgentSkills`) и свой канал подтверждений через `IOperatorConsole`. Строка в списке `agents` в
-`Program.cs`, ссылка в `Gateway.csproj` и строка `COPY` в `Dockerfile`.
+`NoAgentSkills`) и свой канал подтверждений через `IOperatorConsole`, а в `SecretKeys` объявляет
+ключи своей секции, которые шифрует `protect-secrets` (ключ API, пароль). Строка в списке `agents`
+в `Program.cs`, ссылка в `Gateway.csproj` и строка `COPY` в `Dockerfile`.
 
 `grep -rn Claude src/AgentsTracker.Gateway --include=*.cs` должен находить только `Program.cs` и
 комментарии. Настройки агента лежат в `Gateway:<Id>`, хост их не читает.

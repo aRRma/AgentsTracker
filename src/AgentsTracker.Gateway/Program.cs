@@ -20,13 +20,14 @@ AppPaths.UseConfiguredDirectory();
 // в настройках канала секретные, знает только его модуль.
 IReadOnlyList<IChatChannelModule> channels = [new TelegramChannelModule()];
 
+// Единственное место, где хост знает конкретных агентов. Новый агент — свой проект
+// с IAgentBackendModule и строка здесь. Список, как и каналы, нужен служебным командам:
+// секретные ключи агента знает только его модуль.
+IReadOnlyList<IAgentBackendModule> agents = [new ClaudeAgentModule(), new CursorAgentModule()];
+
 // Служебные команды отрабатывают до сборки хоста: они трогают файлы и автозапуск,
 // транспорт канала и агент им не нужны.
-if (ConsoleCommands.TryRun(args, channels, Console.Out, out var commandExitCode)) return commandExitCode;
-
-// Единственное место, где хост знает конкретных агентов. Новый агент — свой проект
-// с IAgentBackendModule и строка здесь.
-IReadOnlyList<IAgentBackendModule> agents = [new ClaudeAgentModule(), new CursorAgentModule()];
+if (ConsoleCommands.TryRun(args, channels, agents, Console.Out, out var commandExitCode)) return commandExitCode;
 
 // Порядок важен: текстовые обработчики опрашиваются в порядке регистрации, а ChatModule
 // ловит всё — ему место последним.

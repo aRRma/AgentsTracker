@@ -57,7 +57,7 @@ machine and a folder brought over from another one work: in the second case neit
 nor the SDK is needed. Along the way the command also:
 
 - moves `appsettings.Local.json` into the data directory and encrypts the channel secrets
-  (`Channel:Settings:BotToken`) and `Proxy`; a config with the old `Gateway:BotToken` is rejected
+  (`Channel:Settings:BotToken`), the agent's (`Cursor:ApiKey`) and `Proxy`; a config with the old `Gateway:BotToken` is rejected
   and autostart is not registered — run `scripts\migrate-channel-settings.ps1` first;
 - deletes the config next to the exe — `dotnet publish` copies there a file with a plain-text
   token;

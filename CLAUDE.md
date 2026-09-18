@@ -39,7 +39,7 @@ Code, comments, logs and chat texts are in Russian.
 dotnet build                                    # TreatWarningsAsErrors is on
 dotnet build src\AgentsTracker.Gateway -o $env:TEMP\at-build   # check the build while the gateway holds bin\Debug
 dotnet run --project src\AgentsTracker.Gateway  # needs appsettings.Local.json (next to it or in the data directory)
-dotnet run --project src\AgentsTracker.Gateway -- protect-secrets   # encrypt channel and Proxy secrets, move the config to %LOCALAPPDATA%
+dotnet run --project src\AgentsTracker.Gateway -- protect-secrets   # encrypt channel, agent and Proxy secrets, move the config to %LOCALAPPDATA%
 pwsh -File scripts\migrate-channel-settings.ps1 # one-off move of BotToken/AllowedUserIds into Gateway:Channel:Settings
 dotnet publish src\AgentsTracker.Gateway -c Release -o C:\Apps\AgentsTracker   # install: publish (the folder is an example)…
 C:\Apps\AgentsTracker\AgentsTracker.Gateway.exe install --start                # …and autostart; remove with uninstall

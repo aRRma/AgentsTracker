@@ -12,6 +12,8 @@ public sealed class CursorAgentModule : IAgentBackendModule
 {
     public string Id => CursorBackend.BackendId;
 
+    public IReadOnlyList<string> SecretKeys { get; } = [nameof(CursorOptions.ApiKey)];
+
     public void AddServices(IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<CursorOptions>(configuration.GetSection(CursorOptions.SectionName));

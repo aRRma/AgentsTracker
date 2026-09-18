@@ -15,7 +15,8 @@ public static class InstallCommand
 
     private const string Description = "Мост между Telegram и агентом командной строки";
 
-    public static int Run(string[] args, IReadOnlyList<IChatChannelModule> channels, TextWriter output)
+    public static int Run(
+        string[] args, IReadOnlyList<IChatChannelModule> channels, IReadOnlyList<IAgentBackendModule> agents, TextWriter output)
     {
         if (!CliArgs.TryParse(args, output, out var options)) return 1;
 
@@ -40,7 +41,7 @@ public static class InstallCommand
         // С конфигом, который шлюз читать откажется (ключи канала в старом месте), задача
         // Планировщика трижды перезапустит падающий exe и сдастся, а install отчитается
         // об успехе. Лучше не регистрировать.
-        if (!PrepareConfig(directory, channels, output))
+        if (!PrepareConfig(directory, channels, agents, output))
         {
             output.WriteLine("Автозапуск не зарегистрирован: сначала приведите конфиг в порядок и повторите install.");
             return 1;
@@ -75,7 +76,8 @@ public static class InstallCommand
     /// appsettings.Local.json проекта вместе с открытым токеном. false — protect-secrets
     /// отказался, и с таким конфигом шлюз не стартует.
     /// </summary>
-    private static bool PrepareConfig(string directory, IReadOnlyList<IChatChannelModule> channels, TextWriter output)
+    private static bool PrepareConfig(
+        string directory, IReadOnlyList<IChatChannelModule> channels, IReadOnlyList<IAgentBackendModule> agents, TextWriter output)
     {
         var beside = Path.Combine(directory, "appsettings.Local.json");
         var ok = true;
@@ -92,14 +94,14 @@ public static class InstallCommand
                     + "не применены: чтобы поставить их, удалите конфиг в папке данных и повторите.");
             }
 
-            ok = ProtectSecretsCommand.Run([ProtectSecretsCommand.Name], channels, output) == 0;
+            ok = ProtectSecretsCommand.Run([ProtectSecretsCommand.Name], channels, agents, output) == 0;
             if (!ok) output.WriteLine($"Проверьте {AppPaths.LocalSettings}: секреты остались как есть.");
         }
         else if (File.Exists(beside))
         {
             // protect-secrets сам перенесёт файл и зашифрует секреты. Копию рядом с exe
             // не удаляем сами: на его ошибке остались бы вообще без конфига.
-            ok = ProtectSecretsCommand.Run([ProtectSecretsCommand.Name, beside], channels, output) == 0;
+            ok = ProtectSecretsCommand.Run([ProtectSecretsCommand.Name, beside], channels, agents, output) == 0;
         }
         else
         {

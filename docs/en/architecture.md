@@ -187,7 +187,9 @@ The config comes in layers: `appsettings.json` → `appsettings.Local.json` next
 the same file in the data directory (production) → environment variables. `dpapi:…` is decrypted on
 load (`ProtectedJsonConfigurationProvider`); `protect-secrets` encrypts `Gateway:Proxy` and the
 `IChatChannelModule.SecretKeys` keys in `Gateway:Channel:Settings` (for Telegram — `BotToken`,
-`Proxy`). `publish\` contains no secrets. `Gateway__*` variables are invisible to the child
+`Proxy`), plus the `IAgentBackendModule.SecretKeys` keys in the agent's `Gateway:<Id>` (for Cursor —
+`ApiKey`); section and key names are case-insensitive, the way the config reads them.
+`publish\` contains no secrets. `Gateway__*` variables are invisible to the child
 `claude` — the host strips them from the environment in `ValidateStartup`. The user-facing side of
 all this is in `deployment.md`.
 

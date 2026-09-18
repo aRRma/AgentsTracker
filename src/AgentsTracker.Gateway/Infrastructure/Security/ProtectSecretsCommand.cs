@@ -17,11 +17,12 @@ public static class ProtectSecretsCommand
     private static readonly string[] GatewaySecrets = ["Proxy"];
 
     /// <summary>
-    /// Шифрует секреты хоста и канала: какие ключи секретные, знает только модуль канала
-    /// (<see cref="IChatChannelModule.SecretKeys"/>). Берём ключи всех известных каналов —
-    /// зашифруется всё равно только то, что есть в файле.
+    /// Шифрует секреты хоста, канала и агента: какие ключи секретные, знает только модуль
+    /// (<see cref="IChatChannelModule.SecretKeys"/>, <see cref="IAgentBackendModule.SecretKeys"/>).
+    /// Берём ключи всех известных модулей — зашифруется всё равно только то, что есть в файле.
     /// </summary>
-    public static int Run(string[] args, IReadOnlyList<IChatChannelModule> channels, TextWriter output)
+    public static int Run(
+        string[] args, IReadOnlyList<IChatChannelModule> channels, IReadOnlyList<IAgentBackendModule> agents, TextWriter output)
     {
         // DPAPI есть только на Windows, и промолчать нельзя: человек решит, что токен
         // зашифрован, а тот останется открытым.
@@ -42,7 +43,9 @@ public static class ProtectSecretsCommand
             return 1;
         }
 
-        var root = JsonNode.Parse(File.ReadAllText(source)) as JsonObject;
+        // Без учёта регистра, как читает конфиг .NET: иначе «cursor»/«apikey» шлюз бы понял,
+        // а protect-secrets молча оставил бы открытым.
+        var root = JsonNode.Parse(File.ReadAllText(source), new JsonNodeOptions { PropertyNameCaseInsensitive = true }) as JsonObject;
         if (root?[GatewayOptions.SectionName] is not JsonObject gateway)
         {
             output.WriteLine($"В {source} нет секции «{GatewayOptions.SectionName}».");
@@ -67,6 +70,13 @@ public static class ProtectSecretsCommand
 
         if (gateway["Channel"] is JsonObject { } channel && channel["Settings"] is JsonObject settings)
             changed += Protect(settings, [.. channels.SelectMany(c => c.SecretKeys).Distinct(StringComparer.Ordinal)]);
+
+        // Секция агента — Gateway:<Id>: так её называет каждый модуль агента.
+        foreach (var agent in agents)
+        {
+            if (agent.SecretKeys.Count > 0 && gateway[agent.Id] is JsonObject section)
+                changed += Protect(section, agent.SecretKeys);
+        }
 
         var target = AppPaths.LocalSettings;
         var moving = !string.Equals(Path.GetFullPath(source), Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase);

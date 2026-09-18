@@ -56,7 +56,7 @@ dotnet publish src/AgentsTracker.Gateway -c Release -o /c/Apps/AgentsTracker
 исходники, ни SDK не нужны. Заодно команда:
 
 - переносит `appsettings.Local.json` в папку данных и шифрует секреты канала
-  (`Channel:Settings:BotToken`) и `Proxy`; конфиг со старым `Gateway:BotToken` отвергает
+  (`Channel:Settings:BotToken`), агента (`Cursor:ApiKey`) и `Proxy`; конфиг со старым `Gateway:BotToken` отвергает
   и автозапуск не регистрирует — сначала `scripts\migrate-channel-settings.ps1`;
 - удаляет конфиг рядом с exe — `dotnet publish` копирует туда файл с открытым токеном;
 - закрывает папку данных правами: владелец и SYSTEM;

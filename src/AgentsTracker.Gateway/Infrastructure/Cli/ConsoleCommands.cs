@@ -10,10 +10,12 @@ namespace AgentsTracker.Gateway.Infrastructure.Cli;
 public static class ConsoleCommands
 {
     /// <summary>
-    /// Выполняет команду, если она указана; false — запускать надо сам шлюз. Список каналов
-    /// нужен protect-secrets: какие ключи секретные, знает только модуль канала.
+    /// Выполняет команду, если она указана; false — запускать надо сам шлюз. Списки каналов
+    /// и агентов нужны protect-secrets: какие ключи секретные, знает только их модуль.
     /// </summary>
-    public static bool TryRun(string[] args, IReadOnlyList<IChatChannelModule> channels, TextWriter output, out int exitCode)
+    public static bool TryRun(
+        string[] args, IReadOnlyList<IChatChannelModule> channels, IReadOnlyList<IAgentBackendModule> agents,
+        TextWriter output, out int exitCode)
     {
         exitCode = 0;
         if (args.Length == 0) return false;
@@ -31,8 +33,8 @@ public static class ConsoleCommands
 
         exitCode = name.ToLowerInvariant() switch
         {
-            ProtectSecretsCommand.Name => ProtectSecretsCommand.Run(args, channels, output),
-            InstallCommand.Name => InstallCommand.Run(args, channels, output),
+            ProtectSecretsCommand.Name => ProtectSecretsCommand.Run(args, channels, agents, output),
+            InstallCommand.Name => InstallCommand.Run(args, channels, agents, output),
             UninstallCommand.Name => UninstallCommand.Run(args, output),
             _ => Unknown(name, output),
         };
@@ -62,7 +64,7 @@ public static class ConsoleCommands
             Команды:
               {InstallCommand.Name}                   зарегистрировать автозапуск для этого exe
               {UninstallCommand.Name}                 остановить шлюз и снять автозапуск
-              {ProtectSecretsCommand.Name} [файл]     зашифровать секреты канала и Proxy, перенести конфиг в папку данных
+              {ProtectSecretsCommand.Name} [файл]     зашифровать секреты канала, агента и Proxy, перенести конфиг в папку данных
               help                      эта справка
 
             Ключи install и uninstall:

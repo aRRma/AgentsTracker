@@ -59,8 +59,9 @@ returns `true`.
 
 A project `src/AgentsTracker.Agents.<Name>` referencing `Agents.Abstractions`: an
 `IAgentBackendModule` registers `IAgentBackend`, `IAgentLimits` (or `NoAgentLimits`),
-`IAgentSkillCatalog` (or `NoAgentSkills`) and its own confirmation channel through `IOperatorConsole`.
-A line in the `agents` list in `Program.cs`, a reference in `Gateway.csproj` and a `COPY` line in
+`IAgentSkillCatalog` (or `NoAgentSkills`) and its own confirmation channel through `IOperatorConsole`,
+and declares in `SecretKeys` the keys of its section that `protect-secrets` encrypts (an API key, a
+password). A line in the `agents` list in `Program.cs`, a reference in `Gateway.csproj` and a `COPY` line in
 the `Dockerfile`.
 
 `grep -rn Claude src/AgentsTracker.Gateway --include=*.cs` must only find `Program.cs` and

@@ -26,6 +26,12 @@ public interface IAgentBackendModule
     /// <summary>Совпадает с <see cref="IAgentBackend.Id"/>.</summary>
     string Id { get; }
 
+    /// <summary>
+    /// Ключи секции агента (<c>Gateway:&lt;Id&gt;</c>), которые нельзя хранить открытым текстом:
+    /// их шифрует protect-secrets. У большинства агентов своих секретов нет.
+    /// </summary>
+    IReadOnlyList<string> SecretKeys => [];
+
     void AddServices(IServiceCollection services, IConfiguration configuration);
 
     void MapEndpoints(IEndpointRouteBuilder endpoints);

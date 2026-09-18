@@ -184,7 +184,9 @@ Claude выдаёт шлюз (`--session-id`), Cursor — ACP (`SessionStarted`)
 Конфиг собирается слоями: `appsettings.json` → `appsettings.Local.json` рядом с exe (IDE) → он же в
 папке данных (production) → переменные окружения. `dpapi:…` расшифровывается при загрузке
 (`ProtectedJsonConfigurationProvider`); `protect-secrets` шифрует `Gateway:Proxy` и ключи
-`IChatChannelModule.SecretKeys` в `Gateway:Channel:Settings` (у Telegram — `BotToken`, `Proxy`). В
+`IChatChannelModule.SecretKeys` в `Gateway:Channel:Settings` (у Telegram — `BotToken`, `Proxy`), а
+также `IAgentBackendModule.SecretKeys` в `Gateway:<Id>` агента (у Cursor — `ApiKey`); имена
+секций и ключей — без учёта регистра, как их читает конфиг. В
 `publish\` секретов нет. Переменные `Gateway__*` невидимы дочернему `claude` — хост вычищает их из
 окружения в `ValidateStartup`. Пользовательская сторона всего этого — в
 [deployment.md](deployment.md).
