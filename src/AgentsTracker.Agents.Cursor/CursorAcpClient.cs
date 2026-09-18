@@ -551,7 +551,7 @@ internal sealed class CursorAcpClient : IAsyncDisposable
                 }
 
                 questions.Add(new AgentQuestion(prompt, header, multi, options));
-                ids.Add(new QuestionMap(id, optionIds));
+                ids.Add(new QuestionMap(id, optionIds, multi));
             }
         }
 
@@ -566,9 +566,18 @@ internal sealed class CursorAcpClient : IAsyncDisposable
         for (var i = 0; i < result.Answers.Count && i < ids.Count; i++)
         {
             var answer = result.Answers[i].Answer;
-            var selected = ids[i].Options
-                .Where(o => o.Label.Equals(answer, StringComparison.OrdinalIgnoreCase))
+
+            // Множественный выбор приходит текстом «Вариант A, Вариант B» (см. подсказку
+            // в OperatorConsole.AskOneAsync) — без разбивки по запятой ни один вариант не
+            // совпал бы с целой строкой и вопрос всегда уходил бы agent'у как «skipped».
+            var labels = ids[i].Multi
+                ? answer.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                : [answer];
+
+            var selected = labels
+                .SelectMany(label => ids[i].Options.Where(o => o.Label.Equals(label, StringComparison.OrdinalIgnoreCase)))
                 .Select(o => o.Id)
+                .Distinct(StringComparer.Ordinal)
                 .ToArray();
 
             if (selected.Length == 0)
@@ -758,7 +767,7 @@ internal sealed class CursorAcpClient : IAsyncDisposable
             || text.Contains("unknown method", StringComparison.OrdinalIgnoreCase)
             || text.Contains("method not found", StringComparison.OrdinalIgnoreCase));
 
-    private sealed record QuestionMap(string Id, IReadOnlyList<(string Id, string Label)> Options);
+    private sealed record QuestionMap(string Id, IReadOnlyList<(string Id, string Label)> Options, bool Multi);
 }
 
 internal sealed record CursorPromptResult(
