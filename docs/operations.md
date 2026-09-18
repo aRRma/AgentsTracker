@@ -137,6 +137,12 @@ $env:Gateway__ProjectPath = 'C:\Users\aRRma99\source\repos\ME\AgentsTracker'
 Junction, оставшийся во временной папке от прошлого запуска, роняет `Directory.Delete(recursive: true)`
 с «Access to the path 'link' is denied» — снимайте саму ссылку перед удалением папки.
 
+Скрипту, который гоняет настоящий CLI (`ChatWorker` + `ClaudeBackend`), нужны ещё
+`#:property PublishAot=false` и `#:property JsonSerializerIsReflectionEnabledByDefault=true`
+(`McpConfigFile` сериализует через рефлексию) и заглушка MCP-сервера на `McpPort` скрипта с
+инструментом `approve` (`AddMcpServer().WithHttpTransport().WithTools<…>()`, `MapMcp("/mcp")`) —
+без `mcp__tg__approve` CLI не стартует. Модель — `haiku`, чтобы беречь лимиты.
+
 ## Крупные задачи — в worktree
 
 Основная папка `AgentsTracker` остаётся на `master` (ветки `main` в репозитории нет):

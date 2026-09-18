@@ -144,6 +144,12 @@ and the audit records — and it caught a `Directory.Delete` that failed on a ju
 A junction left inside the temp folder by a previous run makes `Directory.Delete(recursive: true)`
 fail with «Access to the path 'link' is denied» — remove the link itself before the folder.
 
+A harness that drives the real CLI (`ChatWorker` + `ClaudeBackend`) also needs
+`#:property PublishAot=false` and `#:property JsonSerializerIsReflectionEnabledByDefault=true`
+(`McpConfigFile` serializes by reflection), plus a stub MCP server on the harness's `McpPort` with
+an `approve` tool (`AddMcpServer().WithHttpTransport().WithTools<…>()`, `MapMcp("/mcp")`) —
+without `mcp__tg__approve` the CLI does not start. Use `haiku` to spare the limits.
+
 ## Larger tasks — use a worktree
 
 The main `AgentsTracker` folder stays on `master` (there is no `main` branch in the repository):

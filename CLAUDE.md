@@ -208,6 +208,11 @@ time — `DisplayFormat`. The renderer's own quirks (italics, `snake_case`, esca
 - From a session over Telegram the MCP tool list comes from the **running** gateway: after a change
   to `send_file` (allowed types, description) this session still sees the release's old version —
   check such a change with the harness or a scratch instance, not by calling the tool.
+- Working in a worktree: the PowerShell tool's cwd stays the main folder — give `dotnet build`,
+  `git -C` and scripts the worktree's absolute path, or you build and test `master`.
+- `claude` is not on PATH in a session: call `~/.local/bin/claude.exe` directly.
+- Passing a slash command to `claude -p` from Bash needs `MSYS_NO_PATHCONV=1` — MSYS rewrites a
+  leading `/context` into a Windows path.
 
 ## Как работать
 
