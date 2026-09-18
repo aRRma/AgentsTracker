@@ -27,7 +27,7 @@ src/AgentsTracker.Agents.Cursor/         Cursor CLI за теми же конт�
   CursorSkillCatalog    .cursor/skills и .agents/skills; плагины из чата не переключаются
   CursorAcpClient       session/new|load|prompt, request_permission → IOperatorConsole,
                         cursor/generate_image → SendFileAsync; папка inbox через --add-dir
-  NoAgentLimits         остаток плана Cursor не опрашивается; 429/usage limit → RateLimited
+  NoAgentLimits         остаток плана Cursor не опрашивается; 429/usage limit в ошибке запуска → RateLimited
 src/AgentsTracker.Channels.Abstractions/ контракты канала, без конкретного мессенджера:
   IChatChannel          адреса и пределы канала, ConnectAsync/ListenAsync, Send/Edit/Delete/Acknowledge,
                         SendDocumentAsync/SendPhotoAsync — файл и картинка потоком,

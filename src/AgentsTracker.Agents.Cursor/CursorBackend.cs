@@ -92,10 +92,14 @@ public sealed class CursorBackend(
         {
             logger.LogWarning(ex, "ACP оборвался");
             var details = Combine(ex.Message, client?.Stderr);
+            var marker = PlanLimitMarker(details);
+            if (marker is not null)
+                logger.LogWarning("Похоже на лимит тарифа («{Marker}») — очередь будет снята", marker);
+
             return AgentRunResult.Failure(details, started.Elapsed) with
             {
                 SessionId = sessionId,
-                RateLimited = HitPlanLimit(details),
+                RateLimited = marker is not null,
             };
         }
         catch (InvalidOperationException ex)
@@ -109,15 +113,19 @@ public sealed class CursorBackend(
         }
     }
 
+    /// <summary>
+    /// Итог хода. Лимит здесь не ищем: ход завершился, значит тариф пустил, а слово «429»
+    /// в ответе про код сняло бы пользователю всю очередь.
+    /// </summary>
     private static AgentRunResult Map(CursorPromptResult prompt, string? sessionId, TimeSpan duration, bool cancelled)
     {
         var text = prompt.Text.Length > 0 ? prompt.Text : "(пустой ответ)";
-        var limited = HitPlanLimit(prompt.Text) || HitPlanLimit(prompt.Stderr) || HitPlanLimit(prompt.StopReason);
         var usage = new RunUsage
         {
             Turns = prompt.Turns,
             DurationMs = (long)duration.TotalMilliseconds,
-            InputTokens = prompt.UsedTokens,
+            ContextTokens = prompt.ContextTokens,
+            ContextWindow = prompt.ContextWindow,
         };
 
         if (prompt.StopReason is "cancelled" || cancelled)
@@ -145,14 +153,22 @@ public sealed class CursorBackend(
             };
         }
 
+        // Пределы одного хода, не тарифа: следующая задача в очереди пройдёт.
+        var why = prompt.StopReason switch
+        {
+            "max_tokens" => "ответ упёрся в предел длины",
+            "max_turn_requests" => "ход упёрся в предел шагов",
+            "refusal" => "агент отказался продолжать",
+            var other => other,
+        };
+
         return new AgentRunResult
         {
             Ok = false,
-            Text = $"{text}\n\n_({prompt.StopReason})_",
+            Text = $"{text}\n\n_({why})_",
             SessionId = sessionId,
             Duration = duration,
             Usage = usage,
-            RateLimited = limited || prompt.StopReason is "max_tokens" or "max_turn_requests",
         };
     }
 
@@ -163,17 +179,16 @@ public sealed class CursorBackend(
         return $"{message}\n\n```\n{tail}\n```";
     }
 
-    /// <summary>Признака лимита у ACP нет — узнаём по тексту, иначе шлюз жег бы очередь кредитами.</summary>
-    internal static bool HitPlanLimit(string? text)
+    /// <summary>
+    /// Признака лимита у ACP нет — узнаём по тексту ошибки, иначе шлюз жёг бы очередь на отказах.
+    /// Только по сбою запуска, не по ответу агента. null — не лимит.
+    /// </summary>
+    internal static string? PlanLimitMarker(string? text)
     {
-        if (text is not { Length: > 0 }) return false;
+        if (text is not { Length: > 0 }) return null;
 
-        string[] markers =
-        [
-            "429", "usage limit", "usage limit exceeded", "rate limit", "rate_limit",
-            "too many requests", "quota",
-        ];
+        string[] markers = ["429", "usage limit", "rate limit", "rate_limit", "too many requests"];
 
-        return markers.Any(marker => text.Contains(marker, StringComparison.OrdinalIgnoreCase));
+        return markers.FirstOrDefault(marker => text.Contains(marker, StringComparison.OrdinalIgnoreCase));
     }
 }

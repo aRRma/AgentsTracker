@@ -33,7 +33,8 @@ internal sealed class CursorAcpClient : IAsyncDisposable
     private long _nextId;
     private bool _collectText;
     private int _turns;
-    private long _usedTokens;
+    private long _contextTokens;
+    private long _contextWindow;
     private int _disposed;
     private string? _lastActivity;
 
@@ -49,7 +50,11 @@ internal sealed class CursorAcpClient : IAsyncDisposable
         _stderrTask = ReadStderrAsync();
     }
 
-    public string Stderr => _stderr.ToString();
+    /// <summary>Под замком: читатель stderr может дописывать, пока запуск уже разбирает сбой.</summary>
+    public string Stderr
+    {
+        get { lock (_stderr) return _stderr.ToString(); }
+    }
 
     public static CursorAcpClient Start(
         string executable,
@@ -203,7 +208,8 @@ internal sealed class CursorAcpClient : IAsyncDisposable
     {
         _answer.Clear();
         _turns = 0;
-        _usedTokens = 0;
+        _contextTokens = 0;
+        _contextWindow = 0;
         _collectText = true;
         try
         {
@@ -217,7 +223,7 @@ internal sealed class CursorAcpClient : IAsyncDisposable
                 ? reason.GetString() ?? "end_turn"
                 : "end_turn";
 
-            return new CursorPromptResult(stop, _answer.ToString().Trim(), _turns, _usedTokens, _stderr.ToString());
+            return new CursorPromptResult(stop, _answer.ToString().Trim(), _turns, _contextTokens, _contextWindow);
         }
         finally
         {
@@ -352,9 +358,9 @@ internal sealed class CursorAcpClient : IAsyncDisposable
             while (await _process.StandardError.ReadLineAsync() is { } line)
             {
                 if (line.Length == 0) continue;
-                if (_stderr.Length < 8000)
+                lock (_stderr)
                 {
-                    _stderr.AppendLine(line);
+                    if (_stderr.Length < 8000) _stderr.AppendLine(line);
                 }
 
                 _logger.LogDebug("agent stderr: {Line}", Text.Preview(line, 200));
@@ -475,9 +481,13 @@ internal sealed class CursorAcpClient : IAsyncDisposable
                 Report(DescribeTool(update));
                 break;
 
+            // По спеке ACP used/size — заполнение окна контекста, а не потраченные токены:
+            // в InputTokens они раздули бы статистику. cost не читаем — денег в шлюзе нет.
             case "usage_update":
                 if (update.TryGetProperty("used", out var used) && used.TryGetInt64(out var tokens))
-                    _usedTokens = tokens;
+                    _contextTokens = tokens;
+                if (update.TryGetProperty("size", out var size) && size.TryGetInt64(out var window))
+                    _contextWindow = window;
                 break;
         }
     }
@@ -761,7 +771,7 @@ internal sealed class CursorAcpClient : IAsyncDisposable
 }
 
 internal sealed record CursorPromptResult(
-    string StopReason, string Text, int Turns, long UsedTokens, string Stderr);
+    string StopReason, string Text, int Turns, long ContextTokens, long ContextWindow);
 
 internal class CursorAcpException : Exception
 {

@@ -317,8 +317,14 @@ An unknown agent request — JSON-RPC `-32601`, otherwise the CLI waits forever.
 
 `/stop`: `session/cancel`, then kill the process tree. Cursor writes the session id
 (`SessionStarted`); ACP does not take the host's `NewSessionId`. A failed `session/load` is
-`SessionLost`. There is no effort, no `acceptEdits`, no plan-window gauges: 429 / usage limit →
-`RateLimited`. Skills — `.cursor/skills` and `~/.cursor/skills` (also `.agents/skills`); plugins
+`SessionLost`. There is no effort, no `acceptEdits`, no plan-window gauges (`NoAgentLimits`): the
+limit sign is looked for only in the error of a failed launch and its stderr (`429`, `usage limit`,
+`rate limit`, `too many requests`) → `RateLimited`, the queue is dropped. A finished turn is never a
+limit: otherwise a "429" in an answer about code would drop the queue, and `max_tokens` and
+`max_turn_requests` are limits of one turn. The gateway cannot see what is left on the Cursor plan;
+whether a launch goes into overspend is decided by the usage-based pricing setting of the Cursor
+account. `usage_update` (`used`/`size`) is the context fill → `ContextTokens`/`ContextWindow`;
+`cost` is not read. Skills — `.cursor/skills` and `~/.cursor/skills` (also `.agents/skills`); plugins
 are not toggled from chat.
 
 A file into the chat is not MCP, it is `cursor/generate_image` → `IOperatorConsole.SendFileAsync`

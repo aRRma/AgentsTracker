@@ -294,8 +294,13 @@ CLI может читать его в этот момент), комментар
 
 `/stop`: `session/cancel`, затем убийство дерева процесса. Id сессии пишет Cursor
 (`SessionStarted`); хостовый `NewSessionId` ACP не принимает. Неудачный `session/load` —
-`SessionLost`. Effort нет, `acceptEdits` нет, лимиты не шкалами: 429 / usage limit →
-`RateLimited`. Скиллы — `.cursor/skills` и `~/.cursor/skills` (ещё `.agents/skills`), плагины
+`SessionLost`. Effort нет, `acceptEdits` нет, шкал лимита нет (`NoAgentLimits`): признак лимита
+ищется только в ошибке сорвавшегося запуска и её stderr (`429`, `usage limit`, `rate limit`,
+`too many requests`) → `RateLimited`, очередь снимается. Завершённый ход лимитом не бывает: слово
+«429» в ответе про код иначе сняло бы очередь, а `max_tokens` и `max_turn_requests` — пределы одного
+хода. Сколько осталось по тарифу Cursor, шлюз не видит; уйдёт ли запуск в перерасход — решает
+настройка оплаты по использованию в аккаунте Cursor. `usage_update` (`used`/`size`) — заполнение
+контекста → `ContextTokens`/`ContextWindow`; `cost` не читается. Скиллы — `.cursor/skills` и `~/.cursor/skills` (ещё `.agents/skills`), плагины
 из чата не трогаем.
 
 Файл в чат у Cursor — не MCP, а `cursor/generate_image` → `IOperatorConsole.SendFileAsync`

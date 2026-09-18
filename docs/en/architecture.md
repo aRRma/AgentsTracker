@@ -27,7 +27,7 @@ src/AgentsTracker.Agents.Cursor/         Cursor CLI behind the same contracts:
   CursorSkillCatalog    .cursor/skills and .agents/skills; plugins are not toggled from chat
   CursorAcpClient       session/new|load|prompt, request_permission → IOperatorConsole,
                         cursor/generate_image → SendFileAsync; inbox folder via --add-dir
-  NoAgentLimits         Cursor plan remaining is not polled; 429/usage limit → RateLimited
+  NoAgentLimits         Cursor plan remaining is not polled; 429/usage limit in a launch error → RateLimited
 src/AgentsTracker.Channels.Abstractions/ channel contracts, no specific messenger:
   IChatChannel          channel addresses and limits, ConnectAsync/ListenAsync, Send/Edit/Delete/Acknowledge,
                         SendDocumentAsync/SendPhotoAsync — a file and a picture as a stream,
