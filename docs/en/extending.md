@@ -119,7 +119,7 @@ A class in `Infrastructure/Cli/` (`protect-secrets` lives in `Security/`, next t
 
 Commands run before the host is built: DI and the channel are unavailable to them, the answer goes
 to `output` only, the exit code is 0 or 1. Taken: `protect-secrets`, `install`, `uninstall`,
-`help`. Anything starting with a dash is not a command — those are configuration arguments.
+`help`. Anything starting with a dash or a slash is not a command — those are configuration arguments.
 
 ## An autostart mechanism (launchd, systemd)
 

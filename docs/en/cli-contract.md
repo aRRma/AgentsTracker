@@ -20,6 +20,10 @@ raw payload is logged only at Debug: at Information, for Edit/Write that would b
 `questions` and `answers` (key — the question text); it reaches the host as
 `IOperatorConsole.AskAsync`.
 
+CLI 2.1.261 `--help` drifted, the flags did not: it shows `default` as `manual` (the CLI still
+accepts `default` — `manual` is an alias) and no longer lists `--permission-prompt-tool` on its
+own (only inside `--permission-prompts`), yet the flag works. Re-check both after a CLI update.
+
 ### The «Всегда» ("Always") button
 
 Two cases:
@@ -40,8 +44,8 @@ something (the command, the sides of an edit, the remaining `MultiEdit` edits, t
 `Write`), `OperatorConsole` sends the full text as a file before the card
 (`ApprovalBroker.SendAttachmentAsync`), and the card warns «показано не всё» ("not everything
 is shown"). The file name and content are decided by `ApprovalCardRenderer`
-(`ApprovalAttachment`): usually `<tool>-input.txt` with a «=== фрагмент ===» ("=== fragment
-===") summary, an `ExitPlanMode` plan — in full, as `plan.md` (`Truncated.AddDocument`). Cards
+(`ApprovalAttachment`): usually `<tool>-input.txt` with every truncated field under its own «=== <field> ===» header
+(«=== Команда ===», «=== Было ===» / «=== Станет ===», «=== Вход целиком ===»), an `ExitPlanMode` plan — in full, as `plan.md` (`Truncated.AddDocument`). Cards
 are assembled via `EscapeCapped` with a limit per fragment: an overflowing message would fail
 on send, and the exception would become a denial.
 

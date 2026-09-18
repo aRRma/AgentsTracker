@@ -191,7 +191,7 @@ README — руководство пользователя: меняя защи�
 мог быть вставлен токен).
 
 Виды перечислены в `AuditKinds`: `access.rejected`, `message`, `run.start`/`run.end`, `approval`,
-`question`, `file.send`, `settings`, `rules`, `session.reset`, `limit.refused`, `gateway`. Экраны
+`question`, `file.send`, `file.receive`, `settings`, `rules`, `session.reset`, `limit.refused`, `gateway`. Экраны
 меню пишут через `SettingsAudit.Changed`.
 
 Это не замена `ILogger`: в аудит идёт то, за что отвечает человек, в лог — то, что нужно для

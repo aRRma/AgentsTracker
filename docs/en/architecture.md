@@ -193,7 +193,7 @@ ready-made keys from `state.json`. No secrets and no full texts (≤200 characte
 is a `Text.Preview` excerpt, 80 characters: a token could have been pasted there).
 
 The kinds are in `AuditKinds`: `access.rejected`, `message`, `run.start`/`run.end`, `approval`,
-`question`, `file.send`, `settings`, `rules`, `session.reset`, `limit.refused`, `gateway`. Menu
+`question`, `file.send`, `file.receive`, `settings`, `rules`, `session.reset`, `limit.refused`, `gateway`. Menu
 screens write through `SettingsAudit.Changed`.
 
 This is not a replacement for `ILogger`: the audit gets what a human is answerable for, the log

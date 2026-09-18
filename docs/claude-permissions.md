@@ -97,9 +97,9 @@
 - `mcp-gateway-<pid>.json` — токен, по которому `claude` ходит к шлюзу: не читать;
 - `appsettings.Local.json` — токен бота: чтение и правка только с вопросом. Если
   `protect-secrets` уже выполнен, там `dpapi:…`, но правило дешевле проверки;
-- `dotnet run`, `AgentsTracker.Gateway.exe`, `schtasks`, `docker compose`, `Stop-Process` —
-  с вопросом: из сессии, запущенной через Telegram, это остановит или задвоит сам шлюз
-  (`docs/operations.md`);
+- `dotnet run`, `AgentsTracker.Gateway.exe`, `schtasks`, `docker compose`, `Stop-Process`,
+  `Stop-ScheduledTask` — с вопросом: из сессии, запущенной через Telegram, это остановит или
+  задвоит сам шлюз (`docs/operations.md`);
 - `scripts\monitor-api.ps1` — без вопроса. Запрет на `curl`/`Invoke-RestMethod` не различает
   интернет и `127.0.0.1`, и агент по логам сессий раз за разом бился в него, пытаясь прочитать
   `/api/snapshot` монитора. Скрипт ходит только на loopback и только читает; расширять
