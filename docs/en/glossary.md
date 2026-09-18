@@ -19,6 +19,9 @@ English (`IAgentLimits`, `ProjectPath`, `audit\`) — this glossary is about tex
 | One execution of the agent | **запуск** | прогон, run, задача |
 | A step inside a run | **ход** (short form `х`) | turn, итерация |
 | The agent's continuous context | **сессия** | диалог, история, тред |
+| How much of the model's window a session takes, in tokens | **контекст** («заполнен на 62%») | память, окно, история |
+| Retelling the conversation briefly to free the context (`/compact`) | **сжать** / **сжатие** | очистить, компактить, сократить |
+| A one-off request with no session and no project (`/ask`) | **вопрос** | запрос, режим ASK, режим вопроса |
 | The agent asking about an action | **подтверждение** | согласование, запрос разрешения, апрув |
 | The message with the decision buttons | **карточка подтверждения** | карточка согласования, запрос |
 | What the «Всегда» button writes down | **правило «всегда»** | разрешение, allow-правило |
@@ -57,6 +60,16 @@ not a word of this project.
 buttons. A режим is `--permission-mode`, the overall setting of how often those questions come at
 all. Both used to be called «разрешение», which made the word mean two things at once; the buttons
 stay «✅ Разрешить» / «❌ Отклонить», because those are actions, not terms.
+
+**сессия / контекст.** A сессия is the conversation branch itself: it is picked, continued, started
+anew. The контекст is how much room that branch takes in the model right now: it is looked at and
+compressed. «Сжать» keeps the same сессия with a smaller контекст; «Новая сессия» starts another
+branch with an empty one.
+
+**задача / вопрос.** A задача goes into the project's session and continues it. A вопрос is a
+one-off, outside any session and project, answered by its own model, and leaves nothing behind. It
+is not a «режим»: that word belongs to `--permission-mode`. When the agent itself asks, that is a
+«вопрос агента» — a card with options, not the user's вопрос.
 
 **лимит / предел.** A лимит belongs to the subscription: «Лимит тарифа исчерпан», the windows,
 the bars. A предел is technical and has nothing to do with money: a file size, a message length,
