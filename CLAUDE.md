@@ -90,7 +90,8 @@ kills startup.
 from `IChatCommandHandler.Commands` is matched **before** the text handlers — otherwise `/stop`
 would go to a waiting free-form answer and there would be nothing left to interrupt a stuck run
 with. Then the `IChatTextHandler` chain in module order: an answer to a card → skill arguments →
-into the agent's queue (always `true`, hence `ChatModule` last). Unknown slash commands are Claude
+the text of a вопрос after a bare `/ask` → into the agent's queue (always `true`, hence
+`ChatModule` last). Unknown slash commands are Claude
 Code's own, they go to the CLI. Buttons: the `IChatButtonHandler` chain, `cfg:` — the menu,
 everything else — approvals.
 
@@ -114,7 +115,13 @@ undocumented parts of the contract (`updatedInput`, «Всегда», the trunca
   other tools there — that bypasses the cards past the machine's config.
 - `--add-dir` carries exactly one folder — the chat's `inbox`. Never the data directory itself
   (`state.json`, `appsettings.Local.json` with the secrets, the MCP token) and never the project
-  subfolder: `/project` may change while the message waits in the queue.
+  subfolder: `/project` may change while the message waits in the queue. A вопрос (`/ask`) gets no
+  `--add-dir` at all.
+- A вопрос (`AgentRunKind.Question`) runs with `--no-session-persistence`, `--tools WebSearch,WebFetch`
+  and `--strict-mcp-config` in an empty `%TEMP%\AgentsTracker-question` — never in the project or the
+  data directory, and its `SessionId` never reaches `SessionStore`. Its model is `Gateway:Question`,
+  not the chat selection. `/context` and `/compact` are the backend's `ContextReport`/`Compact` kinds,
+  not prompts the host types. Details — `docs/en/cli-contract.md`, "Context" and "A question".
 - CLI arguments go through `ProcessStartInfo.ArgumentList`, do not concatenate a string.
 
 ### `--permission-mode` is always passed
@@ -136,6 +143,11 @@ the config comes in layers up to the `Gateway__*` environment variables. The aud
 is answerable for ("who, where, what" — no secrets, no full texts, addresses as `channel:value`
 keys, kinds in `AuditKinds`), the log gets what is needed for debugging. All three —
 `docs/en/architecture.md`, the user-facing side of the config — `docs/en/deployment.md`.
+
+How full a session's context is lives on its `SessionRecord` (`ContextTokens`/`ContextWindow`),
+measured from the last main-branch turn of each run — the `usage` of the `result` line is a sum over
+turns, not the context. «Сжать» and «Новая сессия» on the «Контекст» screen go through
+`PendingConfirmations`; an irreversible menu button asks first.
 
 ### Limits and money
 

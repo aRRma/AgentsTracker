@@ -167,6 +167,39 @@ Id новой сессии выдаёт **шлюз** (`NewSessionId` → `--sess
 `/sessions` показывает до 8 последних; кнопка несёт `ShortId` (8 символов), а не номер в
 списке: завершившийся между отрисовкой и нажатием запуск сдвинул бы номера.
 
+## Контекст: заполненность, разбивка, сжатие
+
+Проверено на CLI 2.1.261.
+
+- **Заполненность.** `usage` в строке `result` — сумма за все ходы, а не размер контекста. Размер —
+  это `usage` **последнего** события `assistant` с `parent_tool_use_id: null`:
+  `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`. События с
+  `"model": "<synthetic>"` — ответы локальных команд с нулями в `usage`, их пропускаем. Окно —
+  `modelUsage.<модель>.contextWindow` в итоге (1 000 000 у `sonnet-5`, 200 000 у `haiku-4-5`);
+  рядом `canonicalModel` — имя без даты сборки.
+- **`/context` в `-p`** работает с `--resume`: модель не вызывается (`num_turns: 0`, пустой
+  `modelUsage`), ответ — markdown в `result`: заголовок с `Tokens: 46.6k / 200k (23%)`, таблица
+  «Estimated usage by category», а дальше таблицы по каждому MCP-инструменту и скиллу — сотни строк.
+  `ClaudeBackend.ContextSummary` отрезает всё после таблицы категорий. Цифры зависят от флагов
+  запуска (`--mcp-config`, `--model`), поэтому разбивка идёт с теми же аргументами, что задача.
+- **`/compact` в `-p`** работает с `--resume` и сохраняет id сессии. Пишет
+  `{"type":"system","subtype":"compact_boundary","compact_metadata":{"pre_tokens":…,"post_tokens":…}}`,
+  текст `result` пустой, `num_turns: 0`, но `modelUsage` не пуст — сжатие вызывает модель и тратит
+  тариф. После него размер контекста — `post_tokens`, до следующего настоящего хода.
+- Проверка из Git Bash: MSYS превращает ведущий `/context` в `C:/Program Files/Git/context`, и модель
+  получает путь вместо команды. `MSYS_NO_PATHCONV=1` или проверять из PowerShell;
+  `ProcessStartInfo.ArgumentList` в шлюзе этого не касается.
+
+## Вопрос без сессии (`Kind = Question`)
+
+`--no-session-persistence` (только с `-p`: в `~/.claude/projects` ничего не пишется, `--resume`
+невозможен), без `--resume`/`--session-id`, `--tools WebSearch,WebFetch` (только встроенные; `""`
+выключает все) и `--strict-mcp-config`: грузится только свой сервер шлюза `tg` из `--mcp-config` —
+иначе MCP-серверы пользователя съедают ~40k токенов контекста на каждый вопрос (48k против 9,6k на
+ответе из одного слова). `--permission-mode` и `--permission-prompt-tool` передаются как всегда.
+Рабочая папка — пустая `%TEMP%\AgentsTracker-question`: не проект (подтянулся бы его CLAUDE.md) и
+не папка данных (секреты).
+
 ## Лимиты тарифа
 
 Единственный ограничитель — `IAgentLimits`, окна `five_hour`, `seven_day`,

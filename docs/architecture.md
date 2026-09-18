@@ -51,7 +51,9 @@ src/AgentsTracker.Gateway/
     Approvals/          карточки подтверждения, ApprovalBroker, /rules
     Chat/               ChatWorker (очередь, запуск, сессии), RunStatusMessage, /new /stop,
                         AttachmentInbox — картинки из чата: скачивание, проверки, папка inbox, чистка
-    Settings/           SettingsMenuCoordinator + Screens/*, /menu /status /sessions /agent /skills /project /usage
+    Settings/           SettingsMenuCoordinator + Screens/*, /menu /status /sessions /agent /skills /project /usage;
+                        PendingConfirmations — второе нажатие для необратимых кнопок («Контекст»)
+    Question/           /ask и кнопка «Вопрос»: разовый запуск без сессии (QuestionLauncher)
     Help/ Audit/ Monitor/   /start /help; /audit; веб-страница (index.html — EmbeddedResource) и /api/*
 ```
 
@@ -69,8 +71,9 @@ src/AgentsTracker.Gateway/
 1. слэш-команда из `IChatCommandHandler.Commands` — **в первую очередь**, иначе `/stop` ушёл бы в
    ожидающий свободный ответ, и прервать зависший запуск было бы нечем;
 2. цепочка `IChatTextHandler` в порядке модулей: ответ на карточку (`ApprovalTextHandler`) →
-   аргументы скилла (`SkillArgumentsTextHandler`) → в очередь агента (`ChatEnqueueTextHandler`,
-   всегда `true`). Поэтому `ChatModule` последний. Незнакомые слэш-команды — команды самого Claude
+   аргументы скилла (`SkillArgumentsTextHandler`) → текст вопроса после голого `/ask` или кнопки
+   «Вопрос» (`QuestionTextHandler`) → в очередь агента (`ChatEnqueueTextHandler`, всегда `true`).
+   Поэтому `ChatModule` последний. Незнакомые слэш-команды — команды самого Claude
    Code, они уходят в CLI.
 
 Порядок держится и для подписи к картинке: `/stop` должен работать с приложенной картинкой, и тогда
@@ -135,6 +138,26 @@ README — руководство пользователя: меняя защи�
 `EffectiveEffort`, `ProjectPath`. Значение, равное конфигу, хранится как `null`: иначе правка
 конфига молча перебивалась бы старым выбором.
 
+### Контекст и виды запуска
+
+`AgentRunRequest.Kind` говорит бэкенду, что за запуск: `Task` — задача в сессии, `Question` — вопрос
+(без `--resume`, ничего не пишется на диск, `SessionId` в итоге всегда `null`, чтобы хост не сделал
+разовый id активным), `ContextReport` — `/context` (модель не вызывается) и `Compact` — `/compact`
+(сессия та же). Команды двух последних — свои у бэкенда, хост спрашивает только
+`Capabilities.Context`. `ChatWorker` не проверяет лимит для `ContextReport` (он бесплатный и нужнее
+всего как раз на исчерпанном тарифе) и отказывает обоим видам контекста, если сессию сняли, пока они
+ждали в очереди, — запуск без сессии создал бы её впустую.
+
+Заполненность контекста берётся из самого запуска, а не отдельным вызовом: `RunUsage.ContextTokens` —
+вход **последнего** хода основной ветки (у сабагентов своё окно), после `/compact` — его
+`post_tokens`; `ContextWindow` — окно основной модели. `SessionStore.RecordContext` кладёт их в
+`SessionRecord` вместе со временем замера, и экран «Контекст» показывает их без запуска агента.
+Проценты — `LimitMath.Percent`, как везде.
+
+«Сжать» и «Новая сессия» на этом экране идут через `PendingConfirmations`: первое нажатие только
+спрашивает, «Да» срабатывает лишь для того же действия, той же сессии и в пределах 2 минут; вопрос
+снимается по «Нет» и при повторном открытии экрана.
+
 `ProjectCatalog`: список `Gateway:Projects`, иначе обход `Gateway:ProjectsRoot` до
 `ProjectsRootDepth`, иначе соседи `ProjectPath`. `ProjectScreen` выбирает в два шага (папка →
 проект) страницами по 12. Текущий проект идёт первым в своей группе, а после выбора страница
@@ -189,6 +212,13 @@ README — руководство пользователя: меняя защи�
 (≤30 с) и повторяет ту же часть; так же для файла от агента в `ApprovalBroker` — оба через
 `RateLimitRetry.OnceAsync` (`Channels.Abstractions`), один общий потолок. Суммы, токены и время —
 `DisplayFormat`.
+
+Подпись под ответом (`ChatWorker.Footer`): id сессии (или «💬 вопрос»), модель, которая
+**на самом деле** ответила, — та, у которой больше всего выходных токенов в `modelUsage`, сокращённая
+до `opus-5`/`haiku-4-5` (`RunUsage.PrimaryModel`); выбранный алиас — только если CLI ничего не
+сказал; дальше **переданный** effort одной-тремя буквами (`DisplayFormat.EffortShort`: L, M, H, XH,
+MAX; CLI его обратно не сообщает), ходы и время. У разбивки контекста модели в подписи нет: модель
+не вызывалась.
 
 ### Числа
 

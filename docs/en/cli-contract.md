@@ -185,6 +185,39 @@ during the run.
 position in the list: a run finishing between rendering and the button press would shift the
 numbers.
 
+## Context: fill, breakdown, compaction
+
+Checked on CLI 2.1.261.
+
+- **Fill.** The `usage` of the `result` line is the sum over all turns, not the context size. The
+  size is the `usage` of the **last** `assistant` event with `parent_tool_use_id: null`:
+  `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`. Events with
+  `"model": "<synthetic>"` are answers of local commands with zeros in `usage` — skipped. The
+  window is `modelUsage.<model>.contextWindow` of the result (1 000 000 for `sonnet-5`, 200 000 for
+  `haiku-4-5`); `canonicalModel` next to it is the name without the build date.
+- **`/context` in `-p`** works with `--resume`: the model is not called (`num_turns: 0`, empty
+  `modelUsage`), the answer is markdown in `result` — a header with `Tokens: 46.6k / 200k (23%)`, the
+  «Estimated usage by category» table and then per-tool tables for MCP and skills, hundreds of lines.
+  `ClaudeBackend.ContextSummary` cuts everything after the category table. The numbers depend on the
+  run's flags (`--mcp-config`, `--model`), so the breakdown is run with the same arguments as a task.
+- **`/compact` in `-p`** works with `--resume` and keeps the session id. It emits
+  `{"type":"system","subtype":"compact_boundary","compact_metadata":{"pre_tokens":…,"post_tokens":…}}`,
+  the `result` text is empty, `num_turns: 0`, but `modelUsage` is not — compaction is a model call
+  and spends the plan. After it the context size is `post_tokens` until the next real turn.
+- Testing this from Git Bash: MSYS turns a leading `/context` into `C:/Program Files/Git/context`,
+  and the model gets a path instead of a command. `MSYS_NO_PATHCONV=1`, or test from PowerShell;
+  `ProcessStartInfo.ArgumentList` in the gateway is not affected.
+
+## A question with no session (`Kind = Question`)
+
+`--no-session-persistence` (only with `-p`: nothing is written to `~/.claude/projects`, `--resume`
+is impossible), no `--resume`/`--session-id`, `--tools WebSearch,WebFetch` (built-ins only; `""`
+disables all) and `--strict-mcp-config`: only the gateway's own `tg` server from `--mcp-config` is
+loaded — the user's MCP servers cost ~40k tokens of context per question otherwise (48k vs 9.6k on
+a one-word answer). `--permission-mode` and `--permission-prompt-tool` are passed as always. The
+working folder is an empty `%TEMP%\AgentsTracker-question`: not the project (its CLAUDE.md would load)
+and not the data directory (secrets).
+
 ## Plan limits
 
 The only limiter is `IAgentLimits`, with windows `five_hour`, `seven_day`,

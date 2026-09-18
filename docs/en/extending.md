@@ -12,17 +12,19 @@ A class implementing `IChatCommandHandler` in the feature folder, `AddSingleton`
 an entry in `ChatCommandCatalog` (the channel's command hints) and in the `HelpCommandHandler`
 text.
 
-Taken: `/start /help` (Help), `/new /stop` (Chat), `/rules` (Approvals), `/audit` (Audit),
-`/menu /settings /status /sessions /agent /model /effort /mode /skills /project /usage`
-(Settings). **A duplicate across two features kills startup.**
+Taken: `/start /help` (Help), `/new /stop` (Chat), `/ask` (Question), `/rules` (Approvals),
+`/audit` (Audit), `/menu /settings /status /sessions /agent /model /effort /mode /skills /project
+/usage` (Settings). **A duplicate across two features kills startup.**
 
-The «Меню» screen holds screens only — `/new /stop /model /effort /mode` work as text but are not
-in the list: the same thing is available as buttons on the «Сессии» and «Агент» screens, and a
-long list reads worse than a short one. The command list and the help share one order: status and
-sessions, agent and skills, project, usage, rules, logs. `RootScreen` repeats it up to and
-including usage — there are no menu buttons for `/rules` and `/audit`.
+The «Меню» list holds screens plus `/ask` — `/new /stop /model /effort /mode` work as text but are
+not in the list: the same thing is available as buttons on the «Сессии» and «Агент» screens, and a
+long list reads worse than a short one. `/ask` is there because the question is typed right after
+the command. The command list and the help share one order: status and sessions, the question,
+agent and skills, project, usage, rules, logs. `RootScreen` repeats it up to and including usage,
+with «Контекст» next to «Вопрос» — there are no menu buttons for `/rules` and `/audit`.
 
-Every other slash command goes to the CLI as-is: unknown slash commands are Claude Code's own.
+Every other slash command goes to the CLI as-is: unknown slash commands are Claude Code's own. That
+is why the «Контекст» screen has no `/context` command of its own: it would shadow Claude Code's.
 
 ## A settings screen
 
@@ -39,6 +41,9 @@ A class implementing `ISettingsScreen` in `Features/Settings/Screens/`, registra
   the answer goes to whoever pressed the button.
 - The list position lives in `ScreenNavigation` per user: screens are singletons, there can be
   several users.
+- An irreversible button (lose the context, forget the list) asks first: `PendingConfirmations`
+  remembers the action and the session per user, the «Да» button carries `yes:<action>`, and
+  `Open` drops the pending question. `ContextScreen` is the example.
 - Pages and callback_data keys — `SettingsKeyboard.Page`/`Key12`. The one-letter prefix of a
   screen argument must not be a hex character, or it will be confused with a key. The
   callback_data length (64 bytes) is checked by `TelegramChannel.Markup`, which names the button

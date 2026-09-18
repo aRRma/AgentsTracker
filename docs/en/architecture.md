@@ -51,7 +51,9 @@ src/AgentsTracker.Gateway/
     Approvals/          approval cards, ApprovalBroker, /rules
     Chat/               ChatWorker (queue, launch, sessions), RunStatusMessage, /new /stop,
                         AttachmentInbox — pictures from the chat: download, checks, inbox folder, cleanup
-    Settings/           SettingsMenuCoordinator + Screens/*, /menu /status /sessions /agent /skills /project /usage
+    Settings/           SettingsMenuCoordinator + Screens/*, /menu /status /sessions /agent /skills /project /usage;
+                        PendingConfirmations — the second press for irreversible buttons («Контекст»)
+    Question/           /ask and the «Вопрос» button: a one-off run with no session (QuestionLauncher)
     Help/ Audit/ Monitor/   /start /help; /audit; the web page (index.html — EmbeddedResource) and /api/*
 ```
 
@@ -70,7 +72,8 @@ is a rejection too). Text is processed in order:
 1. a slash command from `IChatCommandHandler.Commands` — **first of all**, otherwise `/stop` would
    go to a waiting free-form answer and there would be nothing left to interrupt a stuck run with;
 2. the `IChatTextHandler` chain in module order: an answer to a card (`ApprovalTextHandler`) →
-   skill arguments (`SkillArgumentsTextHandler`) → into the agent's queue (`ChatEnqueueTextHandler`,
+   skill arguments (`SkillArgumentsTextHandler`) → the text of a вопрос after a bare `/ask` or the
+   «Вопрос» button (`QuestionTextHandler`) → into the agent's queue (`ChatEnqueueTextHandler`,
    always `true`). That is why `ChatModule` is last. Unknown slash commands are Claude Code's own
    commands, they go to the CLI.
 
@@ -137,6 +140,26 @@ The chat-side selection (`SessionStore`) sits on top of the config: `EffectiveMo
 `EffectivePermissionMode`, `EffectiveEffort`, `ProjectPath`. A value equal to the config is stored
 as `null`: otherwise a config edit would be silently overridden by an old selection.
 
+### Context and run kinds
+
+`AgentRunRequest.Kind` tells the backend what the run is: a `Task` in the session, a `Question`
+(no `--resume`, nothing written to disk, `SessionId` in the result is always `null` so the host never
+makes a one-off id active), a `ContextReport` (`/context`, the model is not called) or a `Compact`
+(`/compact`, same session). The commands of the last two are the backend's own — the host only asks
+`Capabilities.Context`. `ChatWorker` skips the limit check for `ContextReport` (it costs nothing and
+is most useful exactly when the plan is exhausted), and refuses both context kinds when the session
+was dropped while they waited in the queue — a run without a session would create one for nothing.
+
+How full the context is comes from the run itself, not from a separate call: `RunUsage.ContextTokens`
+is the input of the **last** main-branch turn (sub-agents have their own window), after a
+`/compact` — its `post_tokens`; `ContextWindow` is the window of the primary model.
+`SessionStore.RecordContext` keeps them on the `SessionRecord` with the measurement time, and the
+«Контекст» screen shows them without starting the agent. Percent — `LimitMath.Percent`, as everywhere.
+
+«Сжать» and «Новая сессия» on that screen go through `PendingConfirmations`: the first press only
+asks, «Да» works only for the same action, the same session and within 2 minutes; the pending
+question is dropped on «Нет» and on reopening the screen.
+
 `ProjectCatalog`: the `Gateway:Projects` list, otherwise a walk of `Gateway:ProjectsRoot` down to
 `ProjectsRootDepth`, otherwise the neighbours of `ProjectPath`. `ProjectScreen` selects in two
 steps (folder → project) in pages of 12. The current project comes first in its group, and after
@@ -191,6 +214,13 @@ answer would vanish silently. On a 429 in the middle of a multi-part answer
 `ChatWorker.SendPartAsync` waits `RetryAfter` (≤30 s) and repeats the same part; the same goes for
 the agent's file in `ApprovalBroker` — both through `RateLimitRetry.OnceAsync`
 (`Channels.Abstractions`), one shared ceiling. Sums, tokens and time — `DisplayFormat`.
+
+The footer under an answer (`ChatWorker.Footer`): the session id (or «💬 вопрос»), the model that
+**actually** answered — the one with the most output tokens in `modelUsage`, shortened to
+`opus-5`/`haiku-4-5` (`RunUsage.PrimaryModel`); the chosen alias only if the CLI said nothing —
+then the effort that was **passed** as one to three letters (`DisplayFormat.EffortShort`: L, M, H,
+XH, MAX; the CLI does not report it back), turns and time. A context breakdown has no model in its
+footer: the model was not called.
 
 ### Numbers
 
