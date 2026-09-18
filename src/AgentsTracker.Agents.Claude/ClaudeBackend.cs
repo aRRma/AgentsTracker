@@ -33,8 +33,12 @@ public sealed class ClaudeBackend(
     {
         var started = Stopwatch.StartNew();
 
-        var resumedSessionId = request.ResumeSessionId is { Length: > 0 } resumed ? resumed : null;
+        // Вопрос не продолжает сессию и не оставляет её: разовый id хосту не отдаём,
+        // иначе он стал бы активной сессией проекта.
+        var persistent = request.Kind != AgentRunKind.Question;
+        var resumedSessionId = persistent && request.ResumeSessionId is { Length: > 0 } resumed ? resumed : null;
         var sessionId = resumedSessionId ?? request.NewSessionId;
+        var prompt = PromptFor(request);
 
         using var timeoutCts = new CancellationTokenSource(request.Timeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
@@ -58,11 +62,11 @@ public sealed class ClaudeBackend(
         // Выключить их совсем может только владелец аккаунта в claude.ai.
         psi.Environment["DISABLE_EXTRA_USAGE_COMMAND"] = "1";
 
-        foreach (var arg in BuildArguments(request, resumedSessionId, sessionId))
+        foreach (var arg in BuildArguments(request, prompt, resumedSessionId, sessionId))
             psi.ArgumentList.Add(arg);
 
         // Промпт в лог целиком не пишем: это сообщение пользователя, хватит начала.
-        logger.LogInformation("claude -p «{Prompt}» {Args}", Truncate(request.Prompt.ReplaceLineEndings(" "), 80),
+        logger.LogInformation("claude -p «{Prompt}» {Args}", Truncate(prompt.ReplaceLineEndings(" "), 80),
             string.Join(' ', psi.ArgumentList.Skip(2)));
 
         using var process = new Process { StartInfo = psi };
@@ -79,7 +83,7 @@ public sealed class ClaudeBackend(
 
         // Процесс поднялся — хост запоминает сессию сразу, не дожидаясь ответа: с этого
         // момента её можно продолжить, даже если запуск оборвут.
-        if (resumedSessionId is null)
+        if (persistent && resumedSessionId is null)
         {
             observer.SessionStarted(sessionId);
             logger.LogInformation("Новая сессия {SessionId} в {Project}", sessionId, request.ProjectPath);
@@ -117,13 +121,49 @@ public sealed class ClaudeBackend(
             {
                 Ok = false,
                 Cancelled = true,
-                Text = $"{reason} Незавершённый ход продолжится со следующим сообщением.",
-                SessionId = sessionId,
+                Text = persistent ? $"{reason} Незавершённый ход продолжится со следующим сообщением." : reason,
+                SessionId = persistent ? sessionId : null,
                 Duration = started.Elapsed,
             };
         }
 
-        return Parse(output, stderr, process.ExitCode, started.Elapsed, resumedSessionId, sessionId);
+        var result = Parse(output, stderr, process.ExitCode, started.Elapsed, resumedSessionId, sessionId);
+
+        return result with
+        {
+            SessionId = persistent ? result.SessionId : null,
+            Text = request.Kind == AgentRunKind.ContextReport && result.Ok ? ContextSummary(result.Text) : result.Text,
+            Usage = result.Usage is { } usage
+                ? usage with { ContextTokens = output.Compaction?.After ?? output.ContextTokens ?? 0 }
+                : null,
+            Compaction = output.Compaction,
+        };
+    }
+
+    /// <summary>
+    /// Промпт запуска. Команды контекста — свои у Claude Code, хост о них не знает. В режиме
+    /// <c>-p</c> они работают (проверено на CLI 2.1.261): /context модель не вызывает,
+    /// /compact пишет событие compact_boundary.
+    /// </summary>
+    private static string PromptFor(AgentRunRequest request) => request.Kind switch
+    {
+        AgentRunKind.ContextReport => "/context",
+        AgentRunKind.Compact => "/compact",
+        _ => request.Prompt,
+    };
+
+    /// <summary>
+    /// Из ответа /context — только заголовок и разбивка по категориям. Дальше идут таблицы
+    /// по каждому MCP-инструменту и скиллу: сотни строк, которые в чате разойдутся на
+    /// несколько сообщений и заслонят главное.
+    /// </summary>
+    private static string ContextSummary(string text)
+    {
+        var categories = text.IndexOf("### Estimated usage by category", StringComparison.Ordinal);
+        if (categories < 0) return text;
+
+        var next = text.IndexOf("\n### ", categories + 1, StringComparison.Ordinal);
+        return next < 0 ? text : text[..next].TrimEnd();
     }
 
     /// <summary>Из stdout только нужное разбору итога: строка <c>result</c> и всё, что ею не было.</summary>
@@ -132,7 +172,10 @@ public sealed class ClaudeBackend(
     /// Не-JSON строки (баннер обновления, текст ошибки) плюс, если итога не было, последнее
     /// событие — единственная подсказка, на чём всё оборвалось.
     /// </param>
-    private sealed record StreamOutput(string? ResultLine, string Noise);
+    /// <param name="ContextTokens">Контекст последнего хода основной ветки; null — ходов не было.</param>
+    /// <param name="Compaction">Сжатие, если оно случилось в запуске: после него контекст — это его итог.</param>
+    private sealed record StreamOutput(
+        string? ResultLine, string Noise, long? ContextTokens, ContextCompaction? Compaction);
 
     /// <summary>
     /// Читает stdout построчно: вызовы инструментов отдаёт наблюдателю, остальные события
@@ -143,6 +186,8 @@ public sealed class ClaudeBackend(
         var noise = new StringBuilder();
         string? resultLine = null;
         string? lastEvent = null;
+        long? context = null;
+        ContextCompaction? compaction = null;
 
         while (await stdout.ReadLineAsync(CancellationToken.None) is { } line)
         {
@@ -164,6 +209,16 @@ public sealed class ClaudeBackend(
 
             lastEvent = line;
 
+            // Ход после сжатия снова даёт размер контекста — он и есть последний, сжатие
+            // остаётся в силе только до него.
+            if (parsed.ContextTokens is { } tokens)
+            {
+                context = tokens;
+                compaction = null;
+            }
+
+            if (parsed.Compaction is { } compacted) compaction = compacted;
+
             foreach (var activity in parsed.ToolCalls)
             {
                 // Наблюдатель — чужой код (статус в чате). Его исключение уронило бы чтение
@@ -175,13 +230,14 @@ public sealed class ClaudeBackend(
 
         if (resultLine is null && lastEvent is not null) noise.AppendLine(lastEvent);
 
-        return new StreamOutput(resultLine, noise.ToString().TrimEnd());
+        return new StreamOutput(resultLine, noise.ToString().TrimEnd(), context, compaction);
     }
 
-    private IEnumerable<string> BuildArguments(AgentRunRequest request, string? resumedSessionId, string sessionId)
+    private IEnumerable<string> BuildArguments(
+        AgentRunRequest request, string prompt, string? resumedSessionId, string sessionId)
     {
         yield return "-p";
-        yield return request.Prompt;
+        yield return prompt;
 
         // Поток событий, а не один JSON в конце: по нему чат показывает, чем агент занят.
         // Итог приходит последней строкой той же формы, что у --output-format json.
@@ -192,7 +248,19 @@ public sealed class ClaudeBackend(
 
         // Либо продолжаем сессию, либо создаём новую с заранее выданным id — CLI принимает
         // его как есть. Вместе эти флаги передавать нельзя.
-        if (resumedSessionId is not null)
+        if (request.Kind == AgentRunKind.Question)
+        {
+            // Вопрос не пишется на диск: в списке сессий он был бы мусором, который
+            // не продолжить. Встроенные инструменты — только поиск в сети: файлы машины
+            // вопросу ни к чему, а без Bash и Edit ему нечего и спрашивать через карточки.
+            // Чужие MCP-серверы из настроек пользователя не грузим — их описания съели бы
+            // десятки тысяч токенов контекста на каждый вопрос.
+            yield return "--no-session-persistence";
+            yield return "--tools";
+            yield return "WebSearch,WebFetch";
+            yield return "--strict-mcp-config";
+        }
+        else if (resumedSessionId is not null)
         {
             yield return "--resume";
             yield return resumedSessionId;

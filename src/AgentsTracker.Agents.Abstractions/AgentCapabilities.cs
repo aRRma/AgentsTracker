@@ -30,7 +30,14 @@ public sealed record AgentSetting(
 /// </param>
 /// <param name="Effort">Уровень усилий; null — агент такого не умеет, экран и команда скрыты.</param>
 /// <param name="PermissionMode">Обязателен: без него хост не знает, что писать в конфиг по умолчанию.</param>
+/// <param name="Context">
+/// Агент умеет разложить контекст сессии и сжать его (<see cref="AgentRunKind.ContextReport"/>,
+/// <see cref="AgentRunKind.Compact"/>). false — кнопок «Подробно» и «Сжать» нет.
+/// </param>
+/// <param name="Questions">Агент умеет разовый запуск без сессии (<see cref="AgentRunKind.Question"/>).</param>
 public sealed record AgentCapabilities(
     AgentSetting Model,
     AgentSetting? Effort,
-    AgentSetting PermissionMode);
+    AgentSetting PermissionMode,
+    bool Context = false,
+    bool Questions = false);
