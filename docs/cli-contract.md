@@ -278,7 +278,10 @@ CLI может читать его в этот момент), комментар
 Когда читать: правите `CursorBackend` / `CursorAcpClient`. Опора — [официальный ACP](https://cursor.com/docs/cli/acp).
 
 Шлюз поднимает `agent acp` (модель — `--model`, картинки из чата — `--add-dir` до подкоманды;
-ключ — только `CURSOR_API_KEY` в окружении, не в argv). Дальше JSON-RPC по строкам: `initialize` (protocolVersion 1) →
+ключ — только `CURSOR_API_KEY` в окружении, не в argv; текст задачи — по stdin, не аргументом).
+Имя модели проверяется шаблоном (`CursorCapabilities.IsSafeModel`) и при выборе, и перед запуском:
+на Windows `agent` часто `agent.cmd`, его командную строку разбирает cmd.exe, и `&` или `|` из
+`/model` запустили бы команду мимо карточек. Дальше JSON-RPC по строкам: `initialize` (protocolVersion 1) →
 `authenticate` (`cursor_login`; если уже вошли — продолжаем, иначе просим `agent login`) →
 `session/new` или `session/load` (cwd абсолютный, `mcpServers: []`; нет `load` — `session/resume`) →
 `session/set_mode` (`plan` / `ask` / `agent`) → `session/prompt`.

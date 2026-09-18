@@ -121,7 +121,9 @@ and the timeouts — `docs/en/architecture.md`; the undocumented parts of the co
   not the chat selection. `/context` and `/compact` are the backend's `ContextReport`/`Compact` kinds,
   not prompts the host types. Details — `docs/en/cli-contract.md`, "Context" and "A question".
   Cursor declares neither (`Context`/`Questions` stay `false`), so the host hides both.
-- CLI arguments go through `ProcessStartInfo.ArgumentList`, do not concatenate a string.
+- CLI arguments go through `ProcessStartInfo.ArgumentList`, do not concatenate a string. That is
+  not enough for a `.cmd` shim (cmd.exe parses its line): a value from the chat that reaches argv
+  is checked against a pattern first — Cursor's model name, `CursorCapabilities.IsSafeModel`.
 
 ### `--permission-mode` is always passed
 

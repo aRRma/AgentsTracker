@@ -300,8 +300,11 @@ When to read this: you are editing `CursorBackend` / `CursorAcpClient`. Source:
 [official ACP](https://cursor.com/docs/cli/acp).
 
 The gateway starts `agent acp` (`--model` and, if there are pictures from the chat, `--add-dir`
-before the subcommand; the key only as `CURSOR_API_KEY` in the environment, never in argv). Then
-newline JSON-RPC: `initialize` (protocolVersion 1) →
+before the subcommand; the key only as `CURSOR_API_KEY` in the environment, never in argv; the
+task text on stdin, not as an argument). The model name is checked against a pattern
+(`CursorCapabilities.IsSafeModel`) both on selection and before the launch: on Windows `agent` is
+often `agent.cmd`, whose command line cmd.exe parses, so an `&` or `|` from `/model` would run a
+command past the cards. Then newline JSON-RPC: `initialize` (protocolVersion 1) →
 `authenticate` (`cursor_login`; if already signed in, continue, otherwise ask for `agent login`) →
 `session/new` or `session/load` (absolute cwd, `mcpServers: []`; no `load` — `session/resume`) →
 `session/set_mode` (`plan` / `ask` / `agent`) → `session/prompt`.

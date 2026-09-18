@@ -83,6 +83,10 @@ internal sealed class CursorAcpClient : IAsyncDisposable
 
         if (model is { Length: > 0 })
         {
+            // Конфиг и старый state.json идут мимо Resolve — проверяем ещё раз перед запуском.
+            if (!CursorCapabilities.IsSafeModel(model))
+                throw new InvalidOperationException($"Недопустимое имя модели «{model}»: выберите модель заново в /model.");
+
             psi.ArgumentList.Add("--model");
             psi.ArgumentList.Add(model);
         }

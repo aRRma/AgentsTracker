@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace AgentsTracker.Agents.Cursor;
 
 /// <summary>Что принимает Cursor CLI через ACP: по этим значениям хост строит меню и проверяет конфиг.</summary>
@@ -23,13 +25,22 @@ public static class CursorCapabilities
         ["composer"] = "composer-2.5",
     };
 
-    /// <summary>Модель — любая непустая строка: CLI сам скажет, если такой нет.</summary>
+    /// <summary>Модель — любое имя допустимой формы: CLI сам скажет, если такой нет.</summary>
     private static string? ResolveModel(string value)
     {
         var model = value.Trim();
         if (model.Length == 0) return null;
-        return ModelIds.GetValueOrDefault(model) ?? model;
+        var resolved = ModelIds.GetValueOrDefault(model) ?? model;
+        return IsSafeModel(resolved) ? resolved : null;
     }
+
+    /// <summary>
+    /// Имя модели уходит аргументом в <c>agent</c>, а на Windows это часто <c>agent.cmd</c>: его
+    /// разбирает cmd.exe, и <c>&amp;</c> или <c>|</c> из чата запустили бы команду мимо карточек.
+    /// </summary>
+    internal static bool IsSafeModel(string model) => SafeModel.IsMatch(model);
+
+    private static readonly Regex SafeModel = new(@"^[A-Za-z0-9][A-Za-z0-9._:/\[\]-]{0,99}$", RegexOptions.CultureInvariant);
 
     private static string DescribeModel(string model) => model switch
     {
