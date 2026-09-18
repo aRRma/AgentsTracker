@@ -53,8 +53,8 @@ instead of a channel — `docs/en/operations.md`.
 release archive unpacks as `AgentsTracker-<version>-win-x64`, so check the path with
 `Get-Process AgentsTracker.Gateway`). Do not stop it and do not rebuild over it:
 that is the stable service the user chats with, and new code reaches it only through a new release. A
-change is checked live by a **scratch instance from `bin\Debug` on its own ports** — a separate build
-folder, `Gateway__McpPort`/`Gateway__MonitorPort` other than `5099`/`5100`, a fake bot token and its
+change is checked live by a **scratch instance built into a separate folder, on its own ports** —
+`Gateway__McpPort`/`Gateway__MonitorPort` other than `5099`/`5100`, a fake bot token and its
 own `Gateway__DataDirectory`; the recipe and the cleanup are in `docs/en/operations.md`. When the
 gateway does run from `bin\Debug` of the main folder (`AgentsTracker`, branch `master`; there is no
 `main` branch), `dotnet build` fails with `MSB3021` while it runs and switching branches swaps the
@@ -68,7 +68,7 @@ src/AgentsTracker.Agents.Claude/         Claude Code behind those contracts, Mcp
 src/AgentsTracker.Channels.Abstractions/ channel contracts, no specific messenger
 src/AgentsTracker.Channels.Telegram/     Telegram behind those contracts
 src/AgentsTracker.Gateway/               Program.cs (agents, channels, features), Domain/, Infrastructure/,
-                                         Features/ — vertical slices: Approvals, Chat, Settings, Help, Audit, Monitor
+                                         Features/ — vertical slices: Approvals, Chat, Settings, Question, Help, Audit, Monitor
 ```
 
 What each file inside them is for — `docs/en/architecture.md`. Layering rules, and breaking one is
@@ -91,9 +91,8 @@ from `IChatCommandHandler.Commands` is matched **before** the text handlers — 
 would go to a waiting free-form answer and there would be nothing left to interrupt a stuck run
 with. Then the `IChatTextHandler` chain in module order: an answer to a card → skill arguments →
 the text of a вопрос after a bare `/ask` → into the agent's queue (always `true`, hence
-`ChatModule` last). Unknown slash commands are Claude
-Code's own, they go to the CLI. Buttons: the `IChatButtonHandler` chain, `cfg:` — the menu,
-everything else — approvals.
+`ChatModule` last). Unknown slash commands are Claude Code's own, they go to the CLI. Buttons: the
+`IChatButtonHandler` chain, `cfg:` — the menu, everything else — approvals.
 
 A handler receives the whole `IncomingMessage`: besides the text it may carry attachments. Pictures
 go through `AttachmentInbox` into `<data directory>\inbox\<chat>\<project>\`, and the run gets that
@@ -270,7 +269,8 @@ session.
   synonyms that are not used. A new concept goes into the glossary (both languages) before the code
   that uses it. The traps that cost the most: a working folder is «проект» and never «репозиторий»;
   the user writes a «задача», the agent performs a «запуск» (never «прогон»); the card is a
-  «карточка подтверждения», while «режим» means only `--permission-mode`; «лимит» is the
+  «карточка подтверждения», while «режим» means only `--permission-mode`; a one-off `/ask` is a
+«вопрос», never a «режим»; «сессия» is the branch, «контекст» is how much of the window it takes; «лимит» is the
   subscription and «предел» is anything technical; «журнал» is `/audit` and «лог» is `ILogger`; a
   live check of a scratch instance is a «смоук-тест» and the instance itself is a «пробный
   экземпляр» — those two are the section titles in `operations.md`, and a third name for either
