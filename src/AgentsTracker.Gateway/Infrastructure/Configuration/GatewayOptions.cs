@@ -53,6 +53,20 @@ public sealed class AttachmentOptions
     }
 }
 
+/// <summary>
+/// Вопрос вне сессии (<c>/ask</c>): разовый запуск без проекта и без продолжения. Модель своя,
+/// из чата не меняется — вопрос заведён ради дешёвого ответа, и выбор тяжёлой модели для
+/// сессий не должен тянуть его за собой.
+/// </summary>
+public sealed class QuestionOptions
+{
+    /// <summary>Модель или её алиас; null — как решит агент.</summary>
+    public string? Model { get; set; } = "sonnet";
+
+    /// <summary>Уровень усилий; null — как решит агент.</summary>
+    public string? Effort { get; set; }
+}
+
 public sealed class GatewayOptions
 {
     public const string SectionName = "Gateway";
@@ -146,6 +160,9 @@ public sealed class GatewayOptions
     /// <summary>Приём картинок из чата.</summary>
     public AttachmentOptions Attachments { get; set; } = new();
 
+    /// <summary>Вопрос вне сессии: его модель и effort.</summary>
+    public QuestionOptions Question { get; set; } = new();
+
     public IReadOnlyList<string> Validate()
     {
         var errors = new List<string>();
@@ -215,14 +232,19 @@ public sealed class GatewayOptions
         if (!capabilities.PermissionMode.IsValid(PermissionMode))
             errors.Add($"{SectionName}:PermissionMode = '{PermissionMode}'. Допустимо: {string.Join(", ", capabilities.PermissionMode.Values)}.");
 
-        if (Effort is { Length: > 0 } effort)
-        {
-            if (capabilities.Effort is null)
-                errors.Add($"{SectionName}:Effort задан, а агент уровень усилий не поддерживает.");
-            else if (capabilities.Effort.Resolve(effort) is null)
-                errors.Add($"{SectionName}:Effort = '{effort}'. Допустимо: {string.Join(", ", capabilities.Effort.Values)}.");
-        }
+        ValidateEffort(capabilities, "Effort", Effort, errors);
+        ValidateEffort(capabilities, "Question:Effort", Question.Effort, errors);
 
         return errors;
+    }
+
+    private static void ValidateEffort(AgentCapabilities capabilities, string key, string? effort, List<string> errors)
+    {
+        if (effort is not { Length: > 0 }) return;
+
+        if (capabilities.Effort is null)
+            errors.Add($"{SectionName}:{key} задан, а агент уровень усилий не поддерживает.");
+        else if (capabilities.Effort.Resolve(effort) is null)
+            errors.Add($"{SectionName}:{key} = '{effort}'. Допустимо: {string.Join(", ", capabilities.Effort.Values)}.");
     }
 }

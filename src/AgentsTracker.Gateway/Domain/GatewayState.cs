@@ -116,6 +116,18 @@ public sealed class SessionRecord
     public DateTimeOffset CreatedUtc { get; set; }
     public DateTimeOffset LastActivityUtc { get; set; }
     public int Turns { get; set; }
+
+    /// <summary>
+    /// Сколько токенов занимал контекст после последнего запуска. 0 — неизвестно: сессия
+    /// старше этого поля или агент не сказал. Чтобы узнать заполненность без запуска агента.
+    /// </summary>
+    public long ContextTokens { get; set; }
+
+    /// <summary>Размер окна контекста модели, которой шёл последний запуск. 0 — неизвестно.</summary>
+    public long ContextWindow { get; set; }
+
+    /// <summary>Когда замерен <see cref="ContextTokens"/>: цифра верна только на этот момент.</summary>
+    public DateTimeOffset? ContextUtc { get; set; }
 }
 
 /// <summary>Накопленная статистика запусков: всего, по дням и по моделям.</summary>

@@ -70,4 +70,22 @@ public static class DisplayFormat
         /// <summary>Первые восемь символов id сессии: достаточно, чтобы узнать ветку в списке.</summary>
         public string ShortId => sessionId.Length <= 8 ? sessionId : sessionId[..8];
     }
+
+    extension(string? effort)
+    {
+        /// <summary>
+        /// Effort одной-тремя буквами для подписи под ответом: «high» → «H». Незнакомый уровень —
+        /// как есть: лучше длинно, чем неверно. null — effort не задан, подписывать нечего.
+        /// </summary>
+        public string? EffortShort => effort?.ToLowerInvariant() switch
+        {
+            null or "" => null,
+            "low" => "L",
+            "medium" => "M",
+            "high" => "H",
+            "xhigh" => "XH",
+            "max" => "MAX",
+            _ => effort,
+        };
+    }
 }
