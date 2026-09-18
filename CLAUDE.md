@@ -5,7 +5,8 @@ details are in `docs/en/`:
 
 - `docs/en/use-cases.md` — what non-programmers use the bot for: five everyday scenarios.
 - `docs/en/safety.md` — the risks of that, in plain words, and what closes each one.
-- `docs/en/operations.md` — restarting the gateway, scratch instance, worktree, tooling.
+- `docs/en/operations.md` — restarting the gateway, scratch instance, the harness without Telegram,
+  worktree, the two-language docs and the wiki, tooling.
 - `docs/en/architecture.md` — how the gateway is built: the annotated project tree, the message
   path, the gateway ↔ CLI loop, sessions, state and secrets, audit, chat output.
 - `docs/en/extending.md` — checklists for adding: a chat command, a settings screen, a feature, an
@@ -86,19 +87,16 @@ kills startup.
 
 ### How a message travels
 
-`ChatDispatcher` lets through only `IChatChannel.AllowedUsers` and private chats. A slash command
-from `IChatCommandHandler.Commands` is matched **before** the text handlers — otherwise `/stop`
-would go to a waiting free-form answer and there would be nothing left to interrupt a stuck run
-with. Then the `IChatTextHandler` chain in module order: an answer to a card → skill arguments →
-the text of a вопрос after a bare `/ask` → into the agent's queue (always `true`, hence
-`ChatModule` last). Unknown slash commands are Claude Code's own, they go to the CLI. Buttons: the
-`IChatButtonHandler` chain, `cfg:` — the menu, everything else — approvals.
+`ChatDispatcher` admits only `IChatChannel.AllowedUsers` in private chats. Slash commands
+(`IChatCommandHandler.Commands`) match **before** the text handlers — otherwise `/stop` would feed a
+waiting answer and nothing could interrupt a stuck run. Then the `IChatTextHandler` chain in module
+order: card answer → skill arguments → вопрос text after a bare `/ask` → the agent's queue (always
+`true`, so `ChatModule` is last). Unknown slash commands are Claude Code's own and go to the CLI.
+Buttons: `cfg:` — the menu, anything else — approvals.
 
-A handler receives the whole `IncomingMessage`: besides the text it may carry attachments. Pictures
-go through `AttachmentInbox` into `<data directory>\inbox\<chat>\<project>\`, and the run gets that
-chat folder in `--add-dir`. A command wins over a picture — `/stop` must work with a picture
-attached, and then the picture is not saved and the user is told so rather than left guessing.
-Details — `docs/en/architecture.md`.
+Pictures go through `AttachmentInbox` into `<data directory>\inbox\<chat>\<project>\`; the run gets
+the chat folder in `--add-dir`. A command wins over a picture: `/stop` works with one attached, the
+picture is dropped and the user is told so. Details — `docs/en/architecture.md`.
 
 ### The gateway → CLI → gateway loop
 
@@ -135,18 +133,16 @@ chosen yet).
 
 ### Sessions, state, audit
 
-Sessions are keyed by the **normalized project path**; the chat-side selection (`SessionStore`)
-stores a value equal to the config as `null`, otherwise a config edit would be silently overridden
-by an old selection. State, secrets and the `audit\` journal live in `%LOCALAPPDATA%\AgentsTracker\`,
-the config comes in layers up to the `Gateway__*` environment variables. The audit gets what a human
-is answerable for ("who, where, what" — no secrets, no full texts, addresses as `channel:value`
-keys, kinds in `AuditKinds`), the log gets what is needed for debugging. All three —
-`docs/en/architecture.md`, the user-facing side of the config — `docs/en/deployment.md`.
+Sessions are keyed by the **normalized project path**. A chat selection equal to the config is
+stored as `null` (`SessionStore`), or a config edit would be silently overridden. State, secrets and
+the `audit\` journal live in `%LOCALAPPDATA%\AgentsTracker\`; config layers end with the `Gateway__*`
+environment variables. The audit is what a human answers for (who, where, what — no secrets, no full
+texts, addresses as `channel:value`, kinds in `AuditKinds`); the log is for debugging. Details —
+`docs/en/architecture.md`, the user-facing config — `docs/en/deployment.md`.
 
-How full a session's context is lives on its `SessionRecord` (`ContextTokens`/`ContextWindow`),
-measured from the last main-branch turn of each run — the `usage` of the `result` line is a sum over
-turns, not the context. «Сжать» and «Новая сессия» on the «Контекст» screen go through
-`PendingConfirmations`; an irreversible menu button asks first.
+Context fill lives on `SessionRecord` (`ContextTokens`/`ContextWindow`), taken from the last
+main-branch turn of a run — `usage` of the `result` line is a sum over turns, not the context.
+Irreversible menu buttons («Сжать», «Новая сессия» on «Контекст») ask first via `PendingConfirmations`.
 
 ### Limits and money
 
@@ -164,13 +160,11 @@ numbers instead, remembering that usage inside one window never falls until the 
 
 ### Chat output
 
-`MarkdownRenderer` converts markdown into `ChatHtml` and cuts it to `IChatChannel.Limits`
-(`MessageLength`, 3800 for Telegram) — cut the **source markdown before the conversion**, otherwise
-tags get torn apart. A code block longer than the limit is sent as a file. Any 400 from the channel
-makes the send retry itself without markup, a 429 is waited out and the same part repeated
-(`RateLimitRetry.OnceAsync`) — otherwise part of the answer would vanish silently. Sums, tokens and
-time — `DisplayFormat`. The renderer's own quirks (italics, `snake_case`, escaping budget) —
-`docs/en/architecture.md`.
+`MarkdownRenderer` cuts the **source markdown** to `IChatChannel.Limits.MessageLength` (3800 for
+Telegram) before converting it to `ChatHtml` — otherwise tags get torn apart. An oversized code block
+goes as a file. A 400 from the channel retries without markup, a 429 is waited out and the same part
+repeated (`RateLimitRetry.OnceAsync`) — otherwise part of the answer vanishes silently. Tokens and
+time — `DisplayFormat`; the renderer's quirks — `docs/en/architecture.md`.
 
 ## Keep in mind
 
