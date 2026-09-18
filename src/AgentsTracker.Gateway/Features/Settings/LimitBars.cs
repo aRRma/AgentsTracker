@@ -37,13 +37,7 @@ internal static class LimitBars
     private static string Line(LimitGauge gauge, decimal progress)
     {
         var used = Math.Clamp(gauge.Used, 0m, 1m);
-        var shown = used * Math.Clamp(progress, 0m, 1m);
-        var filled = (int)Math.Round(shown * Cells, MidpointRounding.AwayFromZero);
-
-        var bar = new StringBuilder(Cells)
-            .Append('▰', filled)
-            .Append('▱', Cells - filled)
-            .ToString();
+        var bar = Bar(used * Math.Clamp(progress, 0m, 1m));
 
         // Цифры сразу итоговые, кадрами двигается только полоса: пара «расход · остаток» посреди
         // анимации не должна складываться во что-то кроме 100%.
@@ -52,6 +46,17 @@ internal static class LimitBars
         var reset = gauge.ResetLabel is { } label ? $", сброс {E(label)}" : "";
 
         return $"{Lamp(used)} <code>{bar}</code> {percent}% · осталось {left}% · {E(gauge.Title)}{reset}";
+    }
+
+    /// <summary>Полоса из сегментов по доле 0..1 — та же, что у окон лимита, чтобы шкалы читались одинаково.</summary>
+    public static string Bar(decimal share)
+    {
+        var filled = (int)Math.Round(Math.Clamp(share, 0m, 1m) * Cells, MidpointRounding.AwayFromZero);
+
+        return new StringBuilder(Cells)
+            .Append('▰', filled)
+            .Append('▱', Cells - filled)
+            .ToString();
     }
 
     /// <summary>Цвет по итоговому остатку, а не по кадру: лампочка не должна мигать при заполнении.</summary>
