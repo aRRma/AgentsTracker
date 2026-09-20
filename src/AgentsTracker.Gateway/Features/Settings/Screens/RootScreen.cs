@@ -50,7 +50,7 @@ public sealed class RootScreen(
         var keyboard = new Keyboard(
         [
             [Button("📟 Статус", "status"), Button("🧵 Сессии", "sess")],
-            [Button("📦 Контекст", "ctx"), Button("💬 Вопрос", "ask")],
+            [Button("📦 Контекст", "ctx"), Button("💬 Задать вопрос", "ask")],
             [Button("🤖 Агент", "agent")],
             [Button("🧩 Скиллы", "skills"), Button("📁 Проект", "proj")],
             [Button("📊 Расход", "usage"), Button("✖️ Закрыть", "close")],

@@ -100,6 +100,10 @@ public sealed class SessionsScreen(
         buttons.Add(busy
             ? [Button("🆕 Новая", "sess:new"), Button("🛑 Остановить", "sess:stop")]
             : [Button("🆕 Новая", "sess:new"), Button("🗑 Очистить", "sess:clear")]);
+
+        // Вопрос — соседняя по смыслу кнопка: спросить, не трогая выбранную ветку. Экран «Вопрос»
+        // отменяет ожидание сам, поэтому переход отсюда ничего не ломает.
+        buttons.Add([Button("💬 Вопрос вне сессии", "ask")]);
         buttons.Add([BackButton]);
 
         return (html, new Keyboard(buttons));

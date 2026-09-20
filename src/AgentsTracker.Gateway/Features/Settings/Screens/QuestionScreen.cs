@@ -4,7 +4,8 @@ using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
 
 /// <summary>
-/// Кнопка «Вопрос»: экран только приглашает написать вопрос, а ждёт его QuestionLauncher.
+/// Кнопки «Задать вопрос» и «Вопрос вне сессии»: экран только приглашает написать вопрос,
+/// а ждёт его QuestionLauncher.
 /// Ожидание снимает «Назад» — корневой экран отменяет его при открытии, иначе следующая
 /// задача ушла бы вопросом мимо сессии.
 /// </summary>

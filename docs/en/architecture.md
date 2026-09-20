@@ -53,7 +53,7 @@ src/AgentsTracker.Gateway/
                         AttachmentInbox — pictures from the chat: download, checks, inbox folder, cleanup
     Settings/           SettingsMenuCoordinator + Screens/*, /menu /status /sessions /agent /skills /project /usage;
                         PendingConfirmations — the second press for irreversible buttons («Контекст»)
-    Question/           /ask and the «Вопрос» button: a one-off run with no session (QuestionLauncher)
+    Question/           /ask and the «Задать вопрос» buttons: a one-off run with no session (QuestionLauncher)
     Help/ Audit/ Monitor/   /start /help; /audit; the web page (index.html — EmbeddedResource) and /api/*
 ```
 
