@@ -140,13 +140,24 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
     }
 
     /// <summary>
-    /// Окна, действующие на следующий запуск: без просроченных и без чужих моделей,
-    /// ближайший сброс первым.
+    /// Окна, действующие на следующий запуск: без просроченных и без чужих моделей.
+    /// Порядок не трогаем — его задал <see cref="Order"/> при разборе ответа, один на все списки.
     /// </summary>
     private static IEnumerable<LimitWindow> Live(LimitsSnapshot snapshot, string? model) =>
-        snapshot.Windows
-            .Where(w => Applies(w.Key, model) && !Passed(w.ResetsAt))
-            .OrderBy(w => w.ResetsAt ?? DateTimeOffset.MaxValue);
+        snapshot.Windows.Where(w => Applies(w.Key, model) && !Passed(w.ResetsAt));
+
+    /// <summary>
+    /// Порядок окон везде, где их показывают: сначала «5 часов», потом «неделя», потом недельные
+    /// окна моделей. По сбросу сортировать нельзя — он у пятичасового окна то ближе недельного,
+    /// то дальше, и строки шкал в чате и мониторе менялись местами от опроса к опросу.
+    /// </summary>
+    private static int Order(LimitWindow window) => window.Key switch
+    {
+        "five_hour" => 0,
+        "seven_day" => 1,
+        _ when window.Key.StartsWith("five_hour_", StringComparison.Ordinal) => 2,
+        _ => 3,
+    };
 
     /// <summary>Остаток окна в процентах — общим правилом <see cref="LimitMath"/>, как и шкалы.</summary>
     private static string Left(decimal used) =>
@@ -354,7 +365,10 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
         var percents = LooksLikePercents(raws.Select(r => r.Utilization));
 
         return (
-            [.. raws.Select(r => new LimitWindow(r.Key, Fraction(r.Utilization, percents), r.ResetsAt))],
+            [.. raws
+                .Select(r => new LimitWindow(r.Key, Fraction(r.Utilization, percents), r.ResetsAt))
+                .OrderBy(Order)
+                .ThenBy(w => w.ResetsAt ?? DateTimeOffset.MaxValue)],
             extra,
             percents);
     }

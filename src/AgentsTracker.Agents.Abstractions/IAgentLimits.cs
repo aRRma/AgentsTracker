@@ -44,7 +44,7 @@ public interface IAgentLimits
     Task<string> ShortSummaryAsync(string? model, CancellationToken ct);
 
     /// <summary>
-    /// Окна с остатком для шкал в статусе и статистике, ближайший сброс первым.
+    /// Окна с остатком для шкал в статусе и статистике; пятичасовое окно первым, затем недельные.
     /// model — модель следующего запуска.
     /// </summary>
     Task<LimitsView> ViewAsync(string? model, CancellationToken ct);
