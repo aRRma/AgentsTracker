@@ -181,6 +181,12 @@ time — `DisplayFormat`; the renderer's quirks — `docs/en/architecture.md`.
   monitor's JS — `/api/limits` sends them ready-made. `double` is left only where the BCL itself
   counts that way (`TimeSpan.Total*`) and the result goes straight into a caption. Why —
   `docs/en/architecture.md`, "Numbers".
+- The order of the tariff windows is set in exactly one place — the sort in `ClaudeLimits.Parse`
+  («5 часов», then «неделя», then the models' windows). Chat bars, the menu header and
+  `/api/limits` all show the snapshot as-is; do not re-sort in a screen or in the monitor's JS.
+- C# navigation goes through the LSP (`csharp-lsp`: `workspaceSymbol`, `findReferences`,
+  `goToDefinition`) — a hook reminds you on every text search over `.cs`. Grep is the
+  cross-check, not the first move.
 - A release is a `v*` tag push, and the release notes go into `docs/release-notes/<tag>.md`
   **before** the tag, otherwise a list of commits ends up in the release. The notes are written
   **short and in plain human words**, for the person using the bot: what changed and what it gives
