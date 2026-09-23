@@ -142,6 +142,8 @@ texts, addresses as `channel:value`, kinds in `AuditKinds`); the log is for debu
 
 Context fill lives on `SessionRecord` (`ContextTokens`/`ContextWindow`), taken from the last
 main-branch turn of a run — `usage` of the `result` line is a sum over turns, not the context.
+Fill is formatted only by `ContextScreen.Fill` (full line) and `ContextScreen.Short` (dot + percent
+for list rows); the 🟢/🟡/🔴 thresholds live there too — do not recompute them in another screen.
 Irreversible menu buttons («Сжать», «Новая сессия» on «Контекст») ask first via `PendingConfirmations`.
 
 ### Limits and money
