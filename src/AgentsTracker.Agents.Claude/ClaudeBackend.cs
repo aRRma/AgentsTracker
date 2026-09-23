@@ -298,7 +298,7 @@ public sealed class ClaudeBackend(
         if (request.Model is { Length: > 0 } model)
         {
             yield return "--model";
-            yield return model;
+            yield return ClaudeCapabilities.CliModel(model);
         }
 
         if (request.Effort is { Length: > 0 } effort && EffortLevels.Resolve(effort) is { } level)

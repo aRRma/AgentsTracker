@@ -184,7 +184,7 @@ Id новой сессии выдаёт **шлюз** (`NewSessionId` → `--sess
   `modelUsage.<модель>.contextWindow` в итоге (1 000 000 у `sonnet-5`, 200 000 у `haiku-4-5`);
   рядом `canonicalModel` — имя без даты сборки. `opus` и `claude-fable-5-1` получают 1 000 000 по
   умолчанию, без суффикса `[1m]`. Алиас `fable` молча подменяется на `claude-opus-5` (без ошибки),
-  поэтому кнопка меню несёт полное имя. `claude-opus-5-5` требует CLI 2.1.280+.
+  поэтому `ClaudeCapabilities.CliModel` превращает `fable` из меню в полное имя перед `--model`. `claude-opus-5-5` требует CLI 2.1.280+.
 - **`/context` в `-p`** работает с `--resume`: модель не вызывается (`num_turns: 0`, пустой
   `modelUsage`), ответ — markdown в `result`: заголовок с `Tokens: 46.6k / 200k (23%)`, таблица
   «Estimated usage by category», а дальше таблицы по каждому MCP-инструменту и скиллу — сотни строк.

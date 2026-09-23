@@ -5,10 +5,17 @@ public static class ClaudeCapabilities
 {
     /// <summary>
     /// Кнопки — только старшие модели с окном 1M: младшие из чата не выбирают, при нужде имя
-    /// вводится текстом. Fable — полным именем: CLI 2.1.261 алиас «fable» молча подменяет
-    /// на opus, и кнопка врала бы.
+    /// вводится текстом.
     /// </summary>
-    private static readonly string[] ModelAliases = ["claude-fable-5-1", "opus"];
+    private static readonly string[] ModelAliases = ["fable", "opus"];
+
+    /// <summary>
+    /// Имя для <c>--model</c>. CLI 2.1.261 алиас «fable» молча подменяет на opus, без ошибки:
+    /// выбор «fable» в меню давал бы Opus. Поэтому в CLI уходит полное имя, а в меню
+    /// и state.json остаётся короткое.
+    /// </summary>
+    internal static string CliModel(string model) =>
+        model.Equals("fable", StringComparison.OrdinalIgnoreCase) ? "claude-fable-5-1" : model;
 
     public static readonly AgentCapabilities Instance = new(
         Model: new AgentSetting(ModelAliases, ModelAliases, ResolveModel, model => model),
