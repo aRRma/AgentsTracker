@@ -200,8 +200,8 @@ Checked on CLI 2.1.261.
   window is `modelUsage.<model>.contextWindow` of the result (1 000 000 for `sonnet-5`, 200 000 for
   `haiku-4-5`); `canonicalModel` next to it is the name without the build date. `opus` and
   `claude-fable-5-1` get 1 000 000 by default, with no `[1m]` suffix. The `fable` alias is silently
-  replaced with `claude-opus-5` (no error), so `ClaudeCapabilities.CliModel` turns the menu's
-  `fable` into the full name before `--model`.
+  replaced with `claude-opus-5` (no error), so `ClaudeCapabilities.CliModel` turns it into the full
+  name before `--model`; the menu buttons (`fable-5-1`, `opus-5`) get the `claude-` prefix there too.
   `claude-opus-5-5` needs CLI 2.1.280+.
 - **`/context` in `-p`** works with `--resume`: the model is not called (`num_turns: 0`, empty
   `modelUsage`), the answer is markdown in `result` — a header with `Tokens: 46.6k / 200k (23%)`, the

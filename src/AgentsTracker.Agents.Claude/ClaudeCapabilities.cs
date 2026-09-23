@@ -4,18 +4,20 @@ namespace AgentsTracker.Agents.Claude;
 public static class ClaudeCapabilities
 {
     /// <summary>
-    /// Кнопки — только старшие модели с окном 1M: младшие из чата не выбирают, при нужде имя
-    /// вводится текстом.
+    /// Кнопки — только старшие модели с окном 1M, с версией: по алиасу не видно, какая модель
+    /// ответит. Префикс «claude-» на кнопке ничего не говорит — его добавляет <see cref="CliModel"/>.
+    /// Младшие из чата не выбирают, при нужде имя вводится текстом.
     /// </summary>
-    private static readonly string[] ModelAliases = ["fable", "opus"];
+    private static readonly string[] ModelAliases = ["fable-5-1", "opus-5"];
 
     /// <summary>
-    /// Имя для <c>--model</c>. CLI 2.1.261 алиас «fable» молча подменяет на opus, без ошибки:
-    /// выбор «fable» в меню давал бы Opus. Поэтому в CLI уходит полное имя, а в меню
-    /// и state.json остаётся короткое.
+    /// Имя для <c>--model</c>: кнопка без префикса — полное имя. Алиас «fable» тоже в полное
+    /// имя: CLI 2.1.261 молча подменяет его на opus, без ошибки.
     /// </summary>
     internal static string CliModel(string model) =>
-        model.Equals("fable", StringComparison.OrdinalIgnoreCase) ? "claude-fable-5-1" : model;
+        model.Equals("fable", StringComparison.OrdinalIgnoreCase) ? "claude-fable-5-1"
+        : ModelAliases.Contains(model, StringComparer.OrdinalIgnoreCase) ? "claude-" + model
+        : model;
 
     public static readonly AgentCapabilities Instance = new(
         Model: new AgentSetting(ModelAliases, ModelAliases, ResolveModel, model => model),
