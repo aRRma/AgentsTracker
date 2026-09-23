@@ -140,6 +140,10 @@ public sealed class ContextScreen(
         return $"<code>{LimitBars.Bar(used)}</code> {line}{measured}";
     }
 
+    /// <summary>Лампа и процент для строки списка; пусто, пока замера не было.</summary>
+    internal static string Short(SessionRecord session) =>
+        Share(session) is { } used ? $"{Lamp(used)} {Percent(used)}%" : "";
+
     /// <summary>Доля занятого окна; null — замера ещё не было.</summary>
     private static decimal? Share(SessionRecord session) =>
         session is { ContextTokens: > 0, ContextWindow: > 0 }

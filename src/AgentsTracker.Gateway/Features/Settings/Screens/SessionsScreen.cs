@@ -79,7 +79,7 @@ public sealed class SessionsScreen(
             ? "<i>Сессий ещё нет — первое сообщение создаст первую.</i>"
             : string.Join("\n", sessions.Select((s, i) =>
                 $"{Marker(s.Id == active)} <b>{i + 1}.</b> {E(s.Title)}\n" +
-                $"   {s.Turns} х · {E(s.LastActivityUtc.Ago)}"));
+                $"   {s.Turns} х · {E(s.LastActivityUtc.Ago)}{Context(s)}"));
 
         var html = $"""
             🧵 <b>Сессии</b> — {E(Path.GetFileName(project))}
@@ -108,4 +108,8 @@ public sealed class SessionsScreen(
 
         return (html, new Keyboard(buttons));
     }
+
+    // Заполненность рядом с каждой сессией: выбирая, к какой вернуться, видно, какую пора сжать.
+    private static string Context(SessionRecord session) =>
+        ContextScreen.Short(session) is { Length: > 0 } fill ? $" · 📦 {fill}" : "";
 }
