@@ -198,7 +198,10 @@ Checked on CLI 2.1.261.
   `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`. Events with
   `"model": "<synthetic>"` are answers of local commands with zeros in `usage` — skipped. The
   window is `modelUsage.<model>.contextWindow` of the result (1 000 000 for `sonnet-5`, 200 000 for
-  `haiku-4-5`); `canonicalModel` next to it is the name without the build date.
+  `haiku-4-5`); `canonicalModel` next to it is the name without the build date. `opus` and
+  `claude-fable-5-1` get 1 000 000 by default, with no `[1m]` suffix. The `fable` alias is silently
+  replaced with `claude-opus-5` (no error), so the menu button carries the full name.
+  `claude-opus-5-5` needs CLI 2.1.280+.
 - **`/context` in `-p`** works with `--resume`: the model is not called (`num_turns: 0`, empty
   `modelUsage`), the answer is markdown in `result` — a header with `Tokens: 46.6k / 200k (23%)`, the
   «Estimated usage by category» table and then per-tool tables for MCP and skills, hundreds of lines.

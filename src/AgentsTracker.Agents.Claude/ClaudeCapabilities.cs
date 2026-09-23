@@ -3,8 +3,12 @@ namespace AgentsTracker.Agents.Claude;
 /// <summary>Что принимает Claude Code: по этим значениям хост строит меню и проверяет конфиг.</summary>
 public static class ClaudeCapabilities
 {
-    /// <summary>Алиасы семейств для кнопок; полное имя (<c>claude-sonnet-5</c>) вводится текстом.</summary>
-    private static readonly string[] ModelAliases = ["opus", "sonnet", "haiku", "fable"];
+    /// <summary>
+    /// Кнопки — только старшие модели с окном 1M: младшие из чата не выбирают, при нужде имя
+    /// вводится текстом. Fable — полным именем: CLI 2.1.261 алиас «fable» молча подменяет
+    /// на opus, и кнопка врала бы.
+    /// </summary>
+    private static readonly string[] ModelAliases = ["claude-fable-5-1", "opus"];
 
     public static readonly AgentCapabilities Instance = new(
         Model: new AgentSetting(ModelAliases, ModelAliases, ResolveModel, model => model),
