@@ -203,6 +203,13 @@ Checked on CLI 2.1.261.
   replaced with `claude-opus-5` (no error), so `ClaudeCapabilities.CliModel` turns it into the full
   name before `--model`; the menu buttons (`fable-5-1`, `opus-5`) get the `claude-` prefix there too.
   `claude-opus-5-5` needs CLI 2.1.280+.
+- **Which model answered.** `modelUsage` mixes the main branch with subagents and haiku's chores, and
+  a sonnet subagent often writes more output tokens than the session itself — so the answering model
+  is `message.model` of the last `assistant` event with `parent_tool_use_id: null`, and its window is
+  looked up in `modelUsage` by that name. The names differ: with `--model claude-opus-5-5[1m]` the
+  event says `claude-opus-5-5` while the key is `claude-opus-5-5[1m]`; for haiku the key carries the
+  build date (`claude-haiku-4-5-20251001`). They are compared without the `[…]` suffix, the `claude-`
+  prefix and the date. Checked on CLI 2.1.283.
 - **`/context` in `-p`** works with `--resume`: the model is not called (`num_turns: 0`, empty
   `modelUsage`), the answer is markdown in `result` — a header with `Tokens: 46.6k / 200k (23%)`, the
   «Estimated usage by category» table and then per-tool tables for MCP and skills, hundreds of lines.

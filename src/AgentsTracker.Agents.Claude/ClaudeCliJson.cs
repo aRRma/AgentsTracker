@@ -68,8 +68,9 @@ public sealed class ClaudeCliJson
     }
 
     /// <summary>
-    /// Ключ modelUsage и model хода могут расходиться суффиксом окна «[1m]» и датой сборки —
-    /// без приведения основная модель не нашлась бы и подпись снова взяла бы сабагента.
+    /// Ключ modelUsage и model хода расходятся: при --model claude-opus-5-5[1m] ход называет
+    /// claude-opus-5-5, а ключ — с «[1m]»; у haiku в ключе дата сборки (проверено на CLI 2.1.283).
+    /// Без приведения основная модель не нашлась бы и подпись снова взяла бы сабагента.
     /// </summary>
     private static string Normalize(string model)
     {
