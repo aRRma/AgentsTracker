@@ -12,9 +12,10 @@ public static class ClaudeStreamEvent
     /// <summary>Что в строке: итог, вызовы инструментов, другое событие или вообще не JSON.</summary>
     /// <param name="ContextTokens">Размер контекста на этом ходе основной ветки; null — ход не основной или без usage.</param>
     /// <param name="Compaction">Событие сжатия контекста: сколько было и сколько стало.</param>
+    /// <param name="MainModel">Модель хода основной ветки; null — ход сабагента или локальной команды.</param>
     public sealed record Line(
         bool IsJson, bool IsResult, IReadOnlyList<RunActivity> ToolCalls,
-        long? ContextTokens = null, ContextCompaction? Compaction = null)
+        long? ContextTokens = null, ContextCompaction? Compaction = null, string? MainModel = null)
     {
         public static readonly Line Text = new(false, false, []);
         public static readonly Line Other = new(true, false, []);
@@ -32,7 +33,7 @@ public static class ClaudeStreamEvent
         return String(root, "type") switch
         {
             "result" => Line.Result,
-            "assistant" => new Line(true, false, ToolCalls(root), ContextTokens(root)),
+            "assistant" => new Line(true, false, ToolCalls(root), ContextTokens(root), MainModel: MainModel(root)),
             "system" when String(root, "subtype") == "compact_boundary" => new Line(true, false, [], Compaction: Compaction(root)),
             _ => Line.Other,
         };
@@ -58,6 +59,21 @@ public static class ClaudeStreamEvent
         var total = Number(usage, "input_tokens") + Number(usage, "cache_read_input_tokens")
                     + Number(usage, "cache_creation_input_tokens");
         return total > 0 ? total : null;
+    }
+
+    /// <summary>
+    /// Модель основной ветки. По modelUsage итога её не узнать: там сабагенты вперемешку
+    /// с основной моделью, и сабагент на sonnet легко пишет больше, чем сама сессия.
+    /// </summary>
+    private static string? MainModel(JsonElement root)
+    {
+        if (root.TryGetProperty("parent_tool_use_id", out var parent) && parent.ValueKind == JsonValueKind.String)
+            return null;
+
+        return root.TryGetProperty("message", out var message)
+               && String(message, "model") is { Length: > 0 } model && model != "<synthetic>"
+            ? model
+            : null;
     }
 
     /// <summary>compact_metadata события compact_boundary (проверено на CLI 2.1.261).</summary>

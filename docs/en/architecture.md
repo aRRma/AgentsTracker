@@ -216,7 +216,9 @@ the agent's file in `ApprovalBroker` — both through `RateLimitRetry.OnceAsync`
 (`Channels.Abstractions`), one shared ceiling. Sums, tokens and time — `DisplayFormat`.
 
 The footer under an answer (`ChatWorker.Footer`): the session id (or «💬 вопрос»), the model that
-**actually** answered — the one with the most output tokens in `modelUsage`, shortened to
+**actually** answered — the `message.model` of the last main-branch turn in the stream (not the one
+with the most output tokens in `modelUsage`: a sonnet subagent easily outwrites the session itself;
+that is only the fallback when the stream named no model), shortened to
 `opus-5`/`haiku-4-5` (`RunUsage.PrimaryModel`); the chosen alias only if the CLI said nothing —
 right after it, in brackets, the effort that was **passed** as one to three letters (`opus-5(H)`;
 `DisplayFormat.EffortShort`: L, M, H, XH, MAX; the CLI does not report it back), then turns and time. A context breakdown has no model in its

@@ -20,9 +20,10 @@ public sealed class ClaudeCliJson
     [JsonPropertyName("modelUsage")] public Dictionary<string, CliModelUsage>? ModelUsage { get; set; }
 
     /// <summary>Расход запуска в виде, который кладётся в статистику шлюза.</summary>
-    public RunUsage ToRunUsage()
+    /// <param name="mainModel">Модель основной ветки из потока; null — ходов в потоке не было.</param>
+    public RunUsage ToRunUsage(string? mainModel = null)
     {
-        var primary = Primary();
+        var primary = Primary(mainModel);
 
         return new()
         {
@@ -46,11 +47,35 @@ public sealed class ClaudeCliJson
     }
 
     /// <summary>
-    /// Модель, которая отвечала. Моделей в запуске бывает несколько: CLI зовёт haiku
-    /// для служебных мелочей (заголовок, сжатие вывода), и её ответ короче основного.
+    /// Модель, которая отвечала. Моделей в запуске бывает несколько: CLI зовёт haiku для
+    /// служебных мелочей, сабагенты работают на своей. По числу токенов основную не угадать —
+    /// сабагент на sonnet пишет больше самой сессии, — поэтому ищем модель основной ветки,
+    /// а самую разговорчивую берём, только если поток модель не назвал.
     /// </summary>
-    private KeyValuePair<string, CliModelUsage>? Primary() =>
-        ModelUsage is { Count: > 0 } models ? models.MaxBy(pair => pair.Value.OutputTokens) : null;
+    private KeyValuePair<string, CliModelUsage>? Primary(string? mainModel)
+    {
+        if (ModelUsage is not { Count: > 0 } models) return null;
+
+        if (mainModel is { Length: > 0 })
+        {
+            var wanted = Normalize(mainModel);
+            foreach (var pair in models)
+                if (Normalize(pair.Key) == wanted || (pair.Value.CanonicalModel is { } canonical && Normalize(canonical) == wanted))
+                    return pair;
+        }
+
+        return models.MaxBy(pair => pair.Value.OutputTokens);
+    }
+
+    /// <summary>
+    /// Ключ modelUsage и model хода могут расходиться суффиксом окна «[1m]» и датой сборки —
+    /// без приведения основная модель не нашлась бы и подпись снова взяла бы сабагента.
+    /// </summary>
+    private static string Normalize(string model)
+    {
+        var bracket = model.IndexOf('[');
+        return ShortModelName(bracket > 0 ? model[..bracket] : model).ToLowerInvariant();
+    }
 
     /// <summary>
     /// «claude-haiku-4-5-20251001» → «haiku-4-5»: префикс и дата в подписи под каждым

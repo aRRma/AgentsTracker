@@ -174,8 +174,9 @@ public sealed class ClaudeBackend(
     /// </param>
     /// <param name="ContextTokens">Контекст последнего хода основной ветки; null — ходов не было.</param>
     /// <param name="Compaction">Сжатие, если оно случилось в запуске: после него контекст — это его итог.</param>
+    /// <param name="MainModel">Модель последнего хода основной ветки; null — ходов не было.</param>
     private sealed record StreamOutput(
-        string? ResultLine, string Noise, long? ContextTokens, ContextCompaction? Compaction);
+        string? ResultLine, string Noise, long? ContextTokens, ContextCompaction? Compaction, string? MainModel);
 
     /// <summary>
     /// Читает stdout построчно: вызовы инструментов отдаёт наблюдателю, остальные события
@@ -188,6 +189,7 @@ public sealed class ClaudeBackend(
         string? lastEvent = null;
         long? context = null;
         ContextCompaction? compaction = null;
+        string? mainModel = null;
 
         while (await stdout.ReadLineAsync(CancellationToken.None) is { } line)
         {
@@ -218,6 +220,7 @@ public sealed class ClaudeBackend(
             }
 
             if (parsed.Compaction is { } compacted) compaction = compacted;
+            if (parsed.MainModel is { } model) mainModel = model;
 
             foreach (var activity in parsed.ToolCalls)
             {
@@ -230,7 +233,7 @@ public sealed class ClaudeBackend(
 
         if (resultLine is null && lastEvent is not null) noise.AppendLine(lastEvent);
 
-        return new StreamOutput(resultLine, noise.ToString().TrimEnd(), context, compaction);
+        return new StreamOutput(resultLine, noise.ToString().TrimEnd(), context, compaction, mainModel);
     }
 
     private IEnumerable<string> BuildArguments(
@@ -375,7 +378,7 @@ public sealed class ClaudeBackend(
                 SessionId = lost ? null : payload.SessionId,
                 SessionLost = lost,
                 Duration = duration,
-                Usage = payload.ToRunUsage(),
+                Usage = payload.ToRunUsage(output.MainModel),
                 RateLimited = HitPlanLimit(text) || HitPlanLimit(stderr) || HitPlanLimit(payload.Subtype),
             };
         }
@@ -386,7 +389,7 @@ public sealed class ClaudeBackend(
             Text = text,
             SessionId = payload.SessionId,
             Duration = duration,
-            Usage = payload.ToRunUsage(),
+            Usage = payload.ToRunUsage(output.MainModel),
         };
     }
 
