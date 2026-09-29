@@ -190,7 +190,10 @@ Id новой сессии выдаёт **шлюз** (`NewSessionId` → `--sess
   семейства), а до первого ответа — из `ClaudeCapabilities.KnownVersions`. Версия без префикса
   (`opus-5-5`, как в подписи; так же старые кнопки `fable-5-1`, `opus-5`) — не алиас:
   `ClaudeCapabilities.CliModel` добавляет ей `claude-`. CLI 2.1.261 молча подменял `fable` на
-  `claude-opus-5`; `claude-opus-5-5` требует CLI 2.1.280+.
+  `claude-opus-5`; `claude-opus-5-5` требует CLI 2.1.280+. Модель, вышедшую после CLI
+  (`claude-sonnet-5-5` на 2.1.283), CLI пропускает с предупреждением `unrecognized_model` в stderr
+  и окном 200 000; алиас на неё переводит `ANTHROPIC_DEFAULT_SONNET_MODEL` — см.
+  `claude-permissions.md`, «Хуки».
 - **Какая модель ответила.** В `modelUsage` основная ветка вперемешку с сабагентами и служебными
   вызовами haiku, и сабагент на sonnet часто пишет больше выходных токенов, чем сама сессия. Поэтому
   модель ответа — `message.model` последнего события `assistant` с `parent_tool_use_id: null`, а её

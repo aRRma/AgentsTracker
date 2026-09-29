@@ -120,3 +120,10 @@ author has a `PreToolUse` hook on `Agent` that swaps subagent models to `sonnet`
 "Subagents only sonnet" rule from `../../CLAUDE.md`). Hooks are scripts kept outside the
 repository and are not included in the example; editing the hooks folder is set to `ask` so
 the agent can't rewrite its own restrictions.
+
+The hook and `CLAUDE_CODE_SUBAGENT_MODEL` in `env` set the `sonnet` alias, and what it resolves to
+is up to the CLI. CLI 2.1.283 maps it to `claude-sonnet-5`: it does not know the later
+`claude-sonnet-5-5`. So `env` holds `"ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-5-5[1m]"` —
+subagents, the `sonnet` button in the chat and `/ask` all go there. The `[1m]` is required: the CLI
+gives a model it does not know a 200 000 window, not 1 000 000. The variable pins the version —
+once the CLI knows `sonnet-5-5` itself or a newer one ships, remove it, or `sonnet` stays on 5-5.

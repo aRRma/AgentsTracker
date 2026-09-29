@@ -207,7 +207,9 @@ Checked on CLI 2.1.261.
   answer from `ClaudeCapabilities.KnownVersions`. A version without the prefix (`opus-5-5`, as in the
   footer; likewise the old `fable-5-1`, `opus-5` buttons) is not an alias: `ClaudeCapabilities.CliModel`
   adds `claude-` to it. CLI 2.1.261 silently replaced `fable` with `claude-opus-5`; `claude-opus-5-5`
-  needs CLI 2.1.280+.
+  needs CLI 2.1.280+. A model released after the CLI (`claude-sonnet-5-5` on 2.1.283) is let
+  through with an `unrecognized_model` warning on stderr and a 200 000 window; the alias is moved onto
+  it by `ANTHROPIC_DEFAULT_SONNET_MODEL` — see `claude-permissions.md`, "Hooks".
 - **Which model answered.** `modelUsage` mixes the main branch with subagents and haiku's chores, and
   a sonnet subagent often writes more output tokens than the session itself — so the answering model
   is `message.model` of the last `assistant` event with `parent_tool_use_id: null`, and its window is
