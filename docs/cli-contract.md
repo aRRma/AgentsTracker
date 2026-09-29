@@ -188,7 +188,7 @@ Id новой сессии выдаёт **шлюз** (`NewSessionId` → `--sess
   они уходят как есть: новая версия доходит до чата с обновлением CLI, без релиза шлюза. Версию на
   экранах шлюз берёт из ответа (`state.json`, `ModelVersions`: алиас → `PrimaryModel` того же
   семейства), а до первого ответа — из `ClaudeCapabilities.KnownVersions`. Версия без префикса
-  (`opus-5-5`, как в подписи; так же старые кнопки `fable-5-1`, `opus-5`) — не алиас:
+  (`/model opus-5-5`, как в подписи) — не алиас:
   `ClaudeCapabilities.CliModel` добавляет ей `claude-`. CLI 2.1.261 молча подменял `fable` на
   `claude-opus-5`; `claude-opus-5-5` требует CLI 2.1.280+. Модель, вышедшую после CLI
   (`claude-sonnet-5-5` на 2.1.283), CLI пропускает с предупреждением `unrecognized_model` в stderr

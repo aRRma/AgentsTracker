@@ -204,8 +204,8 @@ Checked on CLI 2.1.261.
   buttons are the aliases themselves and go to `--model` as-is: a new version reaches the chat with a
   CLI update, no gateway release needed. The version on the screens comes from the answer
   (`state.json`, `ModelVersions`: alias → a `PrimaryModel` of the same family), and before the first
-  answer from `ClaudeCapabilities.KnownVersions`. A version without the prefix (`opus-5-5`, as in the
-  footer; likewise the old `fable-5-1`, `opus-5` buttons) is not an alias: `ClaudeCapabilities.CliModel`
+  answer from `ClaudeCapabilities.KnownVersions`. A version without the prefix (`/model opus-5-5`, as in the
+  footer) is not an alias: `ClaudeCapabilities.CliModel`
   adds `claude-` to it. CLI 2.1.261 silently replaced `fable` with `claude-opus-5`; `claude-opus-5-5`
   needs CLI 2.1.280+. A model released after the CLI (`claude-sonnet-5-5` on 2.1.283) is let
   through with an `unrecognized_model` warning on stderr and a 200 000 window; the alias is moved onto

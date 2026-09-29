@@ -240,7 +240,7 @@ the container this is the `data` volume):
 | File | What |
 |---|---|
 | `appsettings.Local.json` | config; on Windows secrets are encrypted |
-| `state.json` | sessions per project, model and mode selection, "Always" rules, run history |
+| `state.json` | sessions per project, model and mode selection, the versions the model aliases answered with, "Always" rules, run history |
 | `audit\audit-YYYY-MM.jsonl` | "who did what, when" log, one file per month |
 | `mcp-gateway-<pid>.json` | temporary, created on startup and removed on shutdown |
 
