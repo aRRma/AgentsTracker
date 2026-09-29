@@ -5,9 +5,9 @@ public static class ClaudeCapabilities
 {
     /// <summary>
     /// Кнопки — семейства, а не версии: алиас CLI сам раскрывает в последнюю версию семейства
-    /// с окном 1M (проверено на CLI 2.1.283). С версией на кнопке новая модель доходила бы до
-    /// чата только с релизом шлюза — кнопка «opus-5» так и слала запуски на прошлый Opus.
-    /// Версию показывает хост: ту, что ответила, а до первого ответа — <see cref="KnownVersions"/>.
+    /// с окном 1M (проверено на CLI 2.1.283). Версия на кнопке закрепила бы модель до релиза
+    /// шлюза: вышедшая новая до чата бы не дошла. Версию показывает хост — ту, что ответила,
+    /// а до первого ответа — <see cref="KnownVersions"/>.
     /// </summary>
     private static readonly string[] ModelAliases = ["sonnet", "opus", "fable"];
 
@@ -25,9 +25,8 @@ public static class ClaudeCapabilities
     private static readonly string[] Families = ["sonnet", "opus", "fable", "haiku"];
 
     /// <summary>
-    /// Имя для <c>--model</c>. Версия без префикса («opus-5-5», как её пишет подпись под
-    /// ответом) — в полное имя: такого алиаса CLI не знает. Так же доживает выбор, сохранённый
-    /// старыми кнопками «fable-5-1» и «opus-5».
+    /// Имя для <c>--model</c>. Версия без префикса («/model opus-5-5», как её пишет подпись под
+    /// ответом) — в полное имя: такого алиаса CLI не знает и запуск упал бы.
     /// </summary>
     internal static string CliModel(string model) =>
         Families.Any(family => model.Length > family.Length + 1
@@ -44,9 +43,14 @@ public static class ClaudeCapabilities
         Context: true,
         Questions: true);
 
-    /// <summary>Модель — любая непустая строка: CLI сам скажет, если такой нет.</summary>
+    /// <summary>
+    /// Модель — любая непустая строка: CLI сам скажет, если такой нет. Алиас — в каноническом
+    /// написании: «/model Opus» иначе не отметил бы выбранную кнопку.
+    /// </summary>
     private static string? ResolveModel(string value) =>
-        value.Trim() is { Length: > 0 } model ? model : null;
+        value.Trim() is { Length: > 0 } model
+            ? ModelAliases.FirstOrDefault(alias => alias.Equals(model, StringComparison.OrdinalIgnoreCase)) ?? model
+            : null;
 }
 
 /// <summary>

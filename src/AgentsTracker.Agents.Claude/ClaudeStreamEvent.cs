@@ -40,18 +40,29 @@ public static class ClaudeStreamEvent
     }
 
     /// <summary>
-    /// Контекст хода — всё, что модель получила на входе: новые токены плюс прочитанные
-    /// и записанные в кэш. Ходы сабагентов не считаем: у них своё окно. «&lt;synthetic&gt;» —
-    /// ответ локальной команды вроде /context, модель не вызывалась и нули в usage не значат
-    /// «контекст пуст».
+    /// Сообщение хода основной ветки. Ходы сабагентов — мимо: у них своё окно и своя модель.
+    /// «&lt;synthetic&gt;» — ответ локальной команды вроде /context: модель не вызывалась,
+    /// нули в usage не значат «контекст пуст», а имя — не модель.
     /// </summary>
+    private static bool TryMainTurn(JsonElement root, out JsonElement message, out string model)
+    {
+        model = "";
+        if (root.TryGetProperty("parent_tool_use_id", out var parent) && parent.ValueKind == JsonValueKind.String
+            || !root.TryGetProperty("message", out message)
+            || String(message, "model") is not { Length: > 0 } name || name == "<synthetic>")
+        {
+            message = default;
+            return false;
+        }
+
+        model = name;
+        return true;
+    }
+
+    /// <summary>Контекст хода — всё, что модель получила на входе: новые токены плюс прочитанные и записанные в кэш.</summary>
     private static long? ContextTokens(JsonElement root)
     {
-        if (root.TryGetProperty("parent_tool_use_id", out var parent) && parent.ValueKind == JsonValueKind.String)
-            return null;
-
-        if (!root.TryGetProperty("message", out var message)
-            || String(message, "model") == "<synthetic>"
+        if (!TryMainTurn(root, out var message, out _)
             || !message.TryGetProperty("usage", out var usage)
             || usage.ValueKind != JsonValueKind.Object)
             return null;
@@ -65,16 +76,8 @@ public static class ClaudeStreamEvent
     /// Модель основной ветки. По modelUsage итога её не узнать: там сабагенты вперемешку
     /// с основной моделью, и сабагент на sonnet легко пишет больше, чем сама сессия.
     /// </summary>
-    private static string? MainModel(JsonElement root)
-    {
-        if (root.TryGetProperty("parent_tool_use_id", out var parent) && parent.ValueKind == JsonValueKind.String)
-            return null;
-
-        return root.TryGetProperty("message", out var message)
-               && String(message, "model") is { Length: > 0 } model && model != "<synthetic>"
-            ? model
-            : null;
-    }
+    private static string? MainModel(JsonElement root) =>
+        TryMainTurn(root, out _, out var model) ? model : null;
 
     /// <summary>compact_metadata события compact_boundary (проверено на CLI 2.1.261).</summary>
     private static ContextCompaction? Compaction(JsonElement root)
