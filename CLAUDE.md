@@ -183,6 +183,11 @@ time — `DisplayFormat`; the renderer's quirks — `docs/en/architecture.md`.
   monitor's JS — `/api/limits` sends them ready-made. `double` is left only where the BCL itself
   counts that way (`TimeSpan.Total*`) and the result goes straight into a caption. Why —
   `docs/en/architecture.md`, "Numbers".
+- The model buttons are the CLI's family aliases (`sonnet`/`opus`/`fable`), passed to `--model` as-is
+  so a new version arrives with a CLI update. A person always sees the version: every screen, the
+  journal and the monitor go through `SessionStore.ModelLabel` (the version the alias last answered
+  with, else `ClaudeCapabilities.KnownVersions`) — do not print `EffectiveModel` raw. Details —
+  `docs/en/cli-contract.md`, "Context".
 - The order of the tariff windows is set in exactly one place — the sort in `ClaudeLimits.Parse`
   («5 часов», then «неделя», then the models' windows). Chat bars, the menu header and
   `/api/limits` all show the snapshot as-is; do not re-sort in a screen or in the monitor's JS.

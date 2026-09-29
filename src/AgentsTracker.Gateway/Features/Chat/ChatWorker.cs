@@ -92,6 +92,8 @@ public sealed class ChatWorker(
         // отдельный запуск — не тратить лимит тяжёлой модели на простой ответ.
         var model = question ? options.Value.Question.Model : store.EffectiveModel;
         var effort = question ? options.Value.Question.Effort : store.EffectiveEffort;
+        // Человеку — с версией: по алиасу «opus» в журнале и мониторе не понять, какой Opus это был.
+        var modelLabel = store.ModelLabel(model, agent.Capabilities.Model);
 
         // Лимит проверяем здесь, а не при постановке в очередь: пока сообщение ждало,
         // предыдущие запуски могли выбрать окно. На исчерпанном тарифе CLI ушёл бы
@@ -124,7 +126,7 @@ public sealed class ChatWorker(
         var thread = question ? "вопрос" : session is { Length: > 0 } ? session.ShortId : "новая сессия";
 
         Audit(prompt, AuditKinds.RunStart,
-            $"{(question ? "вопрос, " : "")}{model ?? "модель по умолчанию"}, {store.EffectivePermissionMode}, effort {effort ?? "—"}",
+            $"{(question ? "вопрос, " : "")}{modelLabel ?? "модель по умолчанию"}, {store.EffectivePermissionMode}, effort {effort ?? "—"}",
             session);
 
         var status = await RunStatusMessage.StartAsync(channel, prompt.Chat, thread, logger, stoppingToken);
@@ -132,7 +134,7 @@ public sealed class ChatWorker(
         var startedUtc = DateTimeOffset.UtcNow;
         var project = question ? QuestionDirectory() : store.ProjectPath;
         var preview = Text.Preview(prompt.Text);
-        monitor.RunStarted(new RunStart(project, session, preview, model, store.EffectivePermissionMode, effort));
+        monitor.RunStarted(new RunStart(project, session, preview, modelLabel, store.EffectivePermissionMode, effort));
 
         // В state.json, а не только в памяти: если шлюз убьют посреди запуска, следующему
         // экземпляру нужно знать, кому и про что сказать «прервано».
@@ -143,7 +145,7 @@ public sealed class ChatWorker(
             StartedUtc = startedUtc,
             ProjectPath = project,
             SessionId = session,
-            Model = model,
+            Model = modelLabel,
             Prompt = preview,
         });
 
@@ -192,7 +194,10 @@ public sealed class ChatWorker(
         // Неудачный запуск тоже расходует тариф, поэтому пишем и его — если агент успел сказать.
         // Разбивка контекста модель не звала: в статистике она была бы запуском без расхода.
         if (result.Usage is { } usage && kind != AgentRunKind.ContextReport)
+        {
             store.RecordRun(project, prompt.Text, result.SessionId, usage);
+            store.RecordModelVersion(model, usage.PrimaryModel);
+        }
 
         if (result.SessionId is { Length: > 0 } reported && result.Usage is { ContextTokens: > 0 } context)
             store.RecordContext(reported, context.ContextTokens, context.ContextWindow);
@@ -216,7 +221,8 @@ public sealed class ChatWorker(
             ProjectPath = project,
             SessionId = result.SessionId ?? session,
             Prompt = preview,
-            Model = model,
+            // Та, что ответила: выбранный алиас мог уже раскрыться в другую версию.
+            Model = result.Usage?.PrimaryModel ?? modelLabel,
             Outcome = outcome,
             DurationMs = (long)result.Duration.TotalMilliseconds,
             Turns = result.Usage?.Turns ?? 0,
@@ -225,7 +231,7 @@ public sealed class ChatWorker(
             OutputTokens = result.Usage?.OutputTokens ?? 0,
         });
 
-        await SendRenderedAsync(prompt.Chat, Answer(kind, result) + note + Footer(kind, result, model, effort), stoppingToken);
+        await SendRenderedAsync(prompt.Chat, Answer(kind, result) + note + Footer(kind, result, modelLabel, effort), stoppingToken);
 
         // Упёрлись в лимит — следующие задачи упрутся в него же; очередь чистим,
         // чтобы не жечь её на отказах.
@@ -333,7 +339,7 @@ public sealed class ChatWorker(
         else return "";
 
         // Разбивка контекста модель не звала — подписывать её моделью значило бы соврать.
-        // Effort в скобках вплотную к модели: «opus-5(H)» — это одна характеристика ответа,
+        // Effort в скобках вплотную к модели: «opus-5-5(H)» — это одна характеристика ответа,
         // отдельным пунктом подпись длиннее, а буква без модели читается как загадка.
         if (kind != AgentRunKind.ContextReport)
         {

@@ -198,11 +198,16 @@ Checked on CLI 2.1.261.
   `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`. Events with
   `"model": "<synthetic>"` are answers of local commands with zeros in `usage` — skipped. The
   window is `modelUsage.<model>.contextWindow` of the result (1 000 000 for `sonnet-5`, 200 000 for
-  `haiku-4-5`); `canonicalModel` next to it is the name without the build date. `opus` and
-  `claude-fable-5-1` get 1 000 000 by default, with no `[1m]` suffix. The `fable` alias is silently
-  replaced with `claude-opus-5` (no error), so `ClaudeCapabilities.CliModel` turns it into the full
-  name before `--model`; the menu buttons (`fable-5-1`, `opus-5`) get the `claude-` prefix there too.
-  `claude-opus-5-5` needs CLI 2.1.280+.
+  `haiku-4-5`); `canonicalModel` next to it is the name without the build date. Aliases resolve
+  to the latest version of the family, all with 1 000 000 and no `[1m]` suffix (CLI 2.1.283):
+  `sonnet` → `claude-sonnet-5`, `opus` → `claude-opus-5-5`, `fable` → `claude-fable-5-1`. So the menu
+  buttons are the aliases themselves and go to `--model` as-is: a new version reaches the chat with a
+  CLI update, no gateway release needed. The version on the screens comes from the answer
+  (`state.json`, `ModelVersions`: alias → a `PrimaryModel` of the same family), and before the first
+  answer from `ClaudeCapabilities.KnownVersions`. A version without the prefix (`opus-5-5`, as in the
+  footer; likewise the old `fable-5-1`, `opus-5` buttons) is not an alias: `ClaudeCapabilities.CliModel`
+  adds `claude-` to it. CLI 2.1.261 silently replaced `fable` with `claude-opus-5`; `claude-opus-5-5`
+  needs CLI 2.1.280+.
 - **Which model answered.** `modelUsage` mixes the main branch with subagents and haiku's chores, and
   a sonnet subagent often writes more output tokens than the session itself — so the answering model
   is `message.model` of the last `assistant` event with `parent_tool_use_id: null`, and its window is

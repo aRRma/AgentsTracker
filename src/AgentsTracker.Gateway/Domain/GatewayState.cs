@@ -17,6 +17,13 @@ public sealed class GatewayState
     /// <summary>Алиас модели, выставленный из чата. null = из конфига.</summary>
     public string? Model { get; set; }
 
+    /// <summary>
+    /// Во что алиас модели раскрылся в последнем ответе: «opus» → «opus-5-5». Алиас уходит
+    /// агенту как есть и с его обновлением молча ведёт на новую версию — без этой записи
+    /// экраны показывали бы версию, известную при выпуске шлюза.
+    /// </summary>
+    public Dictionary<string, string> ModelVersions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Режим работы агента, выставленный командой /mode. null = из конфига.</summary>
     public string? PermissionMode { get; set; }
 

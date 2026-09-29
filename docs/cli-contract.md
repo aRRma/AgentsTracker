@@ -182,10 +182,15 @@ Id новой сессии выдаёт **шлюз** (`NewSessionId` → `--sess
   `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`. События с
   `"model": "<synthetic>"` — ответы локальных команд с нулями в `usage`, их пропускаем. Окно —
   `modelUsage.<модель>.contextWindow` в итоге (1 000 000 у `sonnet-5`, 200 000 у `haiku-4-5`);
-  рядом `canonicalModel` — имя без даты сборки. `opus` и `claude-fable-5-1` получают 1 000 000 по
-  умолчанию, без суффикса `[1m]`. Алиас `fable` молча подменяется на `claude-opus-5` (без ошибки),
-  поэтому `ClaudeCapabilities.CliModel` превращает его в полное имя перед `--model`; там же
-  кнопки меню (`fable-5-1`, `opus-5`) получают префикс `claude-`. `claude-opus-5-5` требует CLI 2.1.280+.
+  рядом `canonicalModel` — имя без даты сборки. Алиасы раскрываются в последнюю версию семейства,
+  и все получают 1 000 000 без суффикса `[1m]` (CLI 2.1.283): `sonnet` → `claude-sonnet-5`, `opus` →
+  `claude-opus-5-5`, `fable` → `claude-fable-5-1`. Поэтому кнопки меню — сами алиасы, и в `--model`
+  они уходят как есть: новая версия доходит до чата с обновлением CLI, без релиза шлюза. Версию на
+  экранах шлюз берёт из ответа (`state.json`, `ModelVersions`: алиас → `PrimaryModel` того же
+  семейства), а до первого ответа — из `ClaudeCapabilities.KnownVersions`. Версия без префикса
+  (`opus-5-5`, как в подписи; так же старые кнопки `fable-5-1`, `opus-5`) — не алиас:
+  `ClaudeCapabilities.CliModel` добавляет ей `claude-`. CLI 2.1.261 молча подменял `fable` на
+  `claude-opus-5`; `claude-opus-5-5` требует CLI 2.1.280+.
 - **Какая модель ответила.** В `modelUsage` основная ветка вперемешку с сабагентами и служебными
   вызовами haiku, и сабагент на sonnet часто пишет больше выходных токенов, чем сама сессия. Поэтому
   модель ответа — `message.model` последнего события `assistant` с `parent_tool_use_id: null`, а её

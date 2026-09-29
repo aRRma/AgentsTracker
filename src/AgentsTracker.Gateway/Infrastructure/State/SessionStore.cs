@@ -93,6 +93,41 @@ public sealed class SessionStore
 
     public void SetModel(string? model) => Mutate(s => s.Model = model);
 
+    /// <summary>
+    /// Модель для показа человеку: версия, которой алиас ответил в последний раз, иначе
+    /// подпись агента. null — модель не выбрана, решает агент.
+    /// </summary>
+    public string? ModelLabel(string? model, AgentSetting setting)
+    {
+        if (model is not { Length: > 0 }) return null;
+
+        lock (_gate)
+        {
+            if (_state.ModelVersions.TryGetValue(model, out var seen)) return seen;
+        }
+
+        return setting.Describe(model);
+    }
+
+    /// <summary>
+    /// Запоминает, во что раскрылся алиас. Только версия того же семейства: «opus» → «opus-5-5»;
+    /// ответ другой моделью (агент подменил алиас) версией алиаса не считается.
+    /// </summary>
+    public void RecordModelVersion(string? requested, string? answered)
+    {
+        if (requested is not { Length: > 0 } || answered is not { Length: > 0 }
+            || !answered.StartsWith(requested + "-", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        lock (_gate)
+        {
+            // Без изменения файл не переписываем: запись идёт после каждого запуска.
+            if (_state.ModelVersions.TryGetValue(requested, out var known) && known == answered) return;
+        }
+
+        Mutate(s => s.ModelVersions[requested] = answered);
+    }
+
     public void SetPermissionMode(string? mode) => Mutate(s => s.PermissionMode = mode);
 
     public void SetEffort(string? effort) => Mutate(s => s.Effort = effort);
@@ -528,6 +563,7 @@ public sealed class SessionStore
     {
         state.ActiveSessions = new Dictionary<string, string>(state.ActiveSessions, StringComparer.OrdinalIgnoreCase);
         state.AlwaysAllowByProject = new Dictionary<string, List<string>>(state.AlwaysAllowByProject, StringComparer.OrdinalIgnoreCase);
+        state.ModelVersions = new Dictionary<string, string>(state.ModelVersions, StringComparer.OrdinalIgnoreCase);
 
         // Старые версии писали голое имя инструмента («WebSearch»). Теперь в сигнатуру входят
         // аргументы, так что такие записи не совпадут никогда — убираем из /rules.

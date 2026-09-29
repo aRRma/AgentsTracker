@@ -4,23 +4,40 @@ namespace AgentsTracker.Agents.Claude;
 public static class ClaudeCapabilities
 {
     /// <summary>
-    /// Кнопки — только старшие модели с окном 1M, с версией: по алиасу не видно, какая модель
-    /// ответит. Префикс «claude-» на кнопке ничего не говорит — его добавляет <see cref="CliModel"/>.
-    /// Младшие из чата не выбирают, при нужде имя вводится текстом.
+    /// Кнопки — семейства, а не версии: алиас CLI сам раскрывает в последнюю версию семейства
+    /// с окном 1M (проверено на CLI 2.1.283). С версией на кнопке новая модель доходила бы до
+    /// чата только с релизом шлюза — кнопка «opus-5» так и слала запуски на прошлый Opus.
+    /// Версию показывает хост: ту, что ответила, а до первого ответа — <see cref="KnownVersions"/>.
     /// </summary>
-    private static readonly string[] ModelAliases = ["fable-5-1", "opus-5"];
+    private static readonly string[] ModelAliases = ["sonnet", "opus", "fable"];
 
     /// <summary>
-    /// Имя для <c>--model</c>: кнопка без префикса — полное имя. Алиас «fable» тоже в полное
-    /// имя: CLI 2.1.261 молча подменяет его на opus, без ошибки.
+    /// Во что алиасы раскрывались при выпуске этой версии шлюза. Только подпись до первого
+    /// ответа: в CLI уходит сам алиас.
+    /// </summary>
+    private static readonly Dictionary<string, string> KnownVersions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["sonnet"] = "sonnet-5",
+        ["opus"] = "opus-5-5",
+        ["fable"] = "fable-5-1",
+    };
+
+    private static readonly string[] Families = ["sonnet", "opus", "fable", "haiku"];
+
+    /// <summary>
+    /// Имя для <c>--model</c>. Версия без префикса («opus-5-5», как её пишет подпись под
+    /// ответом) — в полное имя: такого алиаса CLI не знает. Так же доживает выбор, сохранённый
+    /// старыми кнопками «fable-5-1» и «opus-5».
     /// </summary>
     internal static string CliModel(string model) =>
-        model.Equals("fable", StringComparison.OrdinalIgnoreCase) ? "claude-fable-5-1"
-        : ModelAliases.Contains(model, StringComparer.OrdinalIgnoreCase) ? "claude-" + model
-        : model;
+        Families.Any(family => model.Length > family.Length + 1
+                               && model.StartsWith(family + "-", StringComparison.OrdinalIgnoreCase)
+                               && char.IsAsciiDigit(model[family.Length + 1]))
+            ? "claude-" + model
+            : model;
 
     public static readonly AgentCapabilities Instance = new(
-        Model: new AgentSetting(ModelAliases, ModelAliases, ResolveModel, model => model),
+        Model: new AgentSetting(ModelAliases, ModelAliases, ResolveModel, model => KnownVersions.GetValueOrDefault(model, model)),
         Effort: new AgentSetting(EffortLevels.All, EffortLevels.All, EffortLevels.Resolve, EffortLevels.Describe),
         PermissionMode: new AgentSetting(
             PermissionModes.All, PermissionModes.Selectable, PermissionModes.Resolve, PermissionModes.Describe),

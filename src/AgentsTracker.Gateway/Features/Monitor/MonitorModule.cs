@@ -49,7 +49,7 @@ public sealed class MonitorModule : IFeatureModule
         api.MapGet("/api/events", (RunMonitor monitor, SessionStore store, ChatWorker worker, IAgentBackend agent, CancellationToken ct) =>
             TypedResults.ServerSentEvents(Events(monitor, store, worker, agent, ct)));
 
-        api.MapGet("/api/limits", async (IAgentLimits limits, SessionStore store, CancellationToken ct) =>
+        api.MapGet("/api/limits", async (IAgentLimits limits, SessionStore store, IAgentBackend agent, CancellationToken ct) =>
         {
             var snapshot = await limits.GetAsync(ct);
             return Results.Json(new
@@ -57,7 +57,7 @@ public sealed class MonitorModule : IFeatureModule
                 snapshot.Error,
                 snapshot.FetchedUtc,
                 ExtraUsageEnabled = snapshot.ExtraUsage?.IsEnabled,
-                Model = store.EffectiveModel,
+                Model = store.ModelLabel(store.EffectiveModel, agent.Capabilities.Model),
                 // Проценты считает шлюз: в JS нет decimal, и своя формула на странице разошлась
                 // бы с чатом на копеечной погрешности double. Доля остаётся для полноты снимка.
                 Windows = snapshot.Windows.Select(w => new
@@ -100,7 +100,7 @@ public sealed class MonitorModule : IFeatureModule
         live.CliVersion,
         Project = store.ProjectPath,
         Session = store.SessionId,
-        Model = store.EffectiveModel,
+        Model = store.ModelLabel(store.EffectiveModel, agent.Capabilities.Model),
         PermissionMode = store.EffectivePermissionMode,
         Effort = store.EffectiveEffort,
         worker.IsBusy,

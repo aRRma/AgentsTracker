@@ -87,7 +87,7 @@ public sealed class StatusScreen(
             <code>{E(project)}</code>
             🧵 Сессия: {(session is null ? "<i>новая</i>" : $"<b>{E(session.Title)}</b> · {session.Turns} х")}
             📦 Контекст: {(session is { ContextTokens: > 0, ContextWindow: > 0 } ? ContextScreen.Fill(session, bar: false) : "—")}
-            🧠 {E(store.EffectiveModel ?? "модель по умолчанию")}{effort} · 🔐 {E(store.EffectivePermissionMode)}
+            🧠 {E(store.ModelLabel(store.EffectiveModel, agent.Capabilities.Model) ?? "модель по умолчанию")}{effort} · 🔐 {E(store.EffectivePermissionMode)}
             ♾ Правил «всегда» в проекте: {store.AlwaysAllowRules().Count}
 
             🚦 <b>Лимиты тарифа</b>

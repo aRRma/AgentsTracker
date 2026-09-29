@@ -38,10 +38,11 @@ public sealed class AgentScreen(
         var model = reset ? null : agent.Capabilities.Model.Resolve(value);
         if (!reset && model is null) return "Не знаю такую модель";
 
-        var previous = store.Model;
+        var setting = agent.Capabilities.Model;
+        var previous = store.ModelLabel(store.Model, setting);
         store.SetModel(model);
-        audit.Changed(store, user, "model", previous, model);
-        return $"Модель: {model ?? "по умолчанию"}";
+        audit.Changed(store, user, "model", previous, store.ModelLabel(model, setting));
+        return $"Модель: {store.ModelLabel(model, setting) ?? "по умолчанию"}";
     }
 
     private string ApplyEffort(string value, UserId user)
@@ -102,18 +103,22 @@ public sealed class AgentScreen(
         var html = $"""
             🤖 <b>Агент</b> — {E(agent.DisplayName)}
 
-            🧠 Модель: <b>{E(model ?? "по умолчанию")}</b>{effortLine}
+            🧠 Модель: <b>{E(store.ModelLabel(model, caps.Model) ?? "по умолчанию")}</b>{effortLine}
             🔐 Режим: <b>{E(caps.PermissionMode.Describe(mode))}</b>
 
-            <i>На кнопках — старшие модели с окном контекста 1M; любую другую —
-            командой <code>/model &lt;имя&gt;</code>. Effort и режим меняются со следующего
+            <i>На кнопках — последние sonnet, opus и fable с окном контекста 1M: выйдет новая
+            версия — кнопка сама перейдёт на неё. Другую модель — командой
+            <code>/model &lt;имя&gt;</code>. Effort и режим меняются со следующего
             запуска. Полностью снять подтверждения из чата нельзя — только правкой
             <code>appsettings.Local.json</code> на самой машине.</i>
             """;
 
         var rows = new List<KeyboardButton[]>();
 
-        rows.AddRange(Group("🧠", caps.Model, model, "model", 3));
+        // На кнопке версия, в нажатии — алиас: он и уходит агенту.
+        rows.AddRange(caps.Model.Selectable
+            .Select(value => Button($"🧠 {Marker(value == model)} {store.ModelLabel(value, caps.Model)}", $"agent:model:{value}"))
+            .Chunk(3));
         rows.Add([Button($"🧠 {Marker(model is null)} по умолчанию", "agent:model:reset")]);
 
         if (caps.Effort is { } effortSetting)

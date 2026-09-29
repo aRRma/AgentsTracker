@@ -14,7 +14,7 @@ public sealed record RunUsage
     public IReadOnlyList<ModelRunUsage> Models { get; init; } = [];
 
     /// <summary>
-    /// Короткое имя модели, которая отвечала («opus-5»): им подписан ответ. Выбранная
+    /// Короткое имя модели, которая отвечала («opus-5-5»): им подписан ответ. Выбранная
     /// в меню модель не то же самое — агент вправе подменить её. null — модель не вызывалась.
     /// </summary>
     public string? PrimaryModel { get; init; }
