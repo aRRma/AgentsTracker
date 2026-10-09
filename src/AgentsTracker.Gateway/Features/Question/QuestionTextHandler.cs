@@ -28,7 +28,8 @@ public sealed class QuestionTextHandler(IChatChannel channel, QuestionLauncher l
             return true;
         }
 
-        await channel.SendAsync(chat, new OutgoingMessage(launcher.Ask(chat, user, text), Rich: false), ct);
+        var accepted = launcher.Ask(chat, user, text, message.Message);
+        await channel.SendAsync(chat, new OutgoingMessage(accepted, Rich: false, ReplyTo: message.Message), ct);
         return true;
     }
 }

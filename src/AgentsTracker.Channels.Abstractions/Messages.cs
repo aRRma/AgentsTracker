@@ -8,9 +8,11 @@ public sealed record Keyboard(IReadOnlyList<IReadOnlyList<KeyboardButton>> Rows)
 
 /// <summary>
 /// Что отправить или чем заменить сообщение. <paramref name="Rich"/> — текст в формате
-/// <see cref="ChatHtml"/>, иначе как есть, без разметки.
+/// <see cref="ChatHtml"/>, иначе как есть, без разметки. <paramref name="ReplyTo"/> — ответить
+/// на это сообщение: ответ на вопрос приходит вперемешку с ответом задачи, и без привязки
+/// не понять, к чему он. При правке сообщения поле не действует.
 /// </summary>
-public sealed record OutgoingMessage(string Text, bool Rich = true, Keyboard? Keyboard = null);
+public sealed record OutgoingMessage(string Text, bool Rich = true, Keyboard? Keyboard = null, MessageRef? ReplyTo = null);
 
 /// <summary>Отправленное сообщение: по нему канал его правит и удаляет.</summary>
 public sealed record MessageRef(ChatId Chat, string Id);
@@ -57,14 +59,16 @@ public sealed record IncomingAttachment(
 
 /// <summary>
 /// Сообщение от пользователя. Доступ проверяет хост, канал лишь говорит, откуда пришло.
-/// <paramref name="Text"/> пуст, если прислали вложение без подписи.
+/// <paramref name="Text"/> пуст, если прислали вложение без подписи. <paramref name="Message"/> —
+/// само сообщение, чтобы на него ответить; null — канал адресовать его не умеет.
 /// </summary>
 public sealed record IncomingMessage(
     ChatId Chat,
     UserId User,
     string Text,
     ChatKind Kind,
-    IReadOnlyList<IncomingAttachment> Attachments);
+    IReadOnlyList<IncomingAttachment> Attachments,
+    MessageRef? Message = null);
 
 /// <summary>
 /// Нажатие кнопки. <paramref name="PressId"/> — чем ответить каналу («принято», всплывающий

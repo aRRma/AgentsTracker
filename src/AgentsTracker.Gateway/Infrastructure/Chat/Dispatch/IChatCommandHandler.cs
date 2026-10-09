@@ -1,7 +1,10 @@
 namespace AgentsTracker.Gateway.Infrastructure.Chat.Dispatch;
 
-/// <summary>Разобранная слэш-команда шлюза: кто прислал, что вызвал и с каким аргументом.</summary>
-public sealed record ChatCommandContext(ChatId Chat, UserId User, string Command, string Argument);
+/// <summary>
+/// Разобранная слэш-команда шлюза: кто прислал, что вызвал и с каким аргументом.
+/// <paramref name="Message"/> — сообщение с командой, чтобы ответить на него.
+/// </summary>
+public sealed record ChatCommandContext(ChatId Chat, UserId User, string Command, string Argument, MessageRef? Message = null);
 
 /// <summary>
 /// Обработчик слэш-команд шлюза. Команды, которых нет ни у одного обработчика, — это

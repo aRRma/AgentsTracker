@@ -20,7 +20,7 @@ public sealed class SettingsCommandHandler(
 
     public async Task HandleAsync(ChatCommandContext context, CancellationToken ct)
     {
-        var (chat, user, command, argument) = context;
+        var (chat, user, command, argument, _) = context;
 
         switch (command)
         {

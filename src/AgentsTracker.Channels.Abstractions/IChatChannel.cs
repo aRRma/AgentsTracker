@@ -43,17 +43,22 @@ public interface IChatChannel
 
     Task<MessageRef> SendAsync(ChatId chat, OutgoingMessage message, CancellationToken ct);
 
-    /// <summary>Текст файлом: то, что в сообщение не влезает (длинный код, полный ввод инструмента).</summary>
-    Task<MessageRef> SendFileAsync(ChatId chat, string fileName, string text, CancellationToken ct);
+    /// <summary>
+    /// Текст файлом: то, что в сообщение не влезает (длинный код, полный ввод инструмента).
+    /// <paramref name="replyTo"/> — как у <see cref="OutgoingMessage.ReplyTo"/>.
+    /// </summary>
+    Task<MessageRef> SendFileAsync(ChatId chat, string fileName, string text, MessageRef? replyTo, CancellationToken ct);
 
     /// <summary>
     /// Файл как есть, документом. Поток, а не путь: файлы открывает хост, канал только
     /// передаёт. Размер и подпись — под <see cref="ChannelLimits"/>, проверяет вызывающий.
     /// </summary>
-    Task<MessageRef> SendDocumentAsync(ChatId chat, string fileName, Stream content, string? caption, CancellationToken ct);
+    Task<MessageRef> SendDocumentAsync(
+        ChatId chat, string fileName, Stream content, string? caption, MessageRef? replyTo, CancellationToken ct);
 
     /// <summary>Картинка фотографией: мессенджер покажет её в ленте, но может сжать.</summary>
-    Task<MessageRef> SendPhotoAsync(ChatId chat, string fileName, Stream content, string? caption, CancellationToken ct);
+    Task<MessageRef> SendPhotoAsync(
+        ChatId chat, string fileName, Stream content, string? caption, MessageRef? replyTo, CancellationToken ct);
 
     /// <summary>
     /// Тело вложения в переданный поток. Поток, а не путь, — как и у отправки: куда положить

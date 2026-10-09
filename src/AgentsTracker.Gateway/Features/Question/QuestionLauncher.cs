@@ -23,7 +23,8 @@ public sealed class QuestionLauncher(ChatWorker worker, SessionStore store, IAge
     public string? Refusal =>
         agent.Capabilities.Questions ? null : $"{agent.DisplayName} не умеет отвечать вне сессии.";
 
-    public string Ask(ChatId chat, UserId user, string text)
+    /// <param name="message">Сообщение с вопросом: ответ придёт ответом на него.</param>
+    public string Ask(ChatId chat, UserId user, string text, MessageRef? message)
     {
         if (Refusal is { } refusal) return refusal;
 
@@ -31,7 +32,7 @@ public sealed class QuestionLauncher(ChatWorker worker, SessionStore store, IAge
         audit.Write(AuditEvent.Now(AuditKinds.Message, $"question: {Text.Preview(text)}", user, chat, store.ProjectPath));
 
         var wasBusy = worker.IsBusy;
-        worker.Enqueue(chat, user, text, AgentRunKind.Question);
+        worker.Enqueue(chat, user, text, AgentRunKind.Question, message);
         return wasBusy ? "📥 Вопрос в очереди — отвечу, как освобожусь." : "💬 Вопрос принят — отвечу вне сессии.";
     }
 

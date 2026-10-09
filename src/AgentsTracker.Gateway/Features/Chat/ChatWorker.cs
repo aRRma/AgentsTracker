@@ -32,15 +32,17 @@ public sealed class ChatWorker(
     /// <param name="Text">
     /// Задача; у команд контекста — только подпись для журнала и монитора, промпт подставит бэкенд.
     /// </param>
-    private sealed record QueuedPrompt(ChatId Chat, UserId User, string Text, AgentRunKind Kind);
+    /// <param name="ReplyTo">Сообщение, ответом на которое уходят статус и ответ; null — просто в чат.</param>
+    private sealed record QueuedPrompt(ChatId Chat, UserId User, string Text, AgentRunKind Kind, MessageRef? ReplyTo);
 
     public bool IsBusy => _runCts is not null;
 
     public int QueueLength => _queue.Reader.Count;
 
-    public void Enqueue(ChatId chat, UserId user, string text, AgentRunKind kind = AgentRunKind.Task)
+    public void Enqueue(
+        ChatId chat, UserId user, string text, AgentRunKind kind = AgentRunKind.Task, MessageRef? replyTo = null)
     {
-        _queue.Writer.TryWrite(new QueuedPrompt(chat, user, text, kind));
+        _queue.Writer.TryWrite(new QueuedPrompt(chat, user, text, kind, replyTo));
         monitor.Enqueued(Text.Preview(text));
     }
 
@@ -76,7 +78,7 @@ public sealed class ChatWorker(
             catch (Exception ex)
             {
                 logger.LogError(ex, "Ошибка при обработке сообщения");
-                await SendPlainAsync(prompt.Chat, $"Внутренняя ошибка шлюза: {ex.Message}", stoppingToken);
+                await SendPlainAsync(prompt.Chat, $"Внутренняя ошибка шлюза: {ex.Message}", prompt.ReplyTo, stoppingToken);
             }
         }
     }
@@ -102,7 +104,7 @@ public sealed class ChatWorker(
         if (kind != AgentRunKind.ContextReport && await limits.RefusalAsync(model, stoppingToken) is { } exhausted)
         {
             Audit(prompt, AuditKinds.LimitRefused, "лимит тарифа");
-            await SendPlainAsync(prompt.Chat, exhausted, stoppingToken);
+            await SendPlainAsync(prompt.Chat, exhausted, prompt.ReplyTo, stoppingToken);
             await DropQueueAsync(prompt.Chat, stoppingToken);
             return;
         }
@@ -113,7 +115,7 @@ public sealed class ChatWorker(
         // а запуск без сессии создал бы новую ради одной команды.
         if (kind is AgentRunKind.ContextReport or AgentRunKind.Compact && session is null)
         {
-            await SendPlainAsync(prompt.Chat, "Активной сессии нет — контекст пуст.", stoppingToken);
+            await SendPlainAsync(prompt.Chat, "Активной сессии нет — контекст пуст.", prompt.ReplyTo, stoppingToken);
             return;
         }
 
@@ -129,7 +131,7 @@ public sealed class ChatWorker(
             $"{(question ? "вопрос, " : "")}{modelLabel ?? "модель по умолчанию"}, {store.EffectivePermissionMode}, effort {effort ?? "—"}",
             session);
 
-        var status = await RunStatusMessage.StartAsync(channel, prompt.Chat, thread, logger, stoppingToken);
+        var status = await RunStatusMessage.StartAsync(channel, prompt.Chat, thread, prompt.ReplyTo, logger, stoppingToken);
 
         var startedUtc = DateTimeOffset.UtcNow;
         var project = question ? QuestionDirectory() : store.ProjectPath;
@@ -231,7 +233,8 @@ public sealed class ChatWorker(
             OutputTokens = result.Usage?.OutputTokens ?? 0,
         });
 
-        await SendRenderedAsync(prompt.Chat, Answer(kind, result) + note + Footer(kind, result, modelLabel, effort), stoppingToken);
+        await SendRenderedAsync(
+            prompt.Chat, Answer(kind, result) + note + Footer(kind, result, modelLabel, effort), prompt.ReplyTo, stoppingToken);
 
         // Упёрлись в лимит — следующие задачи упрутся в него же; очередь чистим,
         // чтобы не жечь её на отказах.
@@ -371,20 +374,22 @@ public sealed class ChatWorker(
         await SendPlainAsync(
             chat,
             $"Очередь снята: {dropped} задач(и) не запущены — пришлите их снова после сброса лимита.",
+            null,
             ct);
     }
 
     /// <summary>
     /// Ответ агента: markdown переводится в формат канала и режется под его лимит.
-    /// Не влезающая порция уходит документом.
+    /// Не влезающая порция уходит документом. <paramref name="replyTo"/> ставится на каждую
+    /// часть, а не на первую: между частями может вклиниться ответ другого запуска.
     /// </summary>
-    private async Task SendRenderedAsync(ChatId chat, string markdown, CancellationToken ct)
+    private async Task SendRenderedAsync(ChatId chat, string markdown, MessageRef? replyTo, CancellationToken ct)
     {
         foreach (var part in MarkdownRenderer.Render(markdown, channel.Limits.MessageLength))
         {
             try
             {
-                await SendPartAsync(chat, part, ct);
+                await SendPartAsync(chat, part, replyTo, ct);
             }
             catch (ChannelRequestException ex)
             {
@@ -399,27 +404,27 @@ public sealed class ChatWorker(
     /// Длинный ответ идёт серией сообщений, и канал вправе притормозить посреди неё. Срок
     /// он называет сам: ждём один раз и повторяем ту же часть, иначе она выпала бы из ответа.
     /// </summary>
-    private Task SendPartAsync(ChatId chat, OutgoingPart part, CancellationToken ct) =>
+    private Task SendPartAsync(ChatId chat, OutgoingPart part, MessageRef? replyTo, CancellationToken ct) =>
         RateLimitRetry.OnceAsync(
-            () => SendOnceAsync(chat, part, ct),
+            () => SendOnceAsync(chat, part, replyTo, ct),
             wait => logger.LogWarning("Канал просит подождать {Wait}, часть ответа будет отправлена повторно", wait),
             ct);
 
-    private async Task SendOnceAsync(ChatId chat, OutgoingPart part, CancellationToken ct)
+    private async Task SendOnceAsync(ChatId chat, OutgoingPart part, MessageRef? replyTo, CancellationToken ct)
     {
         if (part.DocumentText is { } document)
-            await channel.SendFileAsync(chat, part.DocumentName ?? "fragment.txt", document, ct);
+            await channel.SendFileAsync(chat, part.DocumentName ?? "fragment.txt", document, replyTo, ct);
         else if (part.Html is { Length: > 0 } html)
-            await channel.SendAsync(chat, new OutgoingMessage(html), ct);
+            await channel.SendAsync(chat, new OutgoingMessage(html, ReplyTo: replyTo), ct);
     }
 
-    private async Task SendPlainAsync(ChatId chat, string text, CancellationToken ct)
+    private async Task SendPlainAsync(ChatId chat, string text, MessageRef? replyTo, CancellationToken ct)
     {
         foreach (var chunk in Chunk(text, channel.Limits.MessageLength))
         {
             try
             {
-                await channel.SendAsync(chat, new OutgoingMessage(chunk, Rich: false), ct);
+                await channel.SendAsync(chat, new OutgoingMessage(chunk, Rich: false, ReplyTo: replyTo), ct);
             }
             catch (Exception ex)
             {

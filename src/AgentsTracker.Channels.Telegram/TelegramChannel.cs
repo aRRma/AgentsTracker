@@ -230,8 +230,11 @@ public sealed class TelegramChannel(
 
         if (text.Length == 0 && attachments.Count == 0) return null;
 
+        var chat = new TelegramChatId(message.Chat.Id);
+
         return new IncomingMessage(
-            new TelegramChatId(message.Chat.Id), new TelegramUserId(from.Id), text, Kind(message.Chat), attachments);
+            chat, new TelegramUserId(from.Id), text, Kind(message.Chat), attachments,
+            new MessageRef(chat, MessageIdOf(message.MessageId)));
     }
 
     /// <summary>
@@ -284,10 +287,12 @@ public sealed class TelegramChannel(
     {
         var id = ChatIdOf(chat);
         var markup = Markup(message.Keyboard);
+        var reply = Reply(chat, message.ReplyTo);
 
         try
         {
-            var sent = await Bot.SendMessage(id, message.Text, ParseMode(message), replyMarkup: markup, cancellationToken: ct);
+            var sent = await Bot.SendMessage(
+                id, message.Text, ParseMode(message), replyParameters: reply, replyMarkup: markup, cancellationToken: ct);
             return new MessageRef(chat, MessageIdOf(sent.MessageId));
         }
         catch (ApiRequestException ex) when (message.Rich && RetryWithoutMarkup(ex))
@@ -304,7 +309,8 @@ public sealed class TelegramChannel(
 
         try
         {
-            var sent = await Bot.SendMessage(id, ChatHtml.StripTags(message.Text), replyMarkup: markup, cancellationToken: ct);
+            var sent = await Bot.SendMessage(
+                id, ChatHtml.StripTags(message.Text), replyParameters: reply, replyMarkup: markup, cancellationToken: ct);
             return new MessageRef(chat, MessageIdOf(sent.MessageId));
         }
         catch (RequestException ex)
@@ -313,13 +319,14 @@ public sealed class TelegramChannel(
         }
     }
 
-    public async Task<MessageRef> SendFileAsync(ChatId chat, string fileName, string text, CancellationToken ct)
+    public async Task<MessageRef> SendFileAsync(ChatId chat, string fileName, string text, MessageRef? replyTo, CancellationToken ct)
     {
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(text));
 
         try
         {
-            var sent = await Bot.SendDocument(ChatIdOf(chat), InputFile.FromStream(stream, fileName), cancellationToken: ct);
+            var sent = await Bot.SendDocument(
+                ChatIdOf(chat), InputFile.FromStream(stream, fileName), replyParameters: Reply(chat, replyTo), cancellationToken: ct);
             return new MessageRef(chat, MessageIdOf(sent.MessageId));
         }
         catch (RequestException ex)
@@ -328,11 +335,25 @@ public sealed class TelegramChannel(
         }
     }
 
-    public Task<MessageRef> SendDocumentAsync(ChatId chat, string fileName, Stream content, string? caption, CancellationToken ct) =>
-        SendMediaAsync(chat, file => Bot.SendDocument(ChatIdOf(chat), file, caption, cancellationToken: ct), fileName, content);
+    public Task<MessageRef> SendDocumentAsync(
+        ChatId chat, string fileName, Stream content, string? caption, MessageRef? replyTo, CancellationToken ct) =>
+        SendMediaAsync(chat, file => Bot.SendDocument(
+            ChatIdOf(chat), file, caption, replyParameters: Reply(chat, replyTo), cancellationToken: ct), fileName, content);
 
-    public Task<MessageRef> SendPhotoAsync(ChatId chat, string fileName, Stream content, string? caption, CancellationToken ct) =>
-        SendMediaAsync(chat, file => Bot.SendPhoto(ChatIdOf(chat), file, caption, cancellationToken: ct), fileName, content);
+    public Task<MessageRef> SendPhotoAsync(
+        ChatId chat, string fileName, Stream content, string? caption, MessageRef? replyTo, CancellationToken ct) =>
+        SendMediaAsync(chat, file => Bot.SendPhoto(
+            ChatIdOf(chat), file, caption, replyParameters: Reply(chat, replyTo), cancellationToken: ct), fileName, content);
+
+    /// <summary>
+    /// Ответ на сообщение. AllowSendingWithoutReply обязателен: пользователь мог удалить своё
+    /// сообщение, пока шёл запуск, и без флага Bot API вернул бы 400 — ответ пропал бы целиком.
+    /// Сообщение из другого чата не цитируем: Bot API такой ответ отвергнет.
+    /// </summary>
+    private static ReplyParameters? Reply(ChatId chat, MessageRef? replyTo) =>
+        replyTo is { } target && target.Chat == chat
+            ? new ReplyParameters { MessageId = MessageId(target), AllowSendingWithoutReply = true }
+            : null;
 
     public async Task DownloadAttachmentAsync(IncomingAttachment attachment, Stream destination, CancellationToken ct)
     {

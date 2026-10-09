@@ -12,11 +12,14 @@ public sealed class QuestionCommandHandler(
 
     public async Task HandleAsync(ChatCommandContext context, CancellationToken ct)
     {
-        var reply = context.Argument.Length > 0
-            ? launcher.Ask(context.Chat, context.User, context.Argument)
-            : Prompt(context.User);
+        if (context.Argument.Length == 0)
+        {
+            await channel.SendAsync(context.Chat, new OutgoingMessage(Prompt(context.User), Rich: false), ct);
+            return;
+        }
 
-        await channel.SendAsync(context.Chat, new OutgoingMessage(reply, Rich: false), ct);
+        var accepted = launcher.Ask(context.Chat, context.User, context.Argument, context.Message);
+        await channel.SendAsync(context.Chat, new OutgoingMessage(accepted, Rich: false, ReplyTo: context.Message), ct);
     }
 
     private string Prompt(UserId user)

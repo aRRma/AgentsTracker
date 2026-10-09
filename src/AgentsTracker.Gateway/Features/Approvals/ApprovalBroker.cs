@@ -88,7 +88,7 @@ public sealed class ApprovalBroker(
         var chat = ActiveChat
             ?? throw new InvalidOperationException("Нет активного чата — некому показать запрос.");
 
-        await channel.SendFileAsync(chat, fileName, content, ct);
+        await channel.SendFileAsync(chat, fileName, content, null, ct);
     }
 
     /// <summary>
@@ -105,8 +105,8 @@ public sealed class ApprovalBroker(
             {
                 content.Position = 0;
                 return asPhoto
-                    ? channel.SendPhotoAsync(chat, fileName, content, caption, ct)
-                    : channel.SendDocumentAsync(chat, fileName, content, caption, ct);
+                    ? channel.SendPhotoAsync(chat, fileName, content, caption, null, ct)
+                    : channel.SendDocumentAsync(chat, fileName, content, caption, null, ct);
             },
             wait => logger.LogWarning("Канал просит подождать {Wait} перед отправкой файла", wait),
             ct);

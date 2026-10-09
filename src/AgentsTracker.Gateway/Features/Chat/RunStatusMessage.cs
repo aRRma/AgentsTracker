@@ -40,12 +40,13 @@ internal sealed class RunStatusMessage : IAsyncDisposable
     /// <summary>Отправленное сообщение: по нему ChatWorker удаляет статус после запуска.</summary>
     public MessageRef Message => _message;
 
+    /// <param name="replyTo">Сообщение, ответом на которое идёт статус; null — просто в чат.</param>
     public static async Task<RunStatusMessage> StartAsync(
-        IChatChannel channel, ChatId chat, string thread, ILogger logger, CancellationToken ct)
+        IChatChannel channel, ChatId chat, string thread, MessageRef? replyTo, ILogger logger, CancellationToken ct)
     {
         var status = new RunStatusMessage(channel, chat, thread, logger);
         var text = status.Render();
-        status._message = await channel.SendAsync(chat, new OutgoingMessage(text, Rich: false), ct);
+        status._message = await channel.SendAsync(chat, new OutgoingMessage(text, Rich: false, ReplyTo: replyTo), ct);
         status._lastRendered = text;
         status._loop = Task.Run(status.LoopAsync);
         return status;
