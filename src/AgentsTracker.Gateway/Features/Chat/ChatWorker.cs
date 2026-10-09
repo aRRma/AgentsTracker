@@ -238,10 +238,11 @@ public sealed class ChatWorker(
             lane.RunCts = null;
             store.EndRun(question);
             if (!question) monitor.RunFinished();
-            await status.DisposeAsync();
             // Процесс завершён — отвечать на его карточки уже некому. Карточки другого запуска
-            // остаются: тот ещё идёт.
+            // остаются: тот ещё идёт. До сетевых вызовов ниже: их сбой оставил бы запуск
+            // зарегистрированным, и поздние вызовы его процесса не получили бы отказ.
             registration.Dispose();
+            await status.DisposeAsync();
             await DeleteQuietlyAsync(status.Message, stoppingToken);
         }
 
