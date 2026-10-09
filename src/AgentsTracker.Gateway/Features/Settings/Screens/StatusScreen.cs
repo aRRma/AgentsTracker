@@ -73,6 +73,13 @@ public sealed class StatusScreen(
 
         var busy = worker.IsBusy;
 
+        // Вопрос идёт параллельно задаче: без своей строки и кнопки «Остановить» идущий вопрос
+        // выглядел бы простоем, а остановить его со статуса было бы нечем.
+        var answering = worker.IsAnswering;
+        var questions = answering
+            ? $"\n💬 Идёт вопрос{(worker.QuestionQueueLength > 0 ? $", ещё в очереди: {worker.QuestionQueueLength}" : "")}"
+            : "";
+
         var effort = agent.Capabilities.Effort is null
             ? ""
             : $" · 🎚 {E(store.EffectiveEffort ?? "по умолчанию")}";
@@ -80,7 +87,7 @@ public sealed class StatusScreen(
         var html = $"""
             📟 <b>Статус</b> — {E(agent.DisplayName)}
 
-            {(busy ? "🟢 <b>Выполняется</b>" : "⚪ <b>Простаивает</b>")}, в очереди: {worker.QueueLength}
+            {(busy ? "🟢 <b>Выполняется</b>" : "⚪ <b>Простаивает</b>")}, в очереди: {worker.QueueLength}{questions}
             🕔 Последняя активность: {E(state.LastActivityUtc?.Ago ?? "—")}
 
             📁 <b>{E(Path.GetFileName(project))}</b>
@@ -96,7 +103,7 @@ public sealed class StatusScreen(
 
         var keyboard = new Keyboard(
         [
-            busy
+            busy || answering
                 ? [Button("🔄 Обновить", "status:refresh"), Button("🛑 Остановить", "status:stop")]
                 : [Button("🔄 Обновить", "status:refresh")],
             [Button("🧵 Сессии", "sess"), Button("🤖 Агент", "agent")],

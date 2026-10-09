@@ -28,8 +28,16 @@ public sealed class StartupNotice(
                       + $"проект {Path.GetFileName(store.ProjectPath)}.";
 
         // Задача и вопрос могли оборваться оба, и в одном чате: оба «прервано» — одним сообщением.
-        var notices = interrupted
-            .Select(run => (Chat: channel.ParseChat(run.ChatKey), Text: Interrupted(run)))
+        var parsed = interrupted
+            .Select(run => (Run: run, Chat: channel.ParseChat(run.ChatKey), Text: Interrupted(run)))
+            .ToList();
+
+        // Чат не этого канала (сменили канал в конфиге) — сказать некуда, но молча терять
+        // «прервано» нельзя: в журнал и историю он уже записан, пусть будет и в логе.
+        foreach (var lost in parsed.Where(notice => notice.Chat is null))
+            logger.LogWarning("«Прервано» не доставить: чат {ChatKey} не разобран каналом", lost.Run.ChatKey);
+
+        var notices = parsed
             .Where(notice => notice.Chat is not null)
             .GroupBy(notice => notice.Chat!, notice => notice.Text)
             .ToDictionary(group => group.Key, group => group.ToList());

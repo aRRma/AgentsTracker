@@ -12,6 +12,21 @@ public sealed class ApprovalTextHandler(ApprovalBroker broker, IChatChannel chan
     {
         if (!broker.IsAwaitingText(message.Chat)) return false;
 
+        var delivery = message.Text.Length > 0
+            ? broker.DeliverText(message.Chat, message.InReplyTo, message.Text)
+            : TextDelivery.NotAwaited;
+
+        // Ждут сразу несколько (задача и вопрос, параллельные сабагенты), а сообщение не ответ
+        // ни на одну просьбу. Угадывать нельзя — причина ушла бы не той карточке; пропустить
+        // дальше тоже нельзя — текст стал бы новой задачей.
+        if (delivery == TextDelivery.Ambiguous)
+        {
+            await channel.SendAsync(message.Chat, new OutgoingMessage(
+                "⚠️ Текста ждут сразу несколько карточек — ответьте (reply) на сообщение той, которой он адресован.",
+                Rich: false), ct);
+            return true;
+        }
+
         // Картинку агенту в ответ на карточку не передать — он ждёт строку. Пропустить
         // сообщение дальше тоже нельзя: карточка осталась бы висеть, а запуск — стоять,
         // поэтому говорим вслух, что с картинкой ничего не сделано.
@@ -24,6 +39,6 @@ public sealed class ApprovalTextHandler(ApprovalBroker broker, IChatChannel chan
             await channel.SendAsync(message.Chat, new OutgoingMessage(reply, Rich: false), ct);
         }
 
-        return message.Text.Length == 0 || broker.TryConsumeText(message.Chat, message.Text);
+        return message.Text.Length == 0 || delivery == TextDelivery.Delivered;
     }
 }

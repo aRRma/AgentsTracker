@@ -19,6 +19,19 @@ public sealed record ChoiceResult(string Key, UserId User);
 /// <param name="SessionId">Сессия для журнала; у вопроса null.</param>
 public sealed record RunScope(string RunId, ChatId Chat, MessageRef? ReplyTo, string ProjectPath, string? SessionId);
 
+/// <summary>Что стало с текстом из чата, пока кто-то ждёт свободного ответа.</summary>
+public enum TextDelivery
+{
+    /// <summary>В этом чате никто не ждёт — текст идёт дальше обычным путём.</summary>
+    NotAwaited,
+
+    /// <summary>Текст отдан ожиданию.</summary>
+    Delivered,
+
+    /// <summary>Ждут несколько, а текст не ответ (reply) ни на одну просьбу — кому он, неизвестно.</summary>
+    Ambiguous,
+}
+
 /// <summary>
 /// Мост между агентом и чатом: показывает карточку с кнопками и держит вызывающего,
 /// пока не нажмут кнопку или не выйдет таймаут.
@@ -39,17 +52,23 @@ public sealed class ApprovalBroker(
         IReadOnlyList<ChoiceOption> Buttons,
         string RunId);
 
-    private sealed record TextPrompt(TaskCompletionSource<string> Completion, ChatId Chat, string RunId);
+    /// <param name="Message">Сообщение-просьба: ответ (reply) на него адресует текст именно сюда.</param>
+    private sealed record TextPrompt(TaskCompletionSource<string> Completion, ChatId Chat, string RunId, MessageRef Message);
 
     private static readonly TimeSpan NetworkTimeout = TimeSpan.FromSeconds(15);
 
     private readonly ConcurrentDictionary<string, PendingChoice> _choices = new();
     private readonly ConcurrentDictionary<string, RunScope> _runs = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Ожидания свободного текста по id. Не одно на шлюз: задача и вопрос идут параллельно, а у
+    /// задачи ещё и сабагенты — второе ожидание иначе получало бы отказ, а текст уходил не тому.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, TextPrompt> _textPrompts = new(StringComparer.Ordinal);
+
     private readonly TimeSpan _timeout = TimeSpan.FromMinutes(options.Value.ApprovalTimeoutMinutes);
 
-    private TextPrompt? _textPrompt;
-
-    public bool HasPending => !_choices.IsEmpty || _textPrompt is not null;
+    public bool HasPending => !_choices.IsEmpty || !_textPrompts.IsEmpty;
 
     /// <summary>
     /// Регистрирует запуск перед стартом процесса. Dispose снимает его вместе с его
@@ -136,19 +155,19 @@ public sealed class ApprovalBroker(
             ct);
 
     /// <summary>
-    /// Просит пользователя прислать свободный текст следующим сообщением. Ожидание одно на
-    /// шлюз: следующее сообщение не скажет, какому запуску оно адресовано.
+    /// Просит пользователя прислать свободный текст следующим сообщением. Ожиданий может быть
+    /// несколько сразу (задача и вопрос, параллельные сабагенты): какое из них получит текст,
+    /// решает <see cref="DeliverText"/>.
     /// </summary>
     public async Task<string> AskTextAsync(RunScope run, string html, CancellationToken ct)
     {
+        var id = Guid.NewGuid().ToString("N");
         var completion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var prompt = new TextPrompt(completion, run.Chat, run.RunId);
-        if (Interlocked.CompareExchange(ref _textPrompt, prompt, null) is not null)
-            throw new InvalidOperationException("Уже ожидается другой текстовый ответ.");
 
         try
         {
-            await channel.SendAsync(run.Chat, new OutgoingMessage(html, ReplyTo: run.ReplyTo), ct);
+            var message = await channel.SendAsync(run.Chat, new OutgoingMessage(html, ReplyTo: run.ReplyTo), ct);
+            _textPrompts[id] = new TextPrompt(completion, run.Chat, run.RunId, message);
 
             // Та же гонка, что у карточки: запуск закончился, пока уходила просьба.
             if (Run(run.RunId) is null) Cancel(run.RunId);
@@ -157,27 +176,37 @@ public sealed class ApprovalBroker(
         }
         finally
         {
-            Interlocked.CompareExchange(ref _textPrompt, null, prompt);
+            _textPrompts.TryRemove(id, out _);
         }
     }
 
     /// <summary>
-    /// Отдаёт текст ожидающему вопросу. false — никто не ждёт или ждут из другого чата,
-    /// тогда сообщение уйдёт обычным промптом. Проверка чата нужна, когда разрешённых
-    /// пользователей несколько: чужое сообщение не должно стать ответом агенту.
+    /// Отдаёт текст из чата одному из ожиданий. Ответ (reply) на сообщение-просьбу адресует его
+    /// точно; без ответа текст берёт единственное ожидание в этом чате. Несколько ожиданий и
+    /// никакого ответа — <see cref="TextDelivery.Ambiguous"/>: угадывать нельзя, причина отказа
+    /// ушла бы не той карточке. Чат сверяется, когда разрешённых пользователей несколько:
+    /// чужое сообщение не должно стать ответом агенту.
     /// </summary>
-    public bool TryConsumeText(ChatId chat, string text)
+    public TextDelivery DeliverText(ChatId chat, MessageRef? inReplyTo, string text)
     {
-        var prompt = _textPrompt;
-        return prompt is not null && prompt.Chat == chat && prompt.Completion.TrySetResult(text);
+        var waiting = _textPrompts.Values.Where(p => p.Chat == chat).ToList();
+        if (waiting.Count == 0) return TextDelivery.NotAwaited;
+
+        var target = waiting.FirstOrDefault(p => inReplyTo is not null && p.Message == inReplyTo)
+            ?? (waiting.Count == 1 ? waiting[0] : null);
+
+        if (target is null) return TextDelivery.Ambiguous;
+
+        // Ожидание могли снять между выбором и записью — тогда текст уйдёт дальше обычным путём.
+        return target.Completion.TrySetResult(text) ? TextDelivery.Delivered : TextDelivery.NotAwaited;
     }
 
     /// <summary>
-    /// Ждёт ли карточка свободного ответа из этого чата. Нужно тому, кто разбирает сообщение
-    /// до <see cref="TryConsumeText"/>: картинку в ответ агенту не передать, но и пропускать
+    /// Ждёт ли что-то свободного ответа из этого чата. Нужно тому, кто разбирает сообщение
+    /// до <see cref="DeliverText"/>: картинку в ответ агенту не передать, но и пропускать
     /// её дальше нельзя — карточка осталась бы висеть, а запуск стоять.
     /// </summary>
-    public bool IsAwaitingText(ChatId chat) => _textPrompt is { } prompt && prompt.Chat == chat;
+    public bool IsAwaitingText(ChatId chat) => _textPrompts.Values.Any(p => p.Chat == chat);
 
     public async Task HandlePressAsync(ButtonPress press, CancellationToken ct)
     {
@@ -228,11 +257,10 @@ public sealed class ApprovalBroker(
             _ = FinishCardAsync(pending.Message, pending.Html, "🛑 Отменено");
         }
 
-        if (_textPrompt is { } prompt
-            && (runId is null || prompt.RunId == runId)
-            && Interlocked.CompareExchange(ref _textPrompt, null, prompt) == prompt)
+        foreach (var (id, prompt) in _textPrompts)
         {
-            prompt.Completion.TrySetCanceled();
+            if (runId is not null && prompt.RunId != runId) continue;
+            if (_textPrompts.TryRemove(id, out _)) prompt.Completion.TrySetCanceled();
         }
     }
 

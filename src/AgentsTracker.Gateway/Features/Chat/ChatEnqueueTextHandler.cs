@@ -36,8 +36,8 @@ public sealed class ChatEnqueueTextHandler(
         // Считаем запуски, чтобы экран скиллов знал, что зовут чаще.
         if (text.StartsWith('/')) store.RecordSkillUse(CommandName(text));
 
-        // Активный чат ставит ChatWorker перед запуском: сделай это здесь — и карточки
-        // идущего запуска уедут в чат другого пользователя.
+        // Чат карточек ChatWorker регистрирует на сам запуск (RunScope), а не здесь: сообщение
+        // ещё постоит в очереди, а рядом может идти вопрос из другого чата.
         worker.Enqueue(chat, user, text);
 
         if (wasBusy)

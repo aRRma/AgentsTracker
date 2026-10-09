@@ -77,7 +77,8 @@
 `ChannelRequestException`. Строка в списке `channels` в `Program.cs` (выбор по
 `Gateway:Channel:Type`), ссылка в `Gateway.csproj` и строка `COPY` в `Dockerfile`.
 
-Ответы на сообщения: заполнять `IncomingMessage.Message` и выполнять `OutgoingMessage.ReplyTo` и
+Ответы на сообщения: заполнять `IncomingMessage.Message` и `InReplyTo` (сообщение, на которое
+ответил пользователь, — так свободный текст находит свою карточку, когда ждут несколько) и выполнять `OutgoingMessage.ReplyTo` и
 `replyTo` файловых методов — ответ на вопрос приходит ответом (reply), иначе он теряется среди
 сообщений задачи. Ответ на сообщение, которого уже нет, всё равно должен дойти (в Telegram —
 `AllowSendingWithoutReply`). Мессенджер без ответов на сообщения может `ReplyTo` не выполнять.

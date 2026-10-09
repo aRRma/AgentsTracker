@@ -61,6 +61,8 @@ public sealed record IncomingAttachment(
 /// Сообщение от пользователя. Доступ проверяет хост, канал лишь говорит, откуда пришло.
 /// <paramref name="Text"/> пуст, если прислали вложение без подписи. <paramref name="Message"/> —
 /// само сообщение, чтобы на него ответить; null — канал адресовать его не умеет.
+/// <paramref name="InReplyTo"/> — сообщение, на которое пользователь ответил: когда агент ждёт
+/// текст в нескольких местах сразу, только так понятно, кому он.
 /// </summary>
 public sealed record IncomingMessage(
     ChatId Chat,
@@ -68,7 +70,8 @@ public sealed record IncomingMessage(
     string Text,
     ChatKind Kind,
     IReadOnlyList<IncomingAttachment> Attachments,
-    MessageRef? Message = null);
+    MessageRef? Message = null,
+    MessageRef? InReplyTo = null);
 
 /// <summary>
 /// Нажатие кнопки. <paramref name="PressId"/> — чем ответить каналу («принято», всплывающий

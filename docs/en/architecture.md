@@ -121,6 +121,12 @@ Each run is registered in the broker right before the process starts: `ApprovalB
 session for the audit. Cards and files of a run go to its chat; disposing the registration in the
 run's `finally` cancels only **that** run's cards. There is no "current chat" in the broker any more.
 
+Free-text waits («Отклонить с причиной», «Свой ответ») are many, not one per gateway: a task, a
+вопрос and parallel subagents may all wait at once. `ApprovalBroker.DeliverText` gives the text to
+the wait whose request message the user replied to (`IncomingMessage.InReplyTo`); without a reply —
+to the only wait in that chat; several waits and no reply — `ApprovalTextHandler` asks to reply to
+the right card instead of guessing, and the text does not become a new task.
+
 ## The gateway → CLI → gateway loop
 
 The gateway both launches the agent and serves it:

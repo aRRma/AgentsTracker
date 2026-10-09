@@ -104,6 +104,9 @@ public sealed class MonitorModule : IFeatureModule
         PermissionMode = store.EffectivePermissionMode,
         Effort = store.EffectiveEffort,
         worker.IsBusy,
+        // Вопрос идёт параллельно задаче и в Run не попадает: без своего поля процесс,
+        // тратящий лимит, по снимку был бы не виден.
+        worker.IsAnswering,
         live.Run,
         live.Approvals,
         live.Queue,

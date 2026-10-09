@@ -80,7 +80,8 @@ A project `src/AgentsTracker.Channels.<Name>` referencing `Channels.Abstractions
 only `ChannelRequestException`. A line in the `channels` list in `Program.cs` (selected by
 `Gateway:Channel:Type`), a reference in `Gateway.csproj` and a `COPY` line in the `Dockerfile`.
 
-Replies: fill `IncomingMessage.Message` and honour `OutgoingMessage.ReplyTo` and the `replyTo` of the
+Replies: fill `IncomingMessage.Message` and `InReplyTo` (the message the user replied to — that is
+how free text finds its card when several wait), honour `OutgoingMessage.ReplyTo` and the `replyTo` of the
 file methods — the answer to a вопрос is a reply, otherwise it gets lost among the task's messages.
 A reply to a message that no longer exists must still be delivered (Telegram:
 `AllowSendingWithoutReply`). A messenger without replies may ignore `ReplyTo`.

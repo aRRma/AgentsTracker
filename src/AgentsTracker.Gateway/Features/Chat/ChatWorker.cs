@@ -36,6 +36,13 @@ public sealed class ChatWorker(
 
         public CancellationTokenSource? RunCts { get; set; }
 
+        /// <summary>
+        /// Взят из очереди и ещё не закончен — шире <see cref="RunCts"/>, который ставится
+        /// только перед самим процессом. Без этого вопрос, ждущий отправки статуса, не
+        /// считался бы идущим, и следующему обещали бы «отвечу, не дожидаясь».
+        /// </summary>
+        public int InFlight;
+
         /// <summary>Прерывает идущий запуск полосы; false — прерывать нечего.</summary>
         public bool Cancel()
         {
@@ -69,8 +76,8 @@ public sealed class ChatWorker(
     /// <summary>Задачи в очереди, без вопросов.</summary>
     public int QueueLength => _tasks.Queue.Reader.Count;
 
-    /// <summary>Идёт вопрос.</summary>
-    public bool IsAnswering => _questions.RunCts is not null;
+    /// <summary>Идёт вопрос — с момента, как его взяли из очереди.</summary>
+    public bool IsAnswering => Volatile.Read(ref _questions.InFlight) > 0;
 
     /// <summary>Вопросы, ждущие своей очереди за идущим вопросом.</summary>
     public int QuestionQueueLength => _questions.Queue.Reader.Count;
@@ -109,6 +116,7 @@ public sealed class ChatWorker(
     {
         await foreach (var prompt in lane.Queue.Reader.ReadAllAsync(stoppingToken))
         {
+            Interlocked.Increment(ref lane.InFlight);
             try
             {
                 await ProcessAsync(lane, prompt, stoppingToken);
@@ -121,6 +129,10 @@ public sealed class ChatWorker(
             {
                 logger.LogError(ex, "Ошибка при обработке сообщения");
                 await SendPlainAsync(prompt.Chat, $"Внутренняя ошибка шлюза: {ex.Message}", prompt.ReplyTo, stoppingToken);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref lane.InFlight);
             }
         }
     }
@@ -173,26 +185,8 @@ public sealed class ChatWorker(
             $"{(question ? "вопрос, " : "")}{modelLabel ?? "модель по умолчанию"}, {store.EffectivePermissionMode}, effort {effort ?? "—"}",
             session);
 
-        var status = await RunStatusMessage.StartAsync(channel, prompt.Chat, thread, prompt.ReplyTo, logger, stoppingToken);
-
-        var startedUtc = DateTimeOffset.UtcNow;
         var project = question ? QuestionDirectory() : store.ProjectPath;
         var preview = Text.Preview(prompt.Text);
-        if (!question) monitor.RunStarted(new RunStart(project, session, preview, modelLabel, store.EffectivePermissionMode, effort));
-
-        // В state.json, а не только в памяти: если шлюз убьют посреди запуска, следующему
-        // экземпляру нужно знать, кому и про что сказать «прервано».
-        store.BeginRun(new ActiveRun
-        {
-            ChatKey = prompt.Chat.Key,
-            UserKey = prompt.User.Key,
-            StartedUtc = startedUtc,
-            ProjectPath = project,
-            SessionId = session,
-            Model = modelLabel,
-            Prompt = preview,
-            Question = question,
-        });
 
         // Сессию и папку фиксируем до запуска: переключение из меню посреди работы иначе
         // разведёт каталог процесса и проект, которому запишется сессия. Id новой сессии
@@ -216,20 +210,41 @@ public sealed class ChatWorker(
         // иначе итог перетёр бы /new или смену сессии по ходу работы.
         var runSessionId = session is { Length: > 0 } ? session : request.NewSessionId;
 
-        // Карточки и файлы запуска — в его чат, а не туда, где идёт другой. Регистрация и
-        // «занят» — прямо перед запуском: снимает их только finally ниже, а сбой выше
-        // (отправка статусного сообщения) оставил бы их висеть до перезапуска. Проект для
-        // send_file у вопроса — проект чата, как было, пока вопрос шёл общей очередью.
-        var registration = broker.BeginRun(new RunScope(
-            request.RunId, prompt.Chat, prompt.ReplyTo,
-            question ? store.ProjectPath : project,
-            question ? null : runSessionId));
+        var status = await RunStatusMessage.StartAsync(channel, prompt.Chat, thread, prompt.ReplyTo, logger, stoppingToken);
+        var startedUtc = DateTimeOffset.UtcNow;
 
-        lane.RunCts = runCts;
-
+        // Всё, что после статусного сообщения, — внутри try: сбой записи state.json или монитора
+        // оставил бы статус тикать в чате, а «идёт запуск» в state.json — до ложного «прервано»
+        // после перезапуска.
+        IDisposable? registration = null;
         AgentRunResult result;
         try
         {
+            if (!question) monitor.RunStarted(new RunStart(project, session, preview, modelLabel, store.EffectivePermissionMode, effort));
+
+            // В state.json, а не только в памяти: если шлюз убьют посреди запуска, следующему
+            // экземпляру нужно знать, кому и про что сказать «прервано».
+            store.BeginRun(new ActiveRun
+            {
+                ChatKey = prompt.Chat.Key,
+                UserKey = prompt.User.Key,
+                StartedUtc = startedUtc,
+                ProjectPath = project,
+                SessionId = session,
+                Model = modelLabel,
+                Prompt = preview,
+                Question = question,
+            });
+
+            // Карточки и файлы запуска — в его чат, а не туда, где идёт другой. Проект для
+            // send_file у вопроса — проект чата, как было, пока вопрос шёл общей очередью.
+            registration = broker.BeginRun(new RunScope(
+                request.RunId, prompt.Chat, prompt.ReplyTo,
+                question ? store.ProjectPath : project,
+                question ? null : runSessionId));
+
+            lane.RunCts = runCts;
+
             result = await agent.RunAsync(
                 request, new RunObserver(store, question ? null : monitor, request, status), runCts.Token);
         }
@@ -241,7 +256,7 @@ public sealed class ChatWorker(
             // Процесс завершён — отвечать на его карточки уже некому. Карточки другого запуска
             // остаются: тот ещё идёт. До сетевых вызовов ниже: их сбой оставил бы запуск
             // зарегистрированным, и поздние вызовы его процесса не получили бы отказ.
-            registration.Dispose();
+            registration?.Dispose();
             await status.DisposeAsync();
             await DeleteQuietlyAsync(status.Message, stoppingToken);
         }

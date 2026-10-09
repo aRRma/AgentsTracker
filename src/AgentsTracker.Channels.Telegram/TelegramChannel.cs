@@ -234,7 +234,8 @@ public sealed class TelegramChannel(
 
         return new IncomingMessage(
             chat, new TelegramUserId(from.Id), text, Kind(message.Chat), attachments,
-            new MessageRef(chat, MessageIdOf(message.MessageId)));
+            new MessageRef(chat, MessageIdOf(message.MessageId)),
+            message.ReplyToMessage is { } replied ? new MessageRef(chat, MessageIdOf(replied.MessageId)) : null);
     }
 
     /// <summary>

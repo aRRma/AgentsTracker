@@ -20,7 +20,9 @@ Endpoints: `/`, `/api/snapshot`, `/api/events` (SSE), `/api/limits`,
 callback as `RunStatusMessage`) and finish; `OperatorConsole` reports waiting for an approval
 card via `using monitor.Approval(tool, brief)`, where brief is a short string, not the full
 input. Approval cards in the snapshot are a list: the CLI calls the tool in parallel for
-several `tool_use` calls in one turn. 300 steps are kept, `DroppedSteps` is the difference
+several `tool_use` calls in one turn, and a вопрос's cards land there too. `run`, `queue` and
+`isBusy` describe the task only; a вопрос running in parallel shows up as `isAnswering` and in the
+run history, never as the current run. 300 steps are kept, `DroppedSteps` is the difference
 against the counter. `Changes()` is a channel with capacity 1 and eviction: a slow browser gets
 the latest state, not a queue of stale ones. `/api/events` sends a snapshot on connect, then on
 changes, with a `ping` between them every 5 s — without it the page couldn't tell silence apart
