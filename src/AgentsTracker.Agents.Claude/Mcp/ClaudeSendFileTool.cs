@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
 using ModelContextProtocol.Server;
 
 namespace AgentsTracker.Agents.Claude.Mcp;
@@ -12,7 +13,8 @@ namespace AgentsTracker.Agents.Claude.Mcp;
 /// сервера, и агент не понял бы, что именно не так.
 /// </summary>
 [McpServerToolType]
-public sealed class ClaudeSendFileTool(IOperatorConsole console, ILogger<ClaudeSendFileTool> logger)
+public sealed class ClaudeSendFileTool(
+    IOperatorConsole console, IHttpContextAccessor http, ILogger<ClaudeSendFileTool> logger)
 {
     // Список расширений повторяет OperatorConsole.AllowedExtensions в шлюзе: атрибут требует
     // константу, а ссылки на хост отсюда нет. Меняя один — поправьте второй, иначе агент
@@ -30,7 +32,9 @@ public sealed class ClaudeSendFileTool(IOperatorConsole console, ILogger<ClaudeS
     {
         try
         {
-            var result = await console.SendFileAsync(new FileSendRequest(path, caption, as_document), cancellationToken);
+            // Без заголовка — пустой id: файл не уйдёт в чат чужого запуска, хост откажет.
+            var runId = McpConfigFile.RunIdOf(http.HttpContext) ?? "";
+            var result = await console.SendFileAsync(new FileSendRequest(runId, path, caption, as_document), cancellationToken);
             return result.Sent
                 ? JsonSerializer.Serialize(new { sent = true })
                 : JsonSerializer.Serialize(new { sent = false, reason = result.Reason });

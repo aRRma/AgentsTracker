@@ -12,12 +12,17 @@ namespace AgentsTracker.Agents.Claude.Mcp;
 /// генерируется при старте и уходит заголовком Authorization — посторонний процесс на той же
 /// машине в эндпоинт не постучится, а токен не светится в URL и логах запросов.
 ///
+/// Файл свой у каждого запуска: в нём, кроме токена, заголовок <see cref="RunHeader"/> с id
+/// запуска. Задача и вопрос идут параллельно, а MCP-вызов иначе не говорит, чей он, — карточка
+/// одного запуска ушла бы в чат другого. Сабагенты живут в том же процессе CLI и шлют тот же
+/// заголовок.
+///
 /// В имени файла PID: общий файл второй экземпляр шлюза перезаписывал своим токеном и удалял
 /// на выходе, после чего каждый запуск CLI у рабочего шлюза падал с «mcp__tg__approve not
 /// found». Свой файл у процесса такое пересечение исключает.
 ///
-/// Конструктор классический, а не primary: файл нужно записать один раз при создании
-/// синглтона, до того как хост смонтирует эндпоинт.
+/// Конструктор классический, а не primary: токен и адрес нужны до того, как хост смонтирует
+/// эндпоинт, а старые файлы убираются один раз при создании синглтона.
 /// </summary>
 public sealed class McpConfigFile : IDisposable
 {
@@ -32,35 +37,31 @@ public sealed class McpConfigFile : IDisposable
     /// <summary>Путь эндпоинта. Статичный: секрет теперь в заголовке, а не в URL.</summary>
     public const string RoutePattern = "/mcp";
 
+    /// <summary>Заголовок, которым CLI называет свой запуск в каждом вызове инструмента.</summary>
+    public const string RunHeader = "X-AgentsTracker-Run";
+
     private const string FilePrefix = "mcp-gateway-";
     private const string FileSuffix = ".json";
 
+    private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
+
     private readonly ILogger<McpConfigFile> _logger;
+    private readonly string _directory;
+    private readonly string _url;
+    private readonly long _timeoutMs;
+
+    /// <summary>Начало имён файлов этого процесса: «mcp-gateway-&lt;pid&gt;-».</summary>
+    private readonly string _ownPrefix = $"{FilePrefix}{Environment.ProcessId}-";
 
     public McpConfigFile(AgentHost host, ILogger<McpConfigFile> logger)
     {
         _logger = logger;
+        _directory = host.DataDirectory;
+        _url = $"http://127.0.0.1:{host.LocalPort}{RoutePattern}";
+        _timeoutMs = ToolCallTimeoutMs(host.ApprovalTimeout);
         Token = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
-        Path = System.IO.Path.Combine(host.DataDirectory, $"{FilePrefix}{Environment.ProcessId}{FileSuffix}");
 
         RemoveStaleFiles(host.DataDirectory);
-
-        var config = new
-        {
-            mcpServers = new Dictionary<string, object>
-            {
-                [ServerName] = new
-                {
-                    type = "http",
-                    url = $"http://127.0.0.1:{host.LocalPort}{RoutePattern}",
-                    headers = new Dictionary<string, string> { ["Authorization"] = $"Bearer {Token}" },
-                    timeout = ToolCallTimeoutMs(host.ApprovalTimeout),
-                },
-            },
-        };
-
-        File.WriteAllText(Path, JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true }));
-        logger.LogInformation("MCP-конфиг для CLI: {Path}", Path);
     }
 
     /// <summary>
@@ -76,8 +77,45 @@ public sealed class McpConfigFile : IDisposable
     /// <summary>Секрет, который CLI присылает в заголовке Authorization.</summary>
     public string Token { get; }
 
-    /// <summary>Путь к json-файлу для --mcp-config.</summary>
-    public string Path { get; }
+    /// <summary>
+    /// Пишет конфиг одного запуска. Файлом, а не JSON-строкой в аргументе: аргументы CLI
+    /// попадают в лог, а с ними попал бы и токен. Файл удаляется, когда запуск освобождает
+    /// <see cref="RunConfig"/>.
+    /// </summary>
+    /// <exception cref="ArgumentException">Id не из букв и цифр: он идёт в имя файла.</exception>
+    public RunConfig ForRun(string runId)
+    {
+        if (runId.Length == 0 || !runId.All(char.IsAsciiLetterOrDigit))
+            throw new ArgumentException($"Id запуска «{runId}» не годится для имени файла.", nameof(runId));
+
+        var path = System.IO.Path.Combine(_directory, $"{_ownPrefix}{runId}{FileSuffix}");
+
+        var config = new
+        {
+            mcpServers = new Dictionary<string, object>
+            {
+                [ServerName] = new
+                {
+                    type = "http",
+                    url = _url,
+                    headers = new Dictionary<string, string>
+                    {
+                        ["Authorization"] = $"Bearer {Token}",
+                        [RunHeader] = runId,
+                    },
+                    timeout = _timeoutMs,
+                },
+            },
+        };
+
+        File.WriteAllText(path, JsonSerializer.Serialize(config, Indented));
+        _logger.LogDebug("MCP-конфиг запуска: {Path}", path);
+        return new RunConfig(path, _logger);
+    }
+
+    /// <summary>Id запуска из заголовка вызова; null — заголовка нет.</summary>
+    public static string? RunIdOf(HttpContext? context) =>
+        context?.Request.Headers[RunHeader].ToString() is { Length: > 0 } id ? id : null;
 
     /// <summary>Проверяет Authorization запроса к MCP. Сравнение постоянное по времени.</summary>
     public bool Authorizes(HttpRequest request)
@@ -90,21 +128,33 @@ public sealed class McpConfigFile : IDisposable
             Encoding.UTF8.GetBytes(header[prefix.Length..]), Encoding.UTF8.GetBytes(Token));
     }
 
-    /// <summary>Файл с секретом не должен переживать процесс: следующий старт запишет новый.</summary>
+    /// <summary>
+    /// Файлы с секретом не должны переживать процесс: запуск, оборванный остановкой шлюза,
+    /// мог не успеть убрать свой.
+    /// </summary>
     public void Dispose()
     {
-        try { File.Delete(Path); }
-        catch (Exception ex) { _logger.LogDebug(ex, "Не удалось удалить {Path}", Path); }
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(_directory, $"{_ownPrefix}*{FileSuffix}"))
+                Delete(file, _logger);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Не удалось убрать MCP-конфиги в {Directory}", _directory);
+        }
     }
 
     /// <summary>
     /// Убирает файлы экземпляров, которые упали не дойдя до Dispose. Файл живого процесса
-    /// не трогаем — иначе вернулась бы та же поломка. Старое общее имя mcp-gateway.json
-    /// подметается тоже: его больше никто не пишет.
+    /// не трогаем — иначе вернулась бы та же поломка. PID в имени — до первого дефиса:
+    /// «mcp-gateway-&lt;pid&gt;-&lt;запуск&gt;.json», у релизов до файлов на запуск —
+    /// «mcp-gateway-&lt;pid&gt;.json». Старое общее имя mcp-gateway.json подметается тоже:
+    /// его больше никто не пишет.
     /// </summary>
     private void RemoveStaleFiles(string directory)
     {
-        // Зовётся до записи своего файла, так что среди кандидатов его нет. Уборка —
+        // Зовётся до записи своих файлов, так что среди кандидатов их нет. Уборка —
         // «по возможности»: её ошибка не должна мешать старту шлюза.
         try
         {
@@ -117,12 +167,10 @@ public sealed class McpConfigFile : IDisposable
                 if (!File.Exists(file)) continue;
 
                 var name = System.IO.Path.GetFileNameWithoutExtension(file);
-                if (name.Length > FilePrefix.Length
-                    && int.TryParse(name.AsSpan(FilePrefix.Length), out var pid)
-                    && IsGateway(pid))
-                {
-                    continue;
-                }
+                var owner = name.Length > FilePrefix.Length ? name.AsSpan(FilePrefix.Length) : ReadOnlySpan<char>.Empty;
+                if (owner.IndexOf('-') is var dash and >= 0) owner = owner[..dash];
+
+                if (int.TryParse(owner, out var pid) && IsGateway(pid)) continue;
 
                 File.Delete(file);
                 _logger.LogInformation("Удалён MCP-конфиг завершившегося экземпляра: {Path}", file);
@@ -152,5 +200,20 @@ public sealed class McpConfigFile : IDisposable
         {
             return false;
         }
+    }
+
+    private static void Delete(string path, ILogger logger)
+    {
+        try { File.Delete(path); }
+        catch (Exception ex) { logger.LogDebug(ex, "Не удалось удалить {Path}", path); }
+    }
+
+    /// <summary>Конфиг одного запуска; Dispose удаляет файл с токеном.</summary>
+    public sealed class RunConfig(string path, ILogger logger) : IDisposable
+    {
+        /// <summary>Путь к json-файлу для --mcp-config.</summary>
+        public string Path { get; } = path;
+
+        public void Dispose() => Delete(Path, logger);
     }
 }

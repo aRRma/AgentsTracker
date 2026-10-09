@@ -49,6 +49,10 @@ public sealed class ClaudeAgentModule : IAgentBackendModule
             // Ответ кэшируется на 3 минуты, а ошибка проверку пропускает, не блокируя запуск.
             .AddResilienceHandler("claude-limits", pipeline => pipeline.AddTimeout(ClaudeLimits.RequestTimeout));
 
+        // Инструменты читают из заголовка вызова id запуска (McpConfigFile.RunHeader). SDK
+        // вызывает их в ExecutionContext HTTP-запроса — HttpContext там тот, что нужен.
+        services.AddHttpContextAccessor();
+
         services
             .AddMcpServer()
             .WithHttpTransport()

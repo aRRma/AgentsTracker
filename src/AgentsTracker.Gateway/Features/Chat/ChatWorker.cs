@@ -119,10 +119,6 @@ public sealed class ChatWorker(
             return;
         }
 
-        // Здесь, а не при получении сообщения: иначе карточки идущего запуска ушли бы
-        // в чат другого пользователя.
-        broker.ActiveChat = prompt.Chat;
-
         using var runCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
 
         var thread = question ? "вопрос" : session is { Length: > 0 } ? session.ShortId : "новая сессия";
@@ -155,6 +151,7 @@ public sealed class ChatWorker(
         // разведёт каталог процесса и проект, которому запишется сессия. Id новой сессии
         // выдаём сами — так /stop или падение первого запуска не теряют ветку.
         var request = new AgentRunRequest(
+            Guid.NewGuid().ToString("N"),
             prompt.Text, project,
             ResumeSessionId: session,
             NewSessionId: Guid.NewGuid().ToString(),
@@ -172,8 +169,15 @@ public sealed class ChatWorker(
         // иначе итог перетёр бы /new или смену сессии по ходу работы.
         var runSessionId = session is { Length: > 0 } ? session : request.NewSessionId;
 
-        // «Занят» ставим прямо перед запуском: снимает его только finally ниже, а сбой выше
-        // (отправка статусного сообщения) оставил бы шлюз занятым до перезапуска.
+        // Карточки и файлы запуска — в его чат, а не туда, где идёт другой. Регистрация и
+        // «занят» — прямо перед запуском: снимает их только finally ниже, а сбой выше
+        // (отправка статусного сообщения) оставил бы их висеть до перезапуска. Проект для
+        // send_file у вопроса — проект чата, как было, пока вопрос шёл общей очередью.
+        var registration = broker.BeginRun(new RunScope(
+            request.RunId, prompt.Chat, prompt.ReplyTo,
+            question ? store.ProjectPath : project,
+            question ? null : runSessionId));
+
         _runCts = runCts;
 
         AgentRunResult result;
@@ -188,8 +192,9 @@ public sealed class ChatWorker(
             store.EndRun();
             finished = monitor.RunFinished();
             await status.DisposeAsync();
-            // Процесс завершён — отвечать на висящие карточки уже некому.
-            broker.CancelAll();
+            // Процесс завершён — отвечать на его карточки уже некому. Карточки другого запуска
+            // остаются: тот ещё идёт.
+            registration.Dispose();
             await DeleteQuietlyAsync(status.Message, stoppingToken);
         }
 

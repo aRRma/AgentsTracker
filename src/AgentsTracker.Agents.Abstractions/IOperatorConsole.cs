@@ -12,12 +12,14 @@ namespace AgentsTracker.Agents;
 public sealed record PersistentRule(string Display, JsonElement Raw);
 
 /// <summary>Запрос подтверждения. Вход как прислал агент: что показать, решает карточка.</summary>
+/// <param name="RunId">Запуск, который спрашивает, — <see cref="AgentRunRequest.RunId"/>.</param>
 /// <param name="SuggestedRules">
 /// Правила, которые агент готов записать у себя по «Всегда». Если они есть, хост не
 /// запоминает свою сигнатуру, а возвращает их в решении: правило агента префиксное
 /// и шире точного совпадения.
 /// </param>
 public sealed record ApprovalRequest(
+    string RunId,
     string ToolName,
     JsonElement? Input,
     IReadOnlyList<PersistentRule>? SuggestedRules);
@@ -56,10 +58,11 @@ public sealed record QuestionResult(IReadOnlyList<QuestionAnswer>? Answers, stri
 }
 
 /// <summary>Просьба агента отправить человеку файл с диска.</summary>
+/// <param name="RunId">Запуск, который отправляет, — <see cref="AgentRunRequest.RunId"/>.</param>
 /// <param name="Path">Абсолютный или относительно папки проекта — разрешает хост.</param>
 /// <param name="Caption">Подпись под файлом, без разметки.</param>
 /// <param name="AsDocument">Картинку — документом, без сжатия мессенджером.</param>
-public sealed record FileSendRequest(string Path, string? Caption, bool AsDocument);
+public sealed record FileSendRequest(string RunId, string Path, string? Caption, bool AsDocument);
 
 /// <summary>Отправлено или нет; при отказе <see cref="Reason"/> — текст для агента.</summary>
 public sealed record FileSendResult(bool Sent, string? Reason)
@@ -75,13 +78,15 @@ public sealed record FileSendResult(bool Sent, string? Reason)
 /// каждый из своего канала подтверждений; у Claude это MCP-инструменты.
 ///
 /// Таймаут и отмена не бросают, а приходят отказом с текстом для агента: бэкенду незачем
-/// знать, как хост различает «не ответил» и «/stop».
+/// знать, как хост различает «не ответил» и «/stop». Обращение от запуска, которого хост
+/// не знает (уже завершён), — тоже отказ.
 /// </summary>
 public interface IOperatorConsole
 {
     Task<ApprovalDecision> ApproveAsync(ApprovalRequest request, CancellationToken ct);
 
-    Task<QuestionResult> AskAsync(IReadOnlyList<AgentQuestion> questions, CancellationToken ct);
+    /// <param name="runId">Запуск, который спрашивает, — <see cref="AgentRunRequest.RunId"/>.</param>
+    Task<QuestionResult> AskAsync(string runId, IReadOnlyList<AgentQuestion> questions, CancellationToken ct);
 
     /// <summary>
     /// Что можно отправить (папка, тип, размер), решает хост: агент сам путь не проверяет,

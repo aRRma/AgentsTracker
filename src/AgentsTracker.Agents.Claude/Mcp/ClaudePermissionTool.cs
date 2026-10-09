@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Microsoft.AspNetCore.Http;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -13,7 +14,8 @@ namespace AgentsTracker.Agents.Claude.Mcp;
 /// {"behavior":"deny","message":"…"}. Карточки, правила «всегда» и аудит — у хоста.
 /// </summary>
 [McpServerToolType]
-public sealed class ClaudePermissionTool(IOperatorConsole console, ILogger<ClaudePermissionTool> logger)
+public sealed class ClaudePermissionTool(
+    IOperatorConsole console, IHttpContextAccessor http, ILogger<ClaudePermissionTool> logger)
 {
     private const string AskUserQuestionTool = "AskUserQuestion";
 
@@ -40,13 +42,17 @@ public sealed class ClaudePermissionTool(IOperatorConsole console, ILogger<Claud
         var toolInput = input ?? Read(arguments, "input", "tool_input", "toolInput");
         var suggestions = Read(arguments, "permission_suggestions", "suggestions", "permissionSuggestions");
 
+        // Без заголовка — пустой id: хост такого запуска не знает и откажет, а не покажет
+        // карточку в чужом чате.
+        var runId = McpConfigFile.RunIdOf(http.HttpContext) ?? "";
+
         try
         {
             if (string.Equals(toolName, AskUserQuestionTool, StringComparison.Ordinal))
-                return await HandleQuestionsAsync(toolInput, cancellationToken);
+                return await HandleQuestionsAsync(runId, toolInput, cancellationToken);
 
             var rules = PersistableRules(suggestions);
-            var decision = await console.ApproveAsync(new ApprovalRequest(toolName, toolInput, rules), cancellationToken);
+            var decision = await console.ApproveAsync(new ApprovalRequest(runId, toolName, toolInput, rules), cancellationToken);
 
             return decision.Allowed
                 ? Allow(toolInput, decision.PersistRules ? rules : null)
@@ -104,7 +110,7 @@ public sealed class ClaudePermissionTool(IOperatorConsole console, ILogger<Claud
 
     // ---- AskUserQuestion ----
 
-    private async Task<string> HandleQuestionsAsync(JsonElement? input, CancellationToken ct)
+    private async Task<string> HandleQuestionsAsync(string runId, JsonElement? input, CancellationToken ct)
     {
         if (input is not { ValueKind: JsonValueKind.Object } obj
             || !obj.TryGetProperty("questions", out var questions)
@@ -115,7 +121,7 @@ public sealed class ClaudePermissionTool(IOperatorConsole console, ILogger<Claud
 
         var parsed = questions.EnumerateArray().Select(ParseQuestion).ToList();
 
-        var result = await console.AskAsync(parsed, ct);
+        var result = await console.AskAsync(runId, parsed, ct);
         if (result.Answers is null) return Deny(result.Refusal ?? "Ответы не получены.");
 
         // CLI ждёт исходные questions и answers с текстом вопроса в ключе.

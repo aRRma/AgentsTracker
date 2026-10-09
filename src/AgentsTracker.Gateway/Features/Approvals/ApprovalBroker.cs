@@ -8,6 +8,18 @@ public sealed record ChoiceOption(string Key, string Label);
 public sealed record ChoiceResult(string Key, UserId User);
 
 /// <summary>
+/// Запуск глазами карточек: куда их показывать и что писать в журнал. Задача и вопрос идут
+/// параллельно, и одно «текущее» значение на шлюз отправило бы карточку одного в чат другого.
+/// </summary>
+/// <param name="ReplyTo">Сообщение, ответом на которое идут карточки и файлы; у вопроса — сам вопрос.</param>
+/// <param name="ProjectPath">
+/// Проект для путей на карточке и для проверки <c>send_file</c>. У вопроса — проект чата, а не
+/// его пустая рабочая папка: права вопроса остаются теми же, что были в общей очереди.
+/// </param>
+/// <param name="SessionId">Сессия для журнала; у вопроса null.</param>
+public sealed record RunScope(string RunId, ChatId Chat, MessageRef? ReplyTo, string ProjectPath, string? SessionId);
+
+/// <summary>
 /// Мост между агентом и чатом: показывает карточку с кнопками и держит вызывающего,
 /// пока не нажмут кнопку или не выйдет таймаут.
 /// </summary>
@@ -24,29 +36,45 @@ public sealed class ApprovalBroker(
         TaskCompletionSource<ChoiceResult> Completion,
         MessageRef Message,
         string Html,
-        IReadOnlyList<ChoiceOption> Buttons);
+        IReadOnlyList<ChoiceOption> Buttons,
+        string RunId);
 
-    private sealed record TextPrompt(TaskCompletionSource<string> Completion, ChatId Chat);
+    private sealed record TextPrompt(TaskCompletionSource<string> Completion, ChatId Chat, string RunId);
 
     private static readonly TimeSpan NetworkTimeout = TimeSpan.FromSeconds(15);
 
     private readonly ConcurrentDictionary<string, PendingChoice> _choices = new();
+    private readonly ConcurrentDictionary<string, RunScope> _runs = new(StringComparer.Ordinal);
     private readonly TimeSpan _timeout = TimeSpan.FromMinutes(options.Value.ApprovalTimeoutMinutes);
 
     private TextPrompt? _textPrompt;
 
-    /// <summary>Чат, куда уходят карточки. Выставляет ChatWorker перед запуском.</summary>
-    public ChatId? ActiveChat { get; set; }
-
     public bool HasPending => !_choices.IsEmpty || _textPrompt is not null;
+
+    /// <summary>
+    /// Регистрирует запуск перед стартом процесса. Dispose снимает его вместе с его
+    /// карточками — процесс завершён, отвечать на них некому, — но не трогает карточки
+    /// другого запуска.
+    /// </summary>
+    public IDisposable BeginRun(RunScope run)
+    {
+        _runs[run.RunId] = run;
+        return new Registration(() =>
+        {
+            _runs.TryRemove(run.RunId, out _);
+            Cancel(run.RunId);
+        });
+    }
+
+    /// <summary>Запуск по id; null — он уже завершён или id никому не выдавался.</summary>
+    public RunScope? Run(string runId) =>
+        runId.Length > 0 && _runs.TryGetValue(runId, out var run) ? run : null;
 
     /// <summary>Показывает карточку и ждёт выбора: Key нажатой кнопки и того, кто нажал.</summary>
     /// <exception cref="TimeoutException">Пользователь не ответил за отведённое время.</exception>
-    public async Task<ChoiceResult> AskChoiceAsync(string html, IReadOnlyList<ChoiceOption> buttons, CancellationToken ct)
+    public async Task<ChoiceResult> AskChoiceAsync(
+        RunScope run, string html, IReadOnlyList<ChoiceOption> buttons, CancellationToken ct)
     {
-        var chat = ActiveChat
-            ?? throw new InvalidOperationException("Нет активного чата — некому показать карточку.");
-
         var id = Guid.NewGuid().ToString("N")[..8];
         var keyboard = new Keyboard(
         [
@@ -54,10 +82,14 @@ public sealed class ApprovalBroker(
                 [.. row.Select(b => new KeyboardButton(Text.Clip(b.Label, channel.Limits.ButtonLabelLength), $"{id}:{b.Key}"))]),
         ]);
 
-        var message = await channel.SendAsync(chat, new OutgoingMessage(html, Keyboard: keyboard), ct);
+        var message = await channel.SendAsync(run.Chat, new OutgoingMessage(html, Keyboard: keyboard, ReplyTo: run.ReplyTo), ct);
 
         var completion = new TaskCompletionSource<ChoiceResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _choices[id] = new PendingChoice(completion, message, html, buttons);
+        _choices[id] = new PendingChoice(completion, message, html, buttons, run.RunId);
+
+        // Запуск мог закончиться, пока карточка уходила в канал: его снятие её ещё не видело,
+        // и без этой проверки она висела бы с живыми кнопками до таймаута.
+        if (Run(run.RunId) is null) Cancel(run.RunId);
 
         try
         {
@@ -83,50 +115,44 @@ public sealed class ApprovalBroker(
     /// Файл с полным входом инструмента, не влезшим в карточку. Уходит перед карточкой:
     /// решение принимают по прочитанному целиком.
     /// </summary>
-    public async Task SendAttachmentAsync(string fileName, string content, CancellationToken ct)
-    {
-        var chat = ActiveChat
-            ?? throw new InvalidOperationException("Нет активного чата — некому показать запрос.");
-
-        await channel.SendFileAsync(chat, fileName, content, null, ct);
-    }
+    public async Task SendAttachmentAsync(RunScope run, string fileName, string content, CancellationToken ct) =>
+        await channel.SendFileAsync(run.Chat, fileName, content, run.ReplyTo, ct);
 
     /// <summary>
-    /// Файл агента в активный чат: документом или фото. Перед каждой попыткой поток
+    /// Файл агента в чат запуска: документом или фото. Перед каждой попыткой поток
     /// перематывается: после 429 повтор с середины отправил бы обрезанный документ.
     /// </summary>
-    public Task SendFileAsync(string fileName, Stream content, string? caption, bool asPhoto, CancellationToken ct)
-    {
-        var chat = ActiveChat
-            ?? throw new InvalidOperationException("Нет активного чата — некому отправить файл.");
-
-        return RateLimitRetry.OnceAsync(
+    public Task SendFileAsync(
+        RunScope run, string fileName, Stream content, string? caption, bool asPhoto, CancellationToken ct) =>
+        RateLimitRetry.OnceAsync(
             () =>
             {
                 content.Position = 0;
                 return asPhoto
-                    ? channel.SendPhotoAsync(chat, fileName, content, caption, null, ct)
-                    : channel.SendDocumentAsync(chat, fileName, content, caption, null, ct);
+                    ? channel.SendPhotoAsync(run.Chat, fileName, content, caption, run.ReplyTo, ct)
+                    : channel.SendDocumentAsync(run.Chat, fileName, content, caption, run.ReplyTo, ct);
             },
             wait => logger.LogWarning("Канал просит подождать {Wait} перед отправкой файла", wait),
             ct);
-    }
 
-    /// <summary>Просит пользователя прислать свободный текст следующим сообщением.</summary>
-    public async Task<string> AskTextAsync(string html, CancellationToken ct)
+    /// <summary>
+    /// Просит пользователя прислать свободный текст следующим сообщением. Ожидание одно на
+    /// шлюз: следующее сообщение не скажет, какому запуску оно адресовано.
+    /// </summary>
+    public async Task<string> AskTextAsync(RunScope run, string html, CancellationToken ct)
     {
-        var chat = ActiveChat
-            ?? throw new InvalidOperationException("Нет активного чата — некому задать вопрос.");
-
         var completion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var prompt = new TextPrompt(completion, chat);
+        var prompt = new TextPrompt(completion, run.Chat, run.RunId);
         if (Interlocked.CompareExchange(ref _textPrompt, prompt, null) is not null)
             throw new InvalidOperationException("Уже ожидается другой текстовый ответ.");
 
-        await channel.SendAsync(chat, new OutgoingMessage(html), ct);
-
         try
         {
+            await channel.SendAsync(run.Chat, new OutgoingMessage(html, ReplyTo: run.ReplyTo), ct);
+
+            // Та же гонка, что у карточки: запуск закончился, пока уходила просьба.
+            if (Run(run.RunId) is null) Cancel(run.RunId);
+
             return await WaitAsync(completion.Task, ct);
         }
         finally
@@ -185,11 +211,15 @@ public sealed class ApprovalBroker(
         await FinishCardAsync(pending.Message, pending.Html, $"➡️ {label}");
     }
 
-    /// <summary>Снимает все ожидания — например, когда пользователь дал /stop.</summary>
-    public void CancelAll()
+    /// <summary>Снимает все ожидания всех запусков — когда пользователь дал /stop.</summary>
+    public void CancelAll() => Cancel(null);
+
+    /// <summary>Снимает ожидания одного запуска; null — всех.</summary>
+    private void Cancel(string? runId)
     {
         foreach (var (id, pending) in _choices)
         {
+            if (runId is not null && pending.RunId != runId) continue;
             if (!pending.Completion.TrySetCanceled()) continue;
 
             _choices.TryRemove(id, out _);
@@ -198,7 +228,12 @@ public sealed class ApprovalBroker(
             _ = FinishCardAsync(pending.Message, pending.Html, "🛑 Отменено");
         }
 
-        Interlocked.Exchange(ref _textPrompt, null)?.Completion.TrySetCanceled();
+        if (_textPrompt is { } prompt
+            && (runId is null || prompt.RunId == runId)
+            && Interlocked.CompareExchange(ref _textPrompt, null, prompt) == prompt)
+        {
+            prompt.Completion.TrySetCanceled();
+        }
     }
 
     /// <summary>
@@ -256,5 +291,13 @@ public sealed class ApprovalBroker(
         {
             logger.LogDebug(ex, "Не удалось ответить на нажатие");
         }
+    }
+
+    /// <summary>Снятие запуска ровно один раз, сколько бы раз ни позвали Dispose.</summary>
+    private sealed class Registration(Action onDispose) : IDisposable
+    {
+        private Action? _onDispose = onDispose;
+
+        public void Dispose() => Interlocked.Exchange(ref _onDispose, null)?.Invoke();
     }
 }

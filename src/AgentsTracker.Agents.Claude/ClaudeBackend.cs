@@ -62,7 +62,10 @@ public sealed class ClaudeBackend(
         // Выключить их совсем может только владелец аккаунта в claude.ai.
         psi.Environment["DISABLE_EXTRA_USAGE_COMMAND"] = "1";
 
-        foreach (var arg in BuildArguments(request, prompt, resumedSessionId, sessionId))
+        // Конфиг живёт ровно столько, сколько процесс: в нём токен MCP.
+        using var mcp = mcpConfig.ForRun(request.RunId);
+
+        foreach (var arg in BuildArguments(request, prompt, resumedSessionId, sessionId, mcp.Path))
             psi.ArgumentList.Add(arg);
 
         // Промпт в лог целиком не пишем: это сообщение пользователя, хватит начала.
@@ -237,7 +240,7 @@ public sealed class ClaudeBackend(
     }
 
     private IEnumerable<string> BuildArguments(
-        AgentRunRequest request, string prompt, string? resumedSessionId, string sessionId)
+        AgentRunRequest request, string prompt, string? resumedSessionId, string sessionId, string mcpConfigPath)
     {
         yield return "-p";
         yield return prompt;
@@ -283,7 +286,7 @@ public sealed class ClaudeBackend(
         yield return request.PermissionMode;
 
         yield return "--mcp-config";
-        yield return mcpConfig.Path;
+        yield return mcpConfigPath;
 
         // Отправка файла без карточки: папку, тип и размер проверяет сам шлюз, а карточка
         // «разрешить tg:send_file?» лишь дублировала бы его же проверку лишним нажатием.

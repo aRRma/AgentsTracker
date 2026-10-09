@@ -5,6 +5,11 @@ namespace AgentsTracker.Agents;
 /// до старта: переключение из меню по ходу работы иначе развело бы каталог процесса
 /// и проект, которому запишется сессия.
 /// </summary>
+/// <param name="RunId">
+/// Id запуска, выданный хостом. Бэкенд возвращает его в каждом обращении к
+/// <see cref="IOperatorConsole"/>: запуски идут параллельно (задача и вопрос), и без id
+/// карточка одного ушла бы в чат другого, а конец одного снял бы карточки другого.
+/// </param>
 /// <param name="ResumeSessionId">Сессия, которую продолжаем; null — начать новую.</param>
 /// <param name="NewSessionId">
 /// Id новой сессии, выданный хостом заранее. Бэкенд, умеющий принимать id снаружи, передаёт
@@ -25,6 +30,7 @@ namespace AgentsTracker.Agents;
 /// промпт бэкенд подставляет сам: команда своя у каждого агента.
 /// </param>
 public sealed record AgentRunRequest(
+    string RunId,
     string Prompt,
     string ProjectPath,
     string? ResumeSessionId,

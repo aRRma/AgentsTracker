@@ -26,14 +26,27 @@ public sealed class OperatorConsole(
     private const int OptionLabelBudget = 120;
     private const int OptionDescriptionBudget = 300;
 
+    /// <summary>
+    /// Ответ процессу, чей запуск шлюз уже снял (/stop, таймаут) или не выдавал: показать
+    /// карточку некуда, а в чат следующего запуска она уйти не должна.
+    /// </summary>
+    private const string UnknownRun = "Запуск уже завершён — шлюз не принимает от него запросов.";
+
     public async Task<ApprovalDecision> ApproveAsync(ApprovalRequest request, CancellationToken ct)
     {
-        var (toolName, input, suggested) = request;
+        var (runId, toolName, input, suggested) = request;
         var signature = BuildSignature(toolName, input);
 
         // Только начало: в полной команде может быть токен из заголовка curl.
         var brief = Text.Preview(Highlight(toolName, input) ?? "");
         logger.LogInformation("Запрошено подтверждение: {Tool} {Key}", toolName, brief);
+
+        if (broker.Run(runId) is not { } run)
+        {
+            logger.LogWarning("Подтверждение на {Tool} от неизвестного запуска «{RunId}» отклонено", toolName, runId);
+            Audit(null, AuditKinds.Approval, signature, "unknown-run");
+            return ApprovalDecision.Deny(UnknownRun);
+        }
 
         // Монитору та же строка, что и логу: в полном вводе Edit/Write лежит содержимое файлов.
         using var pending = monitor.Approval(toolName, brief);
@@ -41,29 +54,30 @@ public sealed class OperatorConsole(
         if (store.IsAlwaysAllowed(signature))
         {
             logger.LogInformation("Автоматически разрешено по правилу «всегда»: {Signature}", signature);
-            Audit(AuditKinds.Approval, signature, "rule");
+            Audit(run, AuditKinds.Approval, signature, "rule");
             return ApprovalDecision.Allow();
         }
 
         try
         {
-            return await AskApprovalAsync(toolName, input, signature, suggested, ct);
+            return await AskApprovalAsync(run, toolName, input, signature, suggested, ct);
         }
         catch (TimeoutException)
         {
             logger.LogWarning("Подтверждение на {Tool} не получено за отведённое время", toolName);
-            Audit(AuditKinds.Approval, signature, "timeout");
+            Audit(run, AuditKinds.Approval, signature, "timeout");
             return ApprovalDecision.Deny("Пользователь не подтвердил это действие за отведённое время. Не повторяйте его.");
         }
         catch (OperationCanceledException)
         {
-            Audit(AuditKinds.Approval, signature, "cancel");
+            Audit(run, AuditKinds.Approval, signature, "cancel");
             return ApprovalDecision.Deny("Отменено пользователем.");
         }
     }
 
     private async Task<ApprovalDecision> AskApprovalAsync(
-        string toolName, JsonElement? input, string signature, IReadOnlyList<PersistentRule>? suggested, CancellationToken ct)
+        RunScope run, string toolName, JsonElement? input, string signature, IReadOnlyList<PersistentRule>? suggested,
+        CancellationToken ct)
     {
         var buttons = new List<ChoiceOption>
         {
@@ -73,14 +87,14 @@ public sealed class OperatorConsole(
             new("reason", "✋ Отклонить с причиной"),
         };
 
-        var card = ApprovalCardRenderer.Render(toolName, input, signature, suggested, store.ProjectPath);
+        var card = ApprovalCardRenderer.Render(toolName, input, signature, suggested, run.ProjectPath);
 
         // Обрезанный вход — файлом до карточки: команду без видимого хвоста разрешать нельзя.
         if (card.Attachment is { } attachment)
-            await broker.SendAttachmentAsync(attachment.FileName, attachment.Text, ct);
+            await broker.SendAttachmentAsync(run, attachment.FileName, attachment.Text, ct);
 
-        var (key, user) = await broker.AskChoiceAsync(card.Html, buttons, ct);
-        Audit(AuditKinds.Approval, signature, key, user);
+        var (key, user) = await broker.AskChoiceAsync(run, card.Html, buttons, ct);
+        Audit(run, AuditKinds.Approval, signature, key, user);
 
         switch (key)
         {
@@ -90,12 +104,12 @@ public sealed class OperatorConsole(
             case "always":
                 // Правило агента шире и живёт у него; своё пишем, только если он не предложил.
                 if (suggested is null) store.AddAlwaysAllow(signature);
-                Audit(AuditKinds.Rules, $"add {signature}", suggested is null ? "gateway" : "agent", user);
+                Audit(run, AuditKinds.Rules, $"add {signature}", suggested is null ? "gateway" : "agent", user);
                 return ApprovalDecision.Allow(persistRules: suggested is not null);
 
             case "reason":
                 var reason = await broker.AskTextAsync(
-                    "Напишите сообщением, почему отклоняете и что делать вместо этого:", ct);
+                    run, "Напишите сообщением, почему отклоняете и что делать вместо этого:", ct);
                 return ApprovalDecision.Deny(reason);
 
             default:
@@ -103,35 +117,42 @@ public sealed class OperatorConsole(
         }
     }
 
-    public async Task<QuestionResult> AskAsync(IReadOnlyList<AgentQuestion> questions, CancellationToken ct)
+    public async Task<QuestionResult> AskAsync(string runId, IReadOnlyList<AgentQuestion> questions, CancellationToken ct)
     {
         // Сигнатуры у вопроса нет — правил «всегда» для него не бывает, а в журнал хватает
         // того же превью, что и в лог.
         var brief = Text.Preview(questions.FirstOrDefault()?.Text ?? "");
         logger.LogInformation("Вопрос агента: {Key}", brief);
 
+        if (broker.Run(runId) is not { } run)
+        {
+            logger.LogWarning("Вопрос агента от неизвестного запуска «{RunId}» отклонён", runId);
+            Audit(null, AuditKinds.Approval, $"AskUserQuestion({brief})", "unknown-run");
+            return QuestionResult.Refused(UnknownRun);
+        }
+
         using var pending = monitor.Approval("AskUserQuestion", brief);
 
         try
         {
             var answers = new List<QuestionAnswer>();
-            foreach (var question in questions) answers.Add(await AskOneAsync(question, ct));
+            foreach (var question in questions) answers.Add(await AskOneAsync(run, question, ct));
             return QuestionResult.Answered(answers);
         }
         catch (TimeoutException)
         {
             logger.LogWarning("Ответ на вопрос агента не получен за отведённое время");
-            Audit(AuditKinds.Approval, $"AskUserQuestion({brief})", "timeout");
+            Audit(run, AuditKinds.Approval, $"AskUserQuestion({brief})", "timeout");
             return QuestionResult.Refused("Пользователь не ответил на вопрос за отведённое время. Не повторяйте его.");
         }
         catch (OperationCanceledException)
         {
-            Audit(AuditKinds.Approval, $"AskUserQuestion({brief})", "cancel");
+            Audit(run, AuditKinds.Approval, $"AskUserQuestion({brief})", "cancel");
             return QuestionResult.Refused("Отменено пользователем.");
         }
     }
 
-    private async Task<QuestionAnswer> AskOneAsync(AgentQuestion question, CancellationToken ct)
+    private async Task<QuestionAnswer> AskOneAsync(RunScope run, AgentQuestion question, CancellationToken ct)
     {
         var card = new StringBuilder("❓ ");
         if (question.Header is { Length: > 0 } header)
@@ -160,13 +181,13 @@ public sealed class OperatorConsole(
         if (question.MultiSelect)
             card.Append("\n\n<i>Можно выбрать несколько — тогда «Свой ответ» и перечислите через запятую.</i>");
 
-        var (key, user) = await broker.AskChoiceAsync(card.ToString(), buttons, ct);
+        var (key, user) = await broker.AskChoiceAsync(run, card.ToString(), buttons, ct);
 
         var answer = key == "free"
-            ? await broker.AskTextAsync("Напишите ответ сообщением:", ct)
+            ? await broker.AskTextAsync(run, "Напишите ответ сообщением:", ct)
             : fullLabels.GetValueOrDefault(key, key);
 
-        Audit(AuditKinds.Question,
+        Audit(run, AuditKinds.Question,
             $"{Text.Preview(question.Header ?? question.Text, 60)}: {Text.Preview(answer, 60)}",
             key == "free" ? "free" : "option", user);
 
@@ -202,12 +223,16 @@ public sealed class OperatorConsole(
 
     public async Task<FileSendResult> SendFileAsync(FileSendRequest request, CancellationToken ct)
     {
-        var (path, caption, asDocument) = request;
-        var project = ProjectCatalog.Normalize(store.ProjectPath);
+        var (runId, path, caption, asDocument) = request;
+
+        if (broker.Run(runId) is not { } run)
+            return Refuse(null, path ?? "", UnknownRun);
+
+        var project = ProjectCatalog.Normalize(run.ProjectPath);
 
         // Аргумент MCP может прийти null: в отказ идёт строка, а не NRE в превью.
         if (string.IsNullOrWhiteSpace(path))
-            return Refuse(path ?? "", "Путь к файлу пуст.");
+            return Refuse(run, path ?? "", "Путь к файлу пуст.");
 
         string full;
         try
@@ -216,33 +241,33 @@ public sealed class OperatorConsole(
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {
-            return Refuse(path, "Путь к файлу некорректен.");
+            return Refuse(run, path, "Путь к файлу некорректен.");
         }
 
-        // Только папка текущего проекта: агент работает в ней, а шлюз читает файл сам, в обход
+        // Только папка проекта запуска: агент работает в ней, а шлюз читает файл сам, в обход
         // запретов Claude на чтение. Папка данных шлюза исключена отдельно — она вне проекта,
         // но пусть отказ не зависит от того, куда её перенесли.
         if (!ProjectCatalog.IsInside(full, project) || ProjectCatalog.IsInside(full, DataDirectory))
-            return Refuse(full, $"Файл вне текущего проекта ({project}). Отправлять можно только файлы из него.");
+            return Refuse(run, full, $"Файл вне текущего проекта ({project}). Отправлять можно только файлы из него.");
 
         var extension = Path.GetExtension(full);
         if (!AllowedExtensions.TryGetValue(extension, out var isImage))
-            return Refuse(full, $"Тип файла «{extension}» не разрешён. Допустимы: {string.Join(", ", AllowedExtensions.Keys)}.");
+            return Refuse(run, full, $"Тип файла «{extension}» не разрешён. Допустимы: {string.Join(", ", AllowedExtensions.Keys)}.");
 
         var file = new FileInfo(full);
         if (!file.Exists)
-            return Refuse(full, "Файл не найден.");
+            return Refuse(run, full, "Файл не найден.");
 
         // Путь проверен как строка, а открывать файл будет ОС по ссылкам: symlink или junction
         // внутри проекта, ведущие наружу, обошли бы проверку выше и отдали бы чужой файл.
         if (CrossesLink(file, project))
-            return Refuse(full, "Путь проходит через символическую ссылку или junction — отправлять можно только сами файлы проекта.");
+            return Refuse(run, full, "Путь проходит через символическую ссылку или junction — отправлять можно только сами файлы проекта.");
 
         var asPhoto = isImage && !asDocument;
         var limits = channel.Limits;
         var limit = asPhoto ? limits.PhotoBytes : limits.DocumentBytes;
         if (file.Length > limit)
-            return Refuse(full, $"Файл слишком большой: {file.Length.Bytes}, предел канала — {limit.Bytes}.");
+            return Refuse(run, full, $"Файл слишком большой: {file.Length.Bytes}, предел канала — {limit.Bytes}.");
 
         var trimmedCaption = caption is { Length: > 0 } ? Text.Clip(caption.Trim(), limits.CaptionLength) : null;
 
@@ -259,29 +284,29 @@ public sealed class OperatorConsole(
                 Share = FileShare.ReadWrite,
                 Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
             });
-            await broker.SendFileAsync(file.Name, content, trimmedCaption, asPhoto, ct);
+            await broker.SendFileAsync(run, file.Name, content, trimmedCaption, asPhoto, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            return Refuse(full, "Отправка отменена пользователем.");
+            return Refuse(run, full, "Отправка отменена пользователем.");
         }
         catch (Exception ex)
         {
             // Любой сбой — отказом с записью в аудит: попытка отправки должна остаться в журнале,
             // а таймаут клиента без отмены пользователем — не «отменено пользователем».
             logger.LogWarning(ex, "Не удалось отправить файл {Path}", full);
-            return Refuse(full, $"Не удалось отправить файл: {ex.Message}");
+            return Refuse(run, full, $"Не удалось отправить файл: {ex.Message}");
         }
 
-        Audit(AuditKinds.FileSend, $"{Path.GetFileName(full)} ({file.Length.Bytes})", asPhoto ? "photo" : "document");
+        Audit(run, AuditKinds.FileSend, $"{Path.GetFileName(full)} ({file.Length.Bytes})", asPhoto ? "photo" : "document");
         return FileSendResult.Ok();
     }
 
     /// <summary>Отказ — тоже в журнал: попытка выслать чужой файл важнее удачной отправки.</summary>
-    private FileSendResult Refuse(string path, string reason)
+    private FileSendResult Refuse(RunScope? run, string path, string reason)
     {
         logger.LogWarning("Отказ в отправке файла {Path}: {Reason}", path, reason);
-        Audit(AuditKinds.FileSend, $"{Text.Preview(path, 120)}: {reason}", "refused");
+        Audit(run, AuditKinds.FileSend, $"{Text.Preview(path, 120)}: {reason}", "refused");
         return FileSendResult.Refused(reason);
     }
 
@@ -347,6 +372,10 @@ public sealed class OperatorConsole(
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
-    private void Audit(string kind, string summary, string outcome, UserId? user = null) =>
-        audit.Write(AuditEvent.Now(kind, summary, user, broker.ActiveChat, store.ProjectPath, store.SessionId, outcome));
+    /// <summary>
+    /// Чат, проект и сессия — запуска, а не текущие: параллельно идёт другой запуск, и карточка
+    /// вопроса в журнале оказалась бы в сессии задачи. Без запуска — только что и чем кончилось.
+    /// </summary>
+    private void Audit(RunScope? run, string kind, string summary, string outcome, UserId? user = null) =>
+        audit.Write(AuditEvent.Now(kind, summary, user, run?.Chat, run?.ProjectPath, run?.SessionId, outcome));
 }
