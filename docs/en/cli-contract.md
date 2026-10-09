@@ -153,7 +153,8 @@ text. The CLI often leaves the error text in stderr and sends `result` empty (as
 conversation found» on a broken `--resume`) — the session-reset and limit checks also look at
 stderr.
 
-A run in progress is recorded in `state.json` (`GatewayState.ActiveRun`): `ChatWorker` sets
+A run in progress is recorded in `state.json` (`GatewayState.ActiveRun`, a вопрос — in
+`ActiveQuestion`, since it runs in parallel): `ChatWorker` sets
 `BeginRun` before starting and `EndRun` in `finally`. If the record is still there at startup,
 the previous instance died mid-run: `StartupNotice` sends «🔌 Шлюз запущен» ("Gateway started")
 to everyone in `IChatChannel.AllowedUsers`, and to the chat of the interrupted run
@@ -239,6 +240,13 @@ loaded — the user's MCP servers cost ~40k tokens of context per question other
 a one-word answer). `--permission-mode` and `--permission-prompt-tool` are passed as always. The
 working folder is an empty `%TEMP%\AgentsTracker-question`: not the project (its CLAUDE.md would load)
 and not the data directory (secrets).
+
+A вопрос runs in its own `ChatWorker` lane, **in parallel** with a task: two `claude` processes at
+once at most. Its permissions are unchanged — cards and `send_file` (checked against the chat's
+project) work as before; the cards of the two processes are told apart by the run id in the
+`X-AgentsTracker-Run` header of each run's own `--mcp-config` file (`architecture.md`, "The gateway →
+CLI → gateway loop"). There is no `Agent` tool among `--tools`, so a вопрос has no subagents. The
+answer, the status and the cards come as a reply to the user's message.
 
 ## Plan limits
 

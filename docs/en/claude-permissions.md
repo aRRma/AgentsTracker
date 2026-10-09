@@ -98,7 +98,7 @@ permission lets an action through silently.
 The `.claude/settings.json` file at the root closes off what the personal config doesn't need
 to know about:
 
-- `mcp-gateway-<pid>.json` — the token the `claude` process uses to reach the gateway: don't
+- `mcp-gateway-<pid>-<run>.json` — the token the `claude` process uses to reach the gateway: don't
   read it;
 - `appsettings.Local.json` — the bot token: reading and editing both require a question. If
   `protect-secrets` has already run, it holds `dpapi:…`, but the rule is cheaper than checking;

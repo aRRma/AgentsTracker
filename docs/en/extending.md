@@ -63,6 +63,11 @@ A project `src/AgentsTracker.Agents.<Name>` referencing `Agents.Abstractions`: a
 A line in the `agents` list in `Program.cs`, a reference in `Gateway.csproj` and a `COPY` line in
 the `Dockerfile`.
 
+Every call into `IOperatorConsole` carries `AgentRunRequest.RunId` back: a task and a вопрос run in
+parallel, and the host finds the chat by that id — a call without it is refused. The backend has
+to carry the id from the request to its confirmation channel itself (Claude puts it into a header
+of the run's own MCP config).
+
 `grep -rn Claude src/AgentsTracker.Gateway --include=*.cs` must only find `Program.cs` and
 comments. Agent settings live in `Gateway:<Id>`, the host does not read them.
 
@@ -74,6 +79,11 @@ A project `src/AgentsTracker.Channels.<Name>` referencing `Channels.Abstractions
 `ChatId`/`UserId` types (`Key` is "channel:value"), its own `ChannelLimits`, transport failures —
 only `ChannelRequestException`. A line in the `channels` list in `Program.cs` (selected by
 `Gateway:Channel:Type`), a reference in `Gateway.csproj` and a `COPY` line in the `Dockerfile`.
+
+Replies: fill `IncomingMessage.Message` and honour `OutgoingMessage.ReplyTo` and the `replyTo` of the
+file methods — the answer to a вопрос is a reply, otherwise it gets lost among the task's messages.
+A reply to a message that no longer exists must still be delivered (Telegram:
+`AllowSendingWithoutReply`). A messenger without replies may ignore `ReplyTo`.
 
 `grep -rn Telegram src/AgentsTracker.Gateway --include=*.cs` must only find `Program.cs` and
 comments.

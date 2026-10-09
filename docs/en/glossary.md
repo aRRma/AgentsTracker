@@ -67,7 +67,9 @@ compressed. «Сжать» keeps the same сессия with a smaller конте
 branch with an empty one.
 
 **задача / вопрос.** A задача goes into the project's session and continues it. A вопрос is a
-one-off, outside any session and project, answered by its own model, and leaves nothing behind. It
+one-off, outside any session and project, answered by its own model, and leaves nothing behind. A
+вопрос runs in parallel with a задача, without waiting for it, and is answered as a reply to the
+message that asked it. It
 is not a «режим»: that word belongs to `--permission-mode`. When the agent itself asks, that is a
 «вопрос агента» — a card with options, not the user's вопрос.
 

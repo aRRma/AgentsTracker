@@ -94,7 +94,7 @@
 
 Файл `.claude/settings.json` в корне закрывает то, что личный конфиг знать не обязан:
 
-- `mcp-gateway-<pid>.json` — токен, по которому `claude` ходит к шлюзу: не читать;
+- `mcp-gateway-<pid>-<запуск>.json` — токен, по которому `claude` ходит к шлюзу: не читать;
 - `appsettings.Local.json` — токен бота: чтение и правка только с вопросом. Если
   `protect-secrets` уже выполнен, там `dpapi:…`, но правило дешевле проверки;
 - `dotnet run`, `AgentsTracker.Gateway.exe`, `schtasks`, `docker compose`, `Stop-Process`,

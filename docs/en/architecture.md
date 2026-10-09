@@ -19,7 +19,7 @@ src/AgentsTracker.Agents.Claude/         Claude Code behind those contracts:
   ClaudeBackend         the claude -p process: arguments, stream-json, "session not found", limit
   ClaudeCapabilities    which models, efforts and modes the CLI accepts; Selectable — what is offered from the chat
   ClaudeLimits, ClaudeSkillCatalog, ClaudePluginRegistry, ClaudeCliLocator, ClaudeStreamEvent
-  Mcp/                  McpConfigFile — mcp-gateway-<pid>.json with a token; ClaudePermissionTool — the CLI ↔ IOperatorConsole payload;
+  Mcp/                  McpConfigFile — mcp-gateway-<pid>-<run>.json per run: the token plus the run id; ClaudePermissionTool — the CLI ↔ IOperatorConsole payload;
                         ClaudeSendFileTool — a file from the agent into the chat, the policy stays on the host side
 src/AgentsTracker.Channels.Abstractions/ channel contracts, no specific messenger:
   IChatChannel          channel addresses and limits, ConnectAsync/ListenAsync, Send/Edit/Delete/Acknowledge,
@@ -28,7 +28,8 @@ src/AgentsTracker.Channels.Abstractions/ channel contracts, no specific messenge
   ChannelLimits         channel bounds: message and caption length, document, photo and download size
   RateLimitRetry        one retry after a 429 with a short retry_after — shared by every send
   ChatId, UserId        an address as a value; Key is "channel:value" for state.json, the audit and the log
-  Messages.cs           OutgoingMessage, Keyboard, MessageRef, IncomingMessage (text + attachments),
+  Messages.cs           OutgoingMessage (ReplyTo — answer a message), Keyboard, MessageRef,
+                        IncomingMessage (text + attachments + its own MessageRef),
                         IncomingAttachment/AttachmentKind, ButtonPress, ChatCommand
   IChatInbound          where the channel hands incoming traffic; implemented by the host (ChatDispatcher)
   ChatHtml              the canonical text format (b, i, s, code, pre, a, blockquote) and escaping
@@ -49,7 +50,7 @@ src/AgentsTracker.Gateway/
                         Cli/ (install, uninstall), Autostart/ (a Task Scheduler task via schtasks)
   Features/             vertical slices, each with its own *Module:
     Approvals/          approval cards, ApprovalBroker, /rules
-    Chat/               ChatWorker (queue, launch, sessions), RunStatusMessage, /new /stop,
+    Chat/               ChatWorker (two lanes — tasks and вопросы, launch, sessions), RunStatusMessage, /new /stop,
                         AttachmentInbox — pictures from the chat: download, checks, inbox folder, cleanup
     Settings/           SettingsMenuCoordinator + Screens/*, /menu /status /sessions /agent /skills /project /usage;
                         PendingConfirmations — the second press for irreversible buttons («Контекст»)
@@ -91,8 +92,34 @@ Details — `cli-contract.md`.
 
 Buttons: the `IChatButtonHandler` chain (`Dispatch/`), each recognizing its own by the prefix in
 `CanHandle`: `cfg:` — the menu (`SettingsCallbackHandler`), everything else (a hex request id) —
-`ApprovalCallbackHandler` → `ApprovalBroker`. The broker's `ActiveChat` is set by `ChatWorker`
-before a run, otherwise cards would go to another user's chat.
+`ApprovalCallbackHandler` → `ApprovalBroker`.
+
+### Two lanes: a task and a вопрос in parallel
+
+`ChatWorker` has two lanes, each with its own queue and its own `CancellationTokenSource`: tasks
+(and `/context`, `/compact`) one at a time, вопросы (`AgentRunKind.Question`) one at a time, and a
+task runs **in parallel** with a вопрос — otherwise a вопрос, asked precisely so as not to wait,
+would wait for a long task. Never more than two agent processes at once.
+
+- `IsBusy`/`QueueLength` are about tasks only: the menu, a session switch and «Сжать» do not wait
+  for a вопрос. `IsAnswering`/`QuestionQueueLength` — for the status line.
+- `/stop` (`ChatWorker.Stop`) interrupts both lanes and calls `ApprovalBroker.CancelAll`.
+- A limit refusal or `RateLimited` drains only its own lane: the вопрос has its own model, and the
+  other lane checks the limit before its own run anyway.
+- A вопрос does not touch `RunMonitor` (the current run and the queue there are the task's) — it
+  shows up in the run history and the audit. Its tool-call count comes from `RunStatusMessage.ToolCalls`.
+- `state.json` keeps the task in `ActiveRun` and the вопрос in `ActiveQuestion`; after a restart
+  `StartupNotice` reports both («Вопрос прерван… задайте его снова»).
+- A вопрос is answered as a **reply** to the user's message: «Вопрос принят», the status, every part
+  of the answer (a part of the task's answer may land between them) and its cards and files.
+  `IncomingMessage.Message` → `QueuedPrompt.ReplyTo` → `OutgoingMessage.ReplyTo` and the
+  `replyTo` parameter of the channel's file methods. Telegram sends it with
+  `AllowSendingWithoutReply`: a deleted question would otherwise turn the answer into a 400.
+
+Each run is registered in the broker right before the process starts: `ApprovalBroker.BeginRun(RunScope)`
+— the run id, the chat, the message to reply to, the project for card paths and `send_file`, the
+session for the audit. Cards and files of a run go to its chat; disposing the registration in the
+run's `finally` cancels only **that** run's cards. There is no "current chat" in the broker any more.
 
 ## The gateway → CLI → gateway loop
 
@@ -105,12 +132,24 @@ channel ─▶ ChatDispatcher ──▶ ChatWorker ──▶ ClaudeBackend ─�
                                                                               Authorization: Bearer <token>
 ```
 
-At startup `McpConfigFile` generates a token, writes `mcp-gateway-<pid>.json` and deletes it on
-shutdown. The name carries the PID: a shared file was overwritten and deleted by a second instance,
-and the working gateway then died on "mcp__tg__approve not found"; files of dead PIDs are swept at
-startup. `/mcp` is mounted with the `McpConfigFile.Authorizes` filter; the CLI gets `--mcp-config`
-and `--permission-prompt-tool mcp__tg__approve`. The server and tool names are `McpConfigFile`
+At startup `McpConfigFile` generates a token. Each run gets its own config file
+(`McpConfigFile.ForRun`): `mcp-gateway-<pid>-<run>.json` with the token and the
+`X-AgentsTracker-Run: <RunId>` header; `ClaudeBackend` deletes it when the process exits, and the
+gateway deletes its leftovers on shutdown. A file, not inline JSON in `--mcp-config`: the arguments
+go into the log, the token would go with them. The name carries the PID: a shared file was
+overwritten and deleted by a second instance, and the working gateway then died on
+"mcp__tg__approve not found"; files of dead PIDs are swept at startup (the PID is read up to the
+first dash, so the old `mcp-gateway-<pid>.json` is recognized too). `/mcp` is mounted with the
+`McpConfigFile.Authorizes` filter; the CLI gets `--mcp-config` and
+`--permission-prompt-tool mcp__tg__approve`. The server and tool names are `McpConfigFile`
 constants, `[McpServerTool]` takes the same constant.
+
+The run id is how a call finds its run: the tools read the header through `IHttpContextAccessor`
+(the SDK runs a tool in the `ExecutionContext` of its HTTP request) and put it into
+`ApprovalRequest.RunId`/`FileSendRequest.RunId`/`AskAsync(runId, …)`. `OperatorConsole` looks the
+run up in `ApprovalBroker.Run(runId)`; an unknown or missing id (the run already ended) is a
+refusal, never a card in somebody else's chat. Subagents live inside the same CLI process and send
+the same header — checked with two parallel runs, one of them through a subagent.
 
 `ApprovalTimeoutMinutes` reaches `AgentHost` and from there the MCP server's `timeout` in the
 config: without it the CLI aborted the call after 5 minutes of silence, and the card was dead
@@ -118,14 +157,15 @@ afterwards (`cli-contract.md`).
 
 The second tool of the same server is `mcp__tg__send_file` (`ClaudeSendFileTool`): the agent calls
 it itself to send a file into the chat. Path → `IOperatorConsole.SendFileAsync` → `OperatorConsole`
-checks the folder (the current project only, the data directory is forbidden, no symlink/junction
-on the path), the type (an extension allowlist in code) and the size (`ChannelLimits`), writes
+checks the folder (the run's project only — for a вопрос, the chat's project, as when it shared the
+task queue; the data directory is forbidden, no symlink/junction on the path), the type (an
+extension allowlist in code) and the size (`ChannelLimits`), writes
 `file.send` into the audit and sends it through `ApprovalBroker.SendFileAsync` →
 `IChatChannel.SendDocumentAsync`/`SendPhotoAsync`. A refusal is always a
 `{"sent":false,"reason":…}` answer, never an exception.
 
 `McpConfigFile` and `SessionStore` are the only classes with a classic constructor: the side effect
-(a file) must happen exactly once before startup.
+(sweeping stale config files, reading the state file) must happen exactly once before startup.
 
 The README is the user's manual: when changing the endpoint protection or the data directory, check
 its «Безопасность» section.
@@ -171,7 +211,7 @@ a selection the page resets to the first one — otherwise the `▶` marker coul
 ## State, secrets, configuration layers
 
 `%LOCALAPPDATA%\AgentsTracker\` (`AppPaths.DataDirectory`, ACL — the owner and SYSTEM):
-`state.json` (atomic), `mcp-gateway-<pid>.json`, `appsettings.Local.json` with the secrets,
+`state.json` (atomic), `mcp-gateway-<pid>-<run>.json` while a run lives, `appsettings.Local.json` with the secrets,
 `audit\audit-ГГГГ-ММ.jsonl`.
 
 The config comes in layers: `appsettings.json` → `appsettings.Local.json` next to the exe (IDE) →
@@ -248,10 +288,11 @@ than displayed, is derived from `Ticks` (`RunStatusMessage`) or from `long`.
 
 ## Details worth knowing before touching the host
 
-- `Channel.CreateUnbounded` in `ChatWorker` without `SingleReader`: with it `Reader.Count` throws
+- `Channel.CreateUnbounded` in `ChatWorker` lanes without `SingleReader`: with it `Reader.Count` throws
   and `/status` falls over.
-- `_runCts` in `ChatWorker` is set right before `agent.RunAsync`, after the status message is sent:
-  only the run's `finally` clears it, and a failure above would leave `IsBusy` set until a restart.
+- `Lane.RunCts` and the broker registration in `ChatWorker` are set right before `agent.RunAsync`,
+  after the status message is sent: only the run's `finally` clears them, and a failure above would
+  leave `IsBusy` (or a registered run) set until a restart.
 - `HttpClient` only through `IHttpClientFactory`. `ClaudeLimits.HttpClientName` — one timeout, no
   retries. The Telegram client (`TelegramClientFactory`) is a singleton, DNS is refreshed by
   `PooledConnectionLifetime`; retry only on `HttpRequestException`: Bot API methods are POSTs

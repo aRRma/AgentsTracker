@@ -142,7 +142,8 @@ CLI запускается с `--output-format stream-json --verbose` (без `-
 Текст ошибки CLI часто оставляет в stderr, а `result` присылает пустым (так с «No conversation
 found» при битом `--resume`) — проверка сброса сессии и лимита смотрит и в stderr.
 
-Идущий запуск записан в `state.json` (`GatewayState.ActiveRun`): `ChatWorker` ставит
+Идущий запуск записан в `state.json` (`GatewayState.ActiveRun`, вопрос — в `ActiveQuestion`:
+он идёт параллельно): `ChatWorker` ставит
 `BeginRun` перед запуском и `EndRun` в `finally`. Запись на месте при старте — прошлый
 экземпляр умер посреди работы: `StartupNotice` шлёт «🔌 Шлюз запущен» всем из
 `IChatChannel.AllowedUsers`, в чат прерванного запуска (`ActiveRun.ChatKey` разбирает
@@ -223,6 +224,13 @@ Id новой сессии выдаёт **шлюз** (`NewSessionId` → `--sess
 ответе из одного слова). `--permission-mode` и `--permission-prompt-tool` передаются как всегда.
 Рабочая папка — пустая `%TEMP%\AgentsTracker-question`: не проект (подтянулся бы его CLAUDE.md) и
 не папка данных (секреты).
+
+Вопрос идёт своей полосой `ChatWorker`, **параллельно** задаче: не больше двух процессов `claude`
+разом. Права у него прежние — карточки и `send_file` (проверка по проекту чата) работают как раньше;
+карточки двух процессов различаются по id запуска в заголовке `X-AgentsTracker-Run` из своего у
+каждого запуска файла `--mcp-config` ([architecture.md](architecture.md), «Петля шлюз → CLI →
+шлюз»). Инструмента `Agent` в `--tools` нет, так что сабагентов у вопроса не бывает. Ответ, статус и
+карточки приходят ответом (reply) на сообщение пользователя.
 
 ## Лимиты тарифа
 

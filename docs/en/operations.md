@@ -109,7 +109,7 @@ With a **fake** token the scratch instance lives about a minute: `getUpdates` ge
 the working bot notices nothing. Anything longer — or a chat scenario at all — needs a **separate
 test bot** from @BotFather: the working bot's token gives the second process a 409 on
 `getUpdates`, and the release loses its polling. The MCP config does not conflict either way —
-each instance has its own, `mcp-gateway-<pid>.json`.
+each instance has its own, `mcp-gateway-<pid>-<run>.json` per run.
 
 The monitor of the scratch instance (`http://127.0.0.1:5199`) is the only place where a change
 to the page can be seen: port `5100` belongs to the release and shows the old code. Screenshots

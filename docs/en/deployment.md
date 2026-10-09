@@ -242,7 +242,7 @@ the container this is the `data` volume):
 | `appsettings.Local.json` | config; on Windows secrets are encrypted |
 | `state.json` | sessions per project, model and mode selection, the versions the model aliases answered with, "Always" rules, run history |
 | `audit\audit-YYYY-MM.jsonl` | "who did what, when" log, one file per month |
-| `mcp-gateway-<pid>.json` | temporary, created on startup and removed on shutdown |
+| `mcp-gateway-<pid>-<run>.json` | temporary, one per agent run: created at its start and removed at its end |
 
 It makes sense to include `state.json` and `audit\` in a backup. The config only if you remember
 that `dpapi:…` will only restore on this same machine under this same account.

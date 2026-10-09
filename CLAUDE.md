@@ -94,6 +94,11 @@ order: card answer → skill arguments → вопрос text after a bare `/ask`
 `true`, so `ChatModule` is last). Unknown slash commands are Claude Code's own and go to the CLI.
 Buttons: `cfg:` — the menu, anything else — approvals.
 
+`ChatWorker` has two lanes: tasks one at a time, вопросы one at a time, a task and a вопрос **in
+parallel** (two `claude` processes at most). `IsBusy`/`QueueLength` are about tasks only; `/stop`
+stops both lanes. A вопрос is answered as a reply to the user's message (`OutgoingMessage.ReplyTo`)
+and stays out of `RunMonitor`'s current run. Details — `docs/en/architecture.md`, "Two lanes".
+
 Pictures go through `AttachmentInbox` into `<data directory>\inbox\<chat>\<project>\`; the run gets
 the chat folder in `--add-dir`. A command wins over a picture: `/stop` works with one attached, the
 picture is dropped and the user is told so. Details — `docs/en/architecture.md`.
@@ -107,6 +112,12 @@ becomes the answer. The diagram, the token file and the timeouts — `docs/en/ar
 undocumented parts of the contract (`updatedInput`, «Всегда», the truncated tail) —
 `docs/en/cli-contract.md`.
 
+A card finds its chat by the **run id**, not by a "current chat": each run gets its own
+`--mcp-config` file with the `X-AgentsTracker-Run` header, the tools pass it on in
+`ApprovalRequest.RunId`/`FileSendRequest.RunId`, and `ApprovalBroker.Run(runId)` resolves the
+`RunScope` registered by `ChatWorker`. An unknown id is a refusal. Subagents send the same header
+(same process). Do not bring back a single `ActiveChat` — a task and a вопрос run at once.
+
 - `--bare` is not allowed: it does not read `~/.claude` and breaks the subscription OAuth login.
 - `--allowedTools` holds only `mcp__tg__send_file`: its policy belongs to the gateway. Do not add
   other tools there — that bypasses the cards past the machine's config.
@@ -117,7 +128,9 @@ undocumented parts of the contract (`updatedInput`, «Всегда», the trunca
 - A вопрос (`AgentRunKind.Question`) runs with `--no-session-persistence`, `--tools WebSearch,WebFetch`
   and `--strict-mcp-config` in an empty `%TEMP%\AgentsTracker-question` — never in the project or the
   data directory, and its `SessionId` never reaches `SessionStore`. Its model is `Gateway:Question`,
-  not the chat selection. `/context` and `/compact` are the backend's `ContextReport`/`Compact` kinds,
+  not the chat selection. Its permissions are the same as a task's cards-wise: `--permission-prompt-tool`,
+  the `tg` server and `send_file` (checked against the chat's project) stay — running in parallel
+  changed none of them. `/context` and `/compact` are the backend's `ContextReport`/`Compact` kinds,
   not prompts the host types. Details — `docs/en/cli-contract.md`, "Context" and "A question".
 - CLI arguments go through `ProcessStartInfo.ArgumentList`, do not concatenate a string.
 

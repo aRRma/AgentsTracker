@@ -19,7 +19,7 @@ src/AgentsTracker.Agents.Claude/         Claude Code за этими контр�
   ClaudeBackend         процесс claude -p: аргументы, stream-json, «сессия не найдена», лимит
   ClaudeCapabilities    какие модели, усилия и режимы принимает CLI; Selectable — что предлагается из чата
   ClaudeLimits, ClaudeSkillCatalog, ClaudePluginRegistry, ClaudeCliLocator, ClaudeStreamEvent
-  Mcp/                  McpConfigFile — mcp-gateway-<pid>.json с токеном; ClaudePermissionTool — полезная нагрузка CLI ↔ IOperatorConsole;
+  Mcp/                  McpConfigFile — mcp-gateway-<pid>-<запуск>.json на запуск: токен и id запуска; ClaudePermissionTool — полезная нагрузка CLI ↔ IOperatorConsole;
                         ClaudeSendFileTool — файл от агента в чат, политика остаётся на стороне хоста
 src/AgentsTracker.Channels.Abstractions/ контракты канала, без конкретного мессенджера:
   IChatChannel          адреса и пределы канала, ConnectAsync/ListenAsync, Send/Edit/Delete/Acknowledge,
@@ -28,7 +28,8 @@ src/AgentsTracker.Channels.Abstractions/ контракты канала, без
   ChannelLimits         границы канала: длина сообщения и подписи, размер документа, фото и скачивания
   RateLimitRetry        одна повторная попытка после 429 с коротким retry_after — общая для всех отправок
   ChatId, UserId        адрес как значение; Key — «канал:значение» для state.json, аудита и лога
-  Messages.cs           OutgoingMessage, Keyboard, MessageRef, IncomingMessage (текст + вложения),
+  Messages.cs           OutgoingMessage (ReplyTo — ответить на сообщение), Keyboard, MessageRef,
+                        IncomingMessage (текст + вложения + свой MessageRef),
                         IncomingAttachment/AttachmentKind, ButtonPress, ChatCommand
   IChatInbound          куда канал отдаёт входящее; реализует хост (ChatDispatcher)
   ChatHtml              канонический формат текста (b, i, s, code, pre, a, blockquote) и экранирование
@@ -49,7 +50,7 @@ src/AgentsTracker.Gateway/
                         Cli/ (install, uninstall), Autostart/ (задача Планировщика через schtasks)
   Features/             вертикальные срезы, у каждого свой *Module:
     Approvals/          карточки подтверждения, ApprovalBroker, /rules
-    Chat/               ChatWorker (очередь, запуск, сессии), RunStatusMessage, /new /stop,
+    Chat/               ChatWorker (две полосы — задачи и вопросы, запуск, сессии), RunStatusMessage, /new /stop,
                         AttachmentInbox — картинки из чата: скачивание, проверки, папка inbox, чистка
     Settings/           SettingsMenuCoordinator + Screens/*, /menu /status /sessions /agent /skills /project /usage;
                         PendingConfirmations — второе нажатие для необратимых кнопок («Контекст»)
@@ -90,8 +91,34 @@ src/AgentsTracker.Gateway/
 
 Кнопки: цепочка `IChatButtonHandler` (`Dispatch/`), каждый узнаёт своё по префиксу в `CanHandle`:
 `cfg:` — меню (`SettingsCallbackHandler`), всё остальное (шестнадцатеричный id запроса) —
-`ApprovalCallbackHandler` → `ApprovalBroker`. `ActiveChat` у брокера ставит `ChatWorker` перед
-запуском, иначе карточки ушли бы в чужой чат.
+`ApprovalCallbackHandler` → `ApprovalBroker`.
+
+### Две полосы: задача и вопрос параллельно
+
+У `ChatWorker` две полосы, у каждой своя очередь и свой `CancellationTokenSource`: задачи (и
+`/context`, `/compact`) по одной, вопросы (`AgentRunKind.Question`) по одному, а задача с вопросом
+идут **параллельно** — иначе вопрос, который задают как раз чтобы не ждать, ждал бы долгую задачу.
+Больше двух процессов агента разом не бывает.
+
+- `IsBusy`/`QueueLength` — только про задачи: меню, смена сессии и «Сжать» вопрос не ждут.
+  `IsAnswering`/`QuestionQueueLength` — для строки статуса.
+- `/stop` (`ChatWorker.Stop`) прерывает обе полосы и зовёт `ApprovalBroker.CancelAll`.
+- Отказ по лимиту или `RateLimited` снимает только свою полосу: у вопроса своя модель, а другая
+  полоса всё равно проверит лимит перед своим запуском.
+- Вопрос не трогает `RunMonitor` (текущий запуск и очередь там — задачи): он виден в истории
+  запусков и в журнале. Число вызовов инструментов берётся из `RunStatusMessage.ToolCalls`.
+- `state.json` держит задачу в `ActiveRun`, а вопрос в `ActiveQuestion`; после перезапуска
+  `StartupNotice` сообщает про оба («Вопрос прерван… задайте его снова»).
+- Вопрос получает ответ **ответом (reply)** на сообщение пользователя: «Вопрос принят», статус,
+  каждая часть ответа (между ними может вклиниться часть ответа задачи), его карточки и файлы.
+  `IncomingMessage.Message` → `QueuedPrompt.ReplyTo` → `OutgoingMessage.ReplyTo` и параметр
+  `replyTo` у файловых методов канала. Telegram шлёт его с `AllowSendingWithoutReply`: иначе
+  удалённый вопрос превратил бы ответ в 400.
+
+Каждый запуск регистрируется в брокере прямо перед стартом процесса:
+`ApprovalBroker.BeginRun(RunScope)` — id запуска, чат, сообщение для ответа, проект для путей на
+карточке и для `send_file`, сессия для журнала. Карточки и файлы запуска идут в его чат; снятие
+регистрации в `finally` запуска отменяет только **его** карточки. «Текущего чата» у брокера больше нет.
 
 ## Петля шлюз → CLI → шлюз
 
@@ -104,12 +131,23 @@ src/AgentsTracker.Gateway/
                                                                               Authorization: Bearer <токен>
 ```
 
-На старте `McpConfigFile` выдаёт токен, пишет `mcp-gateway-<pid>.json` и удаляет его при
-завершении. В имени PID: общий файл перезаписывал и удалял второй экземпляр, и рабочий шлюз потом
-умирал на «mcp__tg__approve not found»; файлы мёртвых PID подметаются на старте. `/mcp`
+На старте `McpConfigFile` выдаёт токен. У каждого запуска свой файл конфигурации
+(`McpConfigFile.ForRun`): `mcp-gateway-<pid>-<запуск>.json` с токеном и заголовком
+`X-AgentsTracker-Run: <RunId>`; `ClaudeBackend` удаляет его, когда процесс завершился, а шлюз
+убирает остатки при остановке. Файл, а не JSON строкой в `--mcp-config`: аргументы попадают в лог,
+а с ними попал бы и токен. В имени PID: общий файл перезаписывал и удалял второй экземпляр, и
+рабочий шлюз потом умирал на «mcp__tg__approve not found»; файлы мёртвых PID подметаются на старте
+(PID читается до первого дефиса, так что старый `mcp-gateway-<pid>.json` тоже узнаётся). `/mcp`
 монтируется с фильтром `McpConfigFile.Authorizes`; CLI получает `--mcp-config` и
 `--permission-prompt-tool mcp__tg__approve`. Имена сервера и инструмента — константы
 `McpConfigFile`, `[McpServerTool]` берёт ту же константу.
+
+По id запуска вызов находит свой запуск: инструменты читают заголовок через `IHttpContextAccessor`
+(SDK выполняет инструмент в `ExecutionContext` его HTTP-запроса) и кладут его в
+`ApprovalRequest.RunId`/`FileSendRequest.RunId`/`AskAsync(runId, …)`. `OperatorConsole` ищет запуск
+через `ApprovalBroker.Run(runId)`; незнакомый или пустой id (запуск уже кончился) — отказ, а не
+карточка в чужом чате. Сабагенты живут в том же процессе CLI и шлют тот же заголовок — проверено
+двумя параллельными запусками, один из них через сабагента.
 
 `ApprovalTimeoutMinutes` доезжает до `AgentHost`, а оттуда в `timeout` MCP-сервера в конфиге: без
 него CLI обрывал вызов после 5 минут молчания, и карточка потом была мертва
@@ -117,13 +155,14 @@ src/AgentsTracker.Gateway/
 
 Второй инструмент того же сервера — `mcp__tg__send_file` (`ClaudeSendFileTool`): агент сам зовёт
 его, чтобы отправить файл в чат. Путь → `IOperatorConsole.SendFileAsync` → `OperatorConsole`
-проверяет папку (только текущий проект, папка данных запрещена, на пути нет symlink/junction), тип
+проверяет папку (только проект запуска — у вопроса проект чата, как и когда он шёл общей очередью;
+папка данных запрещена, на пути нет symlink/junction), тип
 (список расширений в коде) и размер (`ChannelLimits`), пишет в аудит `file.send` и отправляет через
 `ApprovalBroker.SendFileAsync` → `IChatChannel.SendDocumentAsync`/`SendPhotoAsync`. Отказ — всегда
 ответ `{"sent":false,"reason":…}`, никогда не исключение.
 
 `McpConfigFile` и `SessionStore` — единственные с классическим конструктором: побочный эффект
-(файл) должен случиться ровно один раз до старта.
+(уборка старых файлов конфигурации, чтение файла состояния) должен случиться ровно один раз до старта.
 
 README — руководство пользователя: меняя защиту эндпоинтов или папку данных, проверьте его раздел
 «Безопасность».
@@ -168,7 +207,7 @@ README — руководство пользователя: меняя защи�
 ## Состояние, секреты, слои конфигурации
 
 `%LOCALAPPDATA%\AgentsTracker\` (`AppPaths.DataDirectory`, ACL — владелец и SYSTEM): `state.json`
-(атомарно), `mcp-gateway-<pid>.json`, `appsettings.Local.json` с секретами,
+(атомарно), `mcp-gateway-<pid>-<запуск>.json`, пока идёт запуск, `appsettings.Local.json` с секретами,
 `audit\audit-ГГГГ-ММ.jsonl`.
 
 Конфиг собирается слоями: `appsettings.json` → `appsettings.Local.json` рядом с exe (IDE) → он же в
@@ -245,11 +284,11 @@ README — руководство пользователя: меняя защи�
 
 ## Мелочи, о которых стоит знать до правки хоста
 
-- `Channel.CreateUnbounded` в `ChatWorker` без `SingleReader`: с ним `Reader.Count` бросает
+- `Channel.CreateUnbounded` в полосах `ChatWorker` без `SingleReader`: с ним `Reader.Count` бросает
   исключение и `/status` разваливается.
-- `_runCts` в `ChatWorker` ставится прямо перед `agent.RunAsync`, после отправки статусного
-  сообщения: чистит его только `finally` запуска, а падение выше оставило бы `IsBusy` до
-  перезапуска.
+- `Lane.RunCts` и регистрация в брокере ставятся в `ChatWorker` прямо перед `agent.RunAsync`, после
+  отправки статусного сообщения: чистит их только `finally` запуска, а падение выше оставило бы
+  `IsBusy` (или зарегистрированный запуск) до перезапуска.
 - `HttpClient` только через `IHttpClientFactory`. `ClaudeLimits.HttpClientName` — один таймаут, без
   повторов. Клиент Telegram (`TelegramClientFactory`) — синглтон, DNS обновляет
   `PooledConnectionLifetime`; повтор только на `HttpRequestException`: методы Bot API — POST без

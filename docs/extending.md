@@ -60,6 +60,11 @@
 `NoAgentSkills`) и свой канал подтверждений через `IOperatorConsole`. Строка в списке `agents` в
 `Program.cs`, ссылка в `Gateway.csproj` и строка `COPY` в `Dockerfile`.
 
+Каждое обращение к `IOperatorConsole` несёт обратно `AgentRunRequest.RunId`: задача и вопрос идут
+параллельно, и чат хост находит по этому id — обращение без него получает отказ. Донести id от
+запроса до своего канала подтверждений бэкенд должен сам (Claude кладёт его в заголовок своего у
+каждого запуска MCP-конфига).
+
 `grep -rn Claude src/AgentsTracker.Gateway --include=*.cs` должен находить только `Program.cs` и
 комментарии. Настройки агента лежат в `Gateway:<Id>`, хост их не читает.
 
@@ -71,6 +76,11 @@
 `ChatId`/`UserId` (`Key` — «канал:значение»), свои `ChannelLimits`, сбои транспорта — только
 `ChannelRequestException`. Строка в списке `channels` в `Program.cs` (выбор по
 `Gateway:Channel:Type`), ссылка в `Gateway.csproj` и строка `COPY` в `Dockerfile`.
+
+Ответы на сообщения: заполнять `IncomingMessage.Message` и выполнять `OutgoingMessage.ReplyTo` и
+`replyTo` файловых методов — ответ на вопрос приходит ответом (reply), иначе он теряется среди
+сообщений задачи. Ответ на сообщение, которого уже нет, всё равно должен дойти (в Telegram —
+`AllowSendingWithoutReply`). Мессенджер без ответов на сообщения может `ReplyTo` не выполнять.
 
 `grep -rn Telegram src/AgentsTracker.Gateway --include=*.cs` должен находить только `Program.cs` и
 комментарии.
