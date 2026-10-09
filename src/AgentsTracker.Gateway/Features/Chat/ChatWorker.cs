@@ -7,9 +7,10 @@ using AgentsTracker.Gateway.Infrastructure.Monitoring;
 namespace AgentsTracker.Gateway.Features.Chat;
 
 /// <summary>
-/// Обрабатывает сообщения по одному: пока идёт запуск, новые копятся в очереди, а не
-/// поднимают второй процесс. Сессии тоже здесь: бэкенд лишь сообщает, что сессия началась
-/// или потерялась, а помнит их шлюз.
+/// Обрабатывает сообщения двумя полосами: задачи по одному и вопросы по одному, а задача
+/// с вопросом — параллельно. Иначе вопрос «вне сессии» ждал бы конца долгой задачи, ради
+/// которой его и задают отдельно. Больше двух процессов агента разом не бывает. Сессии тоже
+/// здесь: бэкенд лишь сообщает, что сессия началась или потерялась, а помнит их шлюз.
 /// </summary>
 public sealed class ChatWorker(
     IChatChannel channel,
@@ -23,11 +24,38 @@ public sealed class ChatWorker(
     RunMonitor monitor,
     ILogger<ChatWorker> logger) : BackgroundService
 {
-    // Без SingleReader: с ним канал становится SingleConsumerUnboundedChannel, у которого
-    // Reader.Count бросает NotSupportedException, и /status падает на QueueLength.
-    private readonly Channel<QueuedPrompt> _queue = Channel.CreateUnbounded<QueuedPrompt>();
+    private readonly Lane _tasks = new();
+    private readonly Lane _questions = new();
 
-    private CancellationTokenSource? _runCts;
+    /// <summary>Очередь и идущий запуск одной полосы.</summary>
+    private sealed class Lane
+    {
+        // Без SingleReader: с ним канал становится SingleConsumerUnboundedChannel, у которого
+        // Reader.Count бросает NotSupportedException, и /status падает на QueueLength.
+        public Channel<QueuedPrompt> Queue { get; } = Channel.CreateUnbounded<QueuedPrompt>();
+
+        public CancellationTokenSource? RunCts { get; set; }
+
+        /// <summary>Прерывает идущий запуск полосы; false — прерывать нечего.</summary>
+        public bool Cancel()
+        {
+            var cts = RunCts;
+            if (cts is null) return false;
+
+            try { cts.Cancel(); }
+            catch (ObjectDisposedException) { return false; }
+
+            return true;
+        }
+
+        /// <summary>Снимает очередь полосы; возвращает, сколько снято.</summary>
+        public int Drain()
+        {
+            var dropped = 0;
+            while (Queue.Reader.TryRead(out _)) dropped++;
+            return dropped;
+        }
+    }
 
     /// <param name="Text">
     /// Задача; у команд контекста — только подпись для журнала и монитора, промпт подставит бэкенд.
@@ -35,29 +63,38 @@ public sealed class ChatWorker(
     /// <param name="ReplyTo">Сообщение, ответом на которое уходят статус и ответ; null — просто в чат.</param>
     private sealed record QueuedPrompt(ChatId Chat, UserId User, string Text, AgentRunKind Kind, MessageRef? ReplyTo);
 
-    public bool IsBusy => _runCts is not null;
+    /// <summary>Идёт задача. Вопрос сюда не входит: меню, смена сессии и «Сжать» его не ждут.</summary>
+    public bool IsBusy => _tasks.RunCts is not null;
 
-    public int QueueLength => _queue.Reader.Count;
+    /// <summary>Задачи в очереди, без вопросов.</summary>
+    public int QueueLength => _tasks.Queue.Reader.Count;
+
+    /// <summary>Идёт вопрос.</summary>
+    public bool IsAnswering => _questions.RunCts is not null;
+
+    /// <summary>Вопросы, ждущие своей очереди за идущим вопросом.</summary>
+    public int QuestionQueueLength => _questions.Queue.Reader.Count;
 
     public void Enqueue(
         ChatId chat, UserId user, string text, AgentRunKind kind = AgentRunKind.Task, MessageRef? replyTo = null)
     {
-        _queue.Writer.TryWrite(new QueuedPrompt(chat, user, text, kind, replyTo));
-        monitor.Enqueued(Text.Preview(text));
+        var question = kind == AgentRunKind.Question;
+        (question ? _questions : _tasks).Queue.Writer.TryWrite(new QueuedPrompt(chat, user, text, kind, replyTo));
+
+        // Монитор показывает очередь задач: вопрос в ней стоял бы, хотя ждёт не их.
+        if (!question) monitor.Enqueued(Text.Preview(text));
     }
 
-    /// <summary>Прерывает текущий запуск и снимает висящие запросы подтверждений.</summary>
+    /// <summary>
+    /// Прерывает идущие запуски — и задачу, и вопрос — и снимает висящие запросы
+    /// подтверждений. false — прерывать было нечего.
+    /// </summary>
     public bool Stop()
     {
         broker.CancelAll();
 
-        var cts = _runCts;
-        if (cts is null) return false;
-
-        try { cts.Cancel(); }
-        catch (ObjectDisposedException) { return false; }
-
-        return true;
+        // Не «||»: короткое замыкание оставило бы вопрос идти после остановленной задачи.
+        return _tasks.Cancel() | _questions.Cancel();
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -65,11 +102,16 @@ public sealed class ChatWorker(
         // Картинки прошлых суток переживают перезапуск: чистим их до первого сообщения.
         inbox.SweepStale();
 
-        await foreach (var prompt in _queue.Reader.ReadAllAsync(stoppingToken))
+        await Task.WhenAll(ConsumeAsync(_tasks, stoppingToken), ConsumeAsync(_questions, stoppingToken));
+    }
+
+    private async Task ConsumeAsync(Lane lane, CancellationToken stoppingToken)
+    {
+        await foreach (var prompt in lane.Queue.Reader.ReadAllAsync(stoppingToken))
         {
             try
             {
-                await ProcessAsync(prompt, stoppingToken);
+                await ProcessAsync(lane, prompt, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -83,12 +125,16 @@ public sealed class ChatWorker(
         }
     }
 
-    private async Task ProcessAsync(QueuedPrompt prompt, CancellationToken stoppingToken)
+    /// <summary>
+    /// Один запуск. Вопрос не трогает монитор (текущий запуск и очередь там — задачи):
+    /// иначе его шаги смешались бы с шагами идущей задачи.
+    /// </summary>
+    private async Task ProcessAsync(Lane lane, QueuedPrompt prompt, CancellationToken stoppingToken)
     {
-        monitor.Dequeued();
-
         var kind = prompt.Kind;
         var question = kind == AgentRunKind.Question;
+
+        if (!question) monitor.Dequeued();
 
         // Вопрос идёт своей моделью из конфига, а не выбранной в меню: ради него и заведён
         // отдельный запуск — не тратить лимит тяжёлой модели на простой ответ.
@@ -105,7 +151,7 @@ public sealed class ChatWorker(
         {
             Audit(prompt, AuditKinds.LimitRefused, "лимит тарифа");
             await SendPlainAsync(prompt.Chat, exhausted, prompt.ReplyTo, stoppingToken);
-            await DropQueueAsync(prompt.Chat, stoppingToken);
+            await DropQueueAsync(lane, prompt.Chat, stoppingToken);
             return;
         }
 
@@ -132,7 +178,7 @@ public sealed class ChatWorker(
         var startedUtc = DateTimeOffset.UtcNow;
         var project = question ? QuestionDirectory() : store.ProjectPath;
         var preview = Text.Preview(prompt.Text);
-        monitor.RunStarted(new RunStart(project, session, preview, modelLabel, store.EffectivePermissionMode, effort));
+        if (!question) monitor.RunStarted(new RunStart(project, session, preview, modelLabel, store.EffectivePermissionMode, effort));
 
         // В state.json, а не только в памяти: если шлюз убьют посреди запуска, следующему
         // экземпляру нужно знать, кому и про что сказать «прервано».
@@ -145,6 +191,7 @@ public sealed class ChatWorker(
             SessionId = session,
             Model = modelLabel,
             Prompt = preview,
+            Question = question,
         });
 
         // Сессию и папку фиксируем до запуска: переключение из меню посреди работы иначе
@@ -178,19 +225,19 @@ public sealed class ChatWorker(
             question ? store.ProjectPath : project,
             question ? null : runSessionId));
 
-        _runCts = runCts;
+        lane.RunCts = runCts;
 
         AgentRunResult result;
-        CurrentRun? finished;
         try
         {
-            result = await agent.RunAsync(request, new RunObserver(store, monitor, request, status), runCts.Token);
+            result = await agent.RunAsync(
+                request, new RunObserver(store, question ? null : monitor, request, status), runCts.Token);
         }
         finally
         {
-            _runCts = null;
-            store.EndRun();
-            finished = monitor.RunFinished();
+            lane.RunCts = null;
+            store.EndRun(question);
+            if (!question) monitor.RunFinished();
             await status.DisposeAsync();
             // Процесс завершён — отвечать на его карточки уже некому. Карточки другого запуска
             // остаются: тот ещё идёт.
@@ -233,7 +280,7 @@ public sealed class ChatWorker(
             Outcome = outcome,
             DurationMs = (long)result.Duration.TotalMilliseconds,
             Turns = result.Usage?.Turns ?? 0,
-            ToolCalls = finished?.ToolCalls ?? 0,
+            ToolCalls = status.ToolCalls,
             InputTokens = result.Usage?.InputTokens ?? 0,
             OutputTokens = result.Usage?.OutputTokens ?? 0,
         });
@@ -243,7 +290,7 @@ public sealed class ChatWorker(
 
         // Упёрлись в лимит — следующие задачи упрутся в него же; очередь чистим,
         // чтобы не жечь её на отказах.
-        if (result.RateLimited) await DropQueueAsync(prompt.Chat, stoppingToken);
+        if (result.RateLimited) await DropQueueAsync(lane, prompt.Chat, stoppingToken);
     }
 
     /// <summary>
@@ -313,10 +360,11 @@ public sealed class ChatWorker(
 
     /// <summary>
     /// Мост между бэкендом и шлюзом на время запуска: новая сессия — в state.json,
-    /// шаги — в статусное сообщение и монитор.
+    /// шаги — в статусное сообщение и монитор. <paramref name="monitor"/> null у вопроса:
+    /// текущий запуск монитора — задача, и шаги вопроса вписались бы в неё.
     /// </summary>
     private sealed class RunObserver(
-        SessionStore store, RunMonitor monitor, AgentRunRequest request, RunStatusMessage status) : IAgentRunObserver
+        SessionStore store, RunMonitor? monitor, AgentRunRequest request, RunStatusMessage status) : IAgentRunObserver
     {
         public void SessionStarted(string sessionId) =>
             store.RegisterSession(request.ProjectPath, request.Prompt, sessionId);
@@ -324,7 +372,7 @@ public sealed class ChatWorker(
         public void Activity(RunActivity activity)
         {
             status.Report(activity);
-            monitor.Step(activity);
+            monitor?.Step(activity);
         }
     }
 
@@ -363,22 +411,26 @@ public sealed class ChatWorker(
     }
 
     /// <summary>
-    /// Снимает очередь целиком: до сброса окна запускать нечего. Задачи не переносим,
-    /// а возвращаем пользователю — за время ожидания они могли устареть.
+    /// Снимает очередь полосы целиком: до сброса окна запускать нечего. Задачи не переносим,
+    /// а возвращаем пользователю — за время ожидания они могли устареть. Только свою полосу:
+    /// у вопроса своя модель и, бывает, свой лимит, а общий лимит другая полоса проверит
+    /// перед своим запуском сама.
     /// </summary>
-    private async Task DropQueueAsync(ChatId chat, CancellationToken ct)
+    private async Task DropQueueAsync(Lane lane, ChatId chat, CancellationToken ct)
     {
-        var dropped = 0;
-        while (_queue.Reader.TryRead(out _)) dropped++;
-        monitor.QueueCleared();
+        var dropped = lane.Drain();
+        var question = lane == _questions;
+        if (!question) monitor.QueueCleared();
 
         if (dropped == 0) return;
 
-        logger.LogWarning("Очередь снята после лимита тарифа: задач {Count}", dropped);
+        logger.LogWarning("Очередь снята после лимита тарифа: {Count} шт., вопросы: {Question}", dropped, question);
+
+        var what = question ? dropped.Count("вопрос", "вопроса", "вопросов") : $"{dropped} задач(и)";
 
         await SendPlainAsync(
             chat,
-            $"Очередь снята: {dropped} задач(и) не запущены — пришлите их снова после сброса лимита.",
+            $"Очередь снята, не запущено: {what} — пришлите их снова после сброса лимита.",
             null,
             ct);
     }

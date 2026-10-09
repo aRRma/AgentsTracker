@@ -34,6 +34,12 @@ public sealed class RootScreen(
             ? $"\n🎚 Effort: <b>{E(store.EffectiveEffort ?? "по умолчанию")}</b>"
             : "";
 
+        // Вопрос идёт параллельно задаче: без своей строки «простаивает» при идущем вопросе
+        // выглядело бы так, будто ответа не будет.
+        var questions = worker.IsAnswering
+            ? $"\n💬 Идёт вопрос{(worker.QuestionQueueLength > 0 ? $", ещё в очереди: {worker.QuestionQueueLength}" : "")}"
+            : "";
+
         var html = $"""
             ⚙️ <b>Настройки</b> — {E(agent.DisplayName)}
 
@@ -44,7 +50,7 @@ public sealed class RootScreen(
             🧵 Сессия: {(session is null ? "<i>новая</i>" : $"<b>{E(session.Title)}</b>")}
             📦 Контекст: {(session is { ContextTokens: > 0, ContextWindow: > 0 } ? ContextScreen.Fill(session, bar: false) : "—")}
             🚦 Осталось: <b>{E(plan.Length > 0 ? plan : "—")}</b>
-            ⚙️ {(worker.IsBusy ? "выполняется" : "простаивает")}, в очереди: {worker.QueueLength}
+            ⚙️ {(worker.IsBusy ? "выполняется" : "простаивает")}, в очереди: {worker.QueueLength}{questions}
             """;
 
         var keyboard = new Keyboard(

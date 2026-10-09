@@ -16,8 +16,8 @@ public sealed class StartupNotice(
 {
     public async Task SendAsync(CancellationToken ct)
     {
-        var interrupted = store.TakeInterruptedRun();
-        if (interrupted is not null) RecordInterrupted(interrupted);
+        var interrupted = store.TakeInterruptedRuns();
+        foreach (var run in interrupted) RecordInterrupted(run);
 
         var probe = agent.Probe();
         var version = probe.Version is { Length: > 0 } v ? $" {v}" : "";
@@ -27,26 +27,38 @@ public sealed class StartupNotice(
         var started = $"🔌 Шлюз запущен {AppVersion.Current} — {agent.DisplayName}{version}, "
                       + $"проект {Path.GetFileName(store.ProjectPath)}.";
 
-        var interruptedChat = interrupted is null ? null : channel.ParseChat(interrupted.ChatKey);
-        var told = false;
+        // Задача и вопрос могли оборваться оба, и в одном чате: оба «прервано» — одним сообщением.
+        var notices = interrupted
+            .Select(run => (Chat: channel.ParseChat(run.ChatKey), Text: Interrupted(run)))
+            .Where(notice => notice.Chat is not null)
+            .GroupBy(notice => notice.Chat!, notice => notice.Text)
+            .ToDictionary(group => group.Key, group => group.ToList());
 
         foreach (var chat in channel.AllowedUsers.Select(channel.DirectChat).OfType<ChatId>())
         {
-            var mine = interruptedChat is not null && chat == interruptedChat;
-            told |= mine;
-
-            await SendQuietlyAsync(chat, mine ? started + "\n\n" + Interrupted(interrupted!) : started, ct);
+            var mine = notices.Remove(chat, out var texts) ? texts : [];
+            await SendQuietlyAsync(chat, string.Join("\n\n", [started, .. mine]), ct);
         }
 
         // Прерванный запуск шёл в чате, которого в списке разрешённых уже нет или который
         // канал не смог вычислить. Сказать всё равно надо: ответа там так и не было.
-        if (!told && interruptedChat is not null)
-            await SendQuietlyAsync(interruptedChat, started + "\n\n" + Interrupted(interrupted!), ct);
+        foreach (var (chat, texts) in notices)
+            await SendQuietlyAsync(chat, string.Join("\n\n", [started, .. texts]), ct);
     }
 
     private static string Interrupted(ActiveRun run)
     {
         var elapsed = (DateTimeOffset.UtcNow - run.StartedUtc).Elapsed;
+
+        if (run.Question)
+        {
+            return $"""
+                ⚠️ Вопрос прерван перезапуском шлюза — ответа на него не будет.
+                «{run.Prompt}»
+                Задан {run.StartedUtc.Ago}, прошло {elapsed}. Задайте его снова через /ask.
+                """;
+        }
+
         var session = run.SessionId is { Length: > 0 } id ? id.ShortId : "новая";
 
         return $"""

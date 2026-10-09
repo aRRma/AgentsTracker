@@ -69,6 +69,12 @@ public sealed class GatewayState
     /// надо сказать в чат, иначе ответа не будет, а чат промолчит.
     /// </summary>
     public ActiveRun? ActiveRun { get; set; }
+
+    /// <summary>
+    /// Вопрос, идущий прямо сейчас, — отдельно от <see cref="ActiveRun"/>: вопрос идёт
+    /// параллельно задаче, и общая запись затёрла бы её «прервано».
+    /// </summary>
+    public ActiveRun? ActiveQuestion { get; set; }
 }
 
 /// <summary>Идущий запуск: кому отвечать и что запускали, чтобы после перезапуска сказать «прервано».</summary>
@@ -85,6 +91,12 @@ public sealed class ActiveRun
 
     /// <summary>Превью промпта через Text.Preview — как в RunRecord.</summary>
     public string Prompt { get; set; } = "";
+
+    /// <summary>
+    /// Это вопрос, а не задача: сессии у него нет, и «напишите „продолжай“» после обрыва
+    /// было бы враньём — его задают заново.
+    /// </summary>
+    public bool Question { get; set; }
 }
 
 /// <summary>

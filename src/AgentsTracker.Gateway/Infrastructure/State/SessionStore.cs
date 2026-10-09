@@ -263,24 +263,37 @@ public sealed class SessionStore
         });
     }
 
-    /// <summary>Пока запись на месте, шлюз обязан либо ответить, либо признать запуск прерванным.</summary>
-    public void BeginRun(ActiveRun run) => Mutate(s => s.ActiveRun = run);
+    /// <summary>
+    /// Пока запись на месте, шлюз обязан либо ответить, либо признать запуск прерванным.
+    /// Вопрос пишется в своё место: он идёт параллельно задаче.
+    /// </summary>
+    public void BeginRun(ActiveRun run) => Mutate(s =>
+    {
+        if (run.Question) s.ActiveQuestion = run;
+        else s.ActiveRun = run;
+    });
 
-    public void EndRun() => Mutate(s => s.ActiveRun = null);
+    public void EndRun(bool question) => Mutate(s =>
+    {
+        if (question) s.ActiveQuestion = null;
+        else s.ActiveRun = null;
+    });
 
     /// <summary>
-    /// Запуск, оставшийся от убитого экземпляра, если такой был; запись снимается.
+    /// Запуски, оставшиеся от убитого экземпляра: задача и вопрос, если были; записи снимаются.
     /// Зовётся один раз на старте.
     /// </summary>
-    public ActiveRun? TakeInterruptedRun()
+    public IReadOnlyList<ActiveRun> TakeInterruptedRuns()
     {
-        ActiveRun? run = null;
+        List<ActiveRun> runs = [];
         Mutate(s =>
         {
-            run = s.ActiveRun;
+            if (s.ActiveRun is { } run) runs.Add(run);
+            if (s.ActiveQuestion is { } question) runs.Add(question);
             s.ActiveRun = null;
+            s.ActiveQuestion = null;
         });
-        return run;
+        return runs;
     }
 
     /// <summary>Последние запуски, свежие сверху: копия, чтобы читать без замка.</summary>

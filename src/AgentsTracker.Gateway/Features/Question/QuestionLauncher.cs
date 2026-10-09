@@ -5,9 +5,9 @@ using AgentsTracker.Gateway.Infrastructure.Audit;
 namespace AgentsTracker.Gateway.Features.Question;
 
 /// <summary>
-/// Вопрос вне сессии: ставит его в очередь и помнит, кто нажал «Вопрос» и ещё не написал
-/// текст. Очередь та же, что у задач: второй процесс агента рядом с идущим запуском делил бы
-/// с ним лимит тарифа и карточки подтверждения.
+/// Вопрос вне сессии: ставит его в очередь вопросов и помнит, кто нажал «Вопрос» и ещё не
+/// написал текст. Очередь своя, не задач: вопрос задают, чтобы не ждать идущую задачу.
+/// Карточки двух запусков шлюз различает по id запуска, лимит проверяется перед каждым.
 /// </summary>
 public sealed class QuestionLauncher(ChatWorker worker, SessionStore store, IAgentBackend agent, IAuditLog audit)
 {
@@ -31,9 +31,12 @@ public sealed class QuestionLauncher(ChatWorker worker, SessionStore store, IAge
         // Превью, а не весь вопрос: в него могли вставить токен или содержимое файла.
         audit.Write(AuditEvent.Now(AuditKinds.Message, $"question: {Text.Preview(text)}", user, chat, store.ProjectPath));
 
-        var wasBusy = worker.IsBusy;
+        // Ждать он будет только другой вопрос: задача ему не помеха.
+        var waits = worker.IsAnswering || worker.QuestionQueueLength > 0;
         worker.Enqueue(chat, user, text, AgentRunKind.Question, message);
-        return wasBusy ? "📥 Вопрос в очереди — отвечу, как освобожусь." : "💬 Вопрос принят — отвечу вне сессии.";
+        return waits
+            ? "📥 Вопрос в очереди за предыдущим вопросом — отвечу, как освобожусь."
+            : "💬 Вопрос принят — отвечу вне сессии, не дожидаясь задачи.";
     }
 
     public void Expect(UserId user) => _pending[user] = DateTimeOffset.UtcNow;
