@@ -69,6 +69,13 @@ cancellation: `/stop` must throw `OperationCanceledException`, not look like «�
 Gateway timeouts: `ApprovalTimeoutMinutes` (15) — the card, `RunTimeoutMinutes` (60) — the
 whole `claude -p`; both 1..1440.
 
+A timeout and `/stop` kill the process together with its sub-agents (they run inside it). What
+survives: the edits on disk, the session (the next message resumes it), and every sub-agent step,
+which the CLI writes as it goes to `~/.claude/projects/<project>/<session>/subagents/agent-*.jsonl`.
+What is lost: the sub-agent's final report to the main agent. So the cancelled-task message tells the
+user to write «продолжи», and if sub-agents worked in the run (a nested tool call was seen), to ask
+the agent to read their steps — `ClaudeBackend.Resumable`.
+
 On top of this the CLI has its own limit on an MCP tool call: by default it aborts the call if
 the server is silent for 5 minutes (`CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT`, error «sent no
 response or progress for 300s»). At that point the card is still hanging in the chat, but the

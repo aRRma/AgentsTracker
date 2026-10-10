@@ -124,7 +124,7 @@ public sealed class ClaudeBackend(
             {
                 Ok = false,
                 Cancelled = true,
-                Text = persistent ? $"{reason} Незавершённый ход продолжится со следующим сообщением." : reason,
+                Text = persistent ? reason + Resumable(request.Kind, output.Subagents) : reason,
                 SessionId = persistent ? sessionId : null,
                 Duration = started.Elapsed,
             };
@@ -147,6 +147,22 @@ public sealed class ClaudeBackend(
                 : null,
             Compaction = output.Compaction,
         };
+    }
+
+    /// <summary>
+    /// Что осталось после обрыва. Без этого обрыв читается как «всё пропало», и задачу начинают
+    /// заново — а правки уже на диске, и новая попытка наткнётся на них. Итог сабагента теряется
+    /// вместе с процессом, но его шаги CLI пишет на диск по ходу (<c>subagents\agent-*.jsonl</c>
+    /// рядом с файлом сессии) — агент может их прочитать.
+    /// </summary>
+    private static string Resumable(AgentRunKind kind, bool subagents)
+    {
+        if (kind != AgentRunKind.Task) return " Незавершённый ход продолжится со следующим сообщением.";
+
+        var text = " Правки в файлах сохранились. Напишите «продолжи» — агент доделает задачу в той же сессии.";
+        return subagents
+            ? text + "\nСабагенты не успели отчитаться, но их шаги сохранены: напишите «прочитай шаги сабагентов и продолжи»."
+            : text;
     }
 
     /// <summary>
@@ -187,9 +203,10 @@ public sealed class ClaudeBackend(
     /// <param name="LastRequestUtc">Начало последнего запроса основной ветки; null — после него было сжатие или ходов не было.</param>
     /// <param name="CacheTtl">Срок последней записи основной ветки в кэш; null — записей не было.</param>
     /// <param name="FirstCacheRead">Чтение из кэша первого запроса основной ветки; null — ходов не было.</param>
+    /// <param name="Subagents">В запуске работали сабагенты: при обрыве их итог теряется.</param>
     private sealed record StreamOutput(
         string? ResultLine, string Noise, long? ContextTokens, ContextCompaction? Compaction, string? MainModel,
-        DateTimeOffset? LastRequestUtc, TimeSpan? CacheTtl, long? FirstCacheRead);
+        DateTimeOffset? LastRequestUtc, TimeSpan? CacheTtl, long? FirstCacheRead, bool Subagents);
 
     /// <summary>
     /// Читает stdout построчно: вызовы инструментов отдаёт наблюдателю, остальные события
@@ -213,6 +230,7 @@ public sealed class ClaudeBackend(
         DateTimeOffset? lastRequest = null;
         TimeSpan? cacheTtl = null;
         long? firstCacheRead = null;
+        var subagents = false;
 
         while (await stdout.ReadLineAsync(CancellationToken.None) is { } line)
         {
@@ -262,6 +280,8 @@ public sealed class ClaudeBackend(
 
             foreach (var activity in parsed.ToolCalls)
             {
+                subagents |= activity.Nested;
+
                 // Наблюдатель — чужой код (статус в чате). Его исключение уронило бы чтение
                 // stdout, пайп заполнился бы и процесс завис до таймаута.
                 try { observer.Activity(activity); }
@@ -271,7 +291,7 @@ public sealed class ClaudeBackend(
 
         if (resultLine is null && lastEvent is not null) noise.AppendLine(lastEvent);
 
-        return new StreamOutput(resultLine, noise.ToString().TrimEnd(), context, compaction, mainModel, lastRequest, cacheTtl, firstCacheRead);
+        return new StreamOutput(resultLine, noise.ToString().TrimEnd(), context, compaction, mainModel, lastRequest, cacheTtl, firstCacheRead, subagents);
     }
 
     private IEnumerable<string> BuildArguments(
