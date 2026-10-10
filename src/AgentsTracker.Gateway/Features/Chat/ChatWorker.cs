@@ -272,9 +272,11 @@ public sealed class ChatWorker(
         if (result.SessionId is { Length: > 0 } reported && result.Usage is { ContextTokens: > 0 } context)
             store.RecordContext(reported, context.ContextTokens, context.ContextWindow);
 
-        // Разбивка контекста модель не звала и кэш не трогала: прошлый срок остаётся верным.
+        // Разбивка контекста и локальная команда вроде /cost модель не звали и кэш не трогали:
+        // прошлый срок остаётся верным. Стирает его только сжатие — оно заменяет начало сессии.
         DateTimeOffset? cacheUntil = null;
-        if (kind != AgentRunKind.ContextReport && result.SessionId is { Length: > 0 } cached && result.Usage is { } ran)
+        if (kind != AgentRunKind.ContextReport && result.SessionId is { Length: > 0 } cached
+            && result.Usage is { } ran && (ran.LastRequestUtc is not null || result.Compaction is not null))
             cacheUntil = store.RecordCache(cached, ran.LastRequestUtc, ran.CacheTtl);
 
         // Вопрос сессию не создавал и не продолжал — трогать активную нечего.
