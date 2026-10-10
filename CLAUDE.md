@@ -150,8 +150,11 @@ Sessions are keyed by the **normalized project path**. A chat selection equal to
 stored as `null` (`SessionStore`), or a config edit would be silently overridden. State, secrets and
 the `audit\` journal live in `%LOCALAPPDATA%\AgentsTracker\`; config layers end with the `Gateway__*`
 environment variables. The audit is what a human answers for (who, where, what — no secrets, no full
-texts, addresses as `channel:value`, kinds in `AuditKinds`); the log is for debugging. Details —
-`docs/en/architecture.md`, the user-facing config — `docs/en/deployment.md`.
+texts, addresses as `channel:value`, kinds in `AuditKinds`); the log is for debugging. Secrets are
+masked in one place, `Text.Redact` (through `AuditEvent.NowByKeys` and `Text.Preview`): an approval
+writes the whole command, tokens included, so anything new that reaches the journal, the log or the
+monitor goes through it. Details — `docs/en/architecture.md`, the user-facing config —
+`docs/en/deployment.md`.
 
 Context fill lives on `SessionRecord` (`ContextTokens`/`ContextWindow`), taken from the last
 main-branch turn of a run — `usage` of the `result` line is a sum over turns, not the context.
@@ -186,8 +189,9 @@ time — `DisplayFormat`; the renderer's quirks — `docs/en/architecture.md`.
 - The gateway **does not attach** to a VS Code session — it is a parallel session on the same folder:
   shared `CLAUDE.md`, settings, hooks and MCP, but its own history.
 - Barriers: the channel's `AllowedUsers` plus private chats only; MCP is always `127.0.0.1` plus a
-  token in the header; the monitor has no token — that is why it is read-only, and `MonitorBind: any`
-  (needed in a container) is published only on the host's `127.0.0.1`.
+  token in the header; the monitor has no token — that is why it is read-only and answers only to a
+  local `Host` (DNS rebinding), and `MonitorBind: any` (needed in a container) is published only on
+  the host's `127.0.0.1`.
 - `HttpClient` only through `IHttpClientFactory`; the retry rules differ per client and are spelled
   out in `docs/en/architecture.md` — a blind retry on a Bot API POST is a duplicate in the chat.
 - **Fractional numbers are `decimal`**, never `double`/`float` — including what is read out of JSON
