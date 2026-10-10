@@ -2,7 +2,7 @@
 (() => {
   const state = new URLSearchParams(location.search).get('state') || 'run';
   const now = Date.now(), iso = ms => new Date(now - ms).toISOString();
-  const start = { promptPreview: 'Проверь монитор по гайдам modern-web-guidance и предложи исправления', sessionId: '0f3c9a1e-1111-2222-3333-444455556666', model: 'claude-opus-5', permissionMode: 'default', effort: 'high' };
+  const start = { promptPreview: 'Проверь монитор по гайдам modern-web-guidance и предложи исправления', sessionId: '0f3c9a1e-1111-2222-3333-444455556666', model: 'claude-opus-5', permissionMode: 'default', effort: 'high', branch: 'branch-info' };
   const steps = Array.from({ length: 12 }, (_, i) => ({ at: iso(60000 - i * 4000), description: `Read src/Features/Monitor/index.html строка ${i * 40}`, nested: i % 4 === 3 }));
   const run = state === 'idle' ? null : { start, startedUtc: iso(65000), toolCalls: 14, steps, droppedSteps: 2 };
   const approvals = state === 'wait' ? [{ tool: 'Bash', brief: 'git push origin main', sinceUtc: iso(20000) }] : [];

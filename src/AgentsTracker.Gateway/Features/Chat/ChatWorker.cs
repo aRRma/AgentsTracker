@@ -2,6 +2,7 @@ using System.Threading.Channels;
 using AgentsTracker.Gateway.Features.Approvals;
 using AgentsTracker.Gateway.Infrastructure.Audit;
 using AgentsTracker.Gateway.Infrastructure.Chat;
+using AgentsTracker.Gateway.Infrastructure.Git;
 using AgentsTracker.Gateway.Infrastructure.Monitoring;
 
 namespace AgentsTracker.Gateway.Features.Chat;
@@ -20,6 +21,7 @@ public sealed class ChatWorker(
     AttachmentInbox inbox,
     ProjectTrustGate trust,
     SessionStore store,
+    GitRepository git,
     IOptions<GatewayOptions> options,
     IAuditLog audit,
     RunMonitor monitor,
@@ -206,8 +208,13 @@ public sealed class ChatWorker(
 
         var thread = question ? "вопрос" : session is { Length: > 0 } ? session.ShortId : "новая сессия";
 
+        // Ветка папки, где идёт запуск, а не «ветка агента»: уйти в другой worktree он может
+        // по абсолютным путям, и шлюз этого не увидит. Вопрос идёт во временной папке — ветки нет.
+        var startBranch = question ? null : git.Head(project);
+
         Audit(prompt, AuditKinds.RunStart,
-            $"{(question ? "вопрос, " : "")}{modelLabel ?? "модель по умолчанию"}, {store.EffectivePermissionMode}, effort {effort ?? "—"}",
+            $"{(question ? "вопрос, " : "")}{modelLabel ?? "модель по умолчанию"}, {store.EffectivePermissionMode}, effort {effort ?? "—"}"
+            + (startBranch is null ? "" : $", ветка {startBranch.Label}"),
             session);
 
         var preview = Text.Preview(prompt.Text);
@@ -234,7 +241,8 @@ public sealed class ChatWorker(
         // иначе итог перетёр бы /new или смену сессии по ходу работы.
         var runSessionId = session is { Length: > 0 } ? session : request.NewSessionId;
 
-        var status = await RunStatusMessage.StartAsync(channel, prompt.Chat, thread, prompt.ReplyTo, logger, stoppingToken);
+        var status = await RunStatusMessage.StartAsync(
+            channel, prompt.Chat, thread, question ? null : () => git.Head(project)?.Label, prompt.ReplyTo, logger, stoppingToken);
         var startedUtc = DateTimeOffset.UtcNow;
 
         // Всё, что после статусного сообщения, — внутри try: сбой записи state.json или монитора
@@ -244,7 +252,8 @@ public sealed class ChatWorker(
         AgentRunResult result;
         try
         {
-            if (!question) monitor.RunStarted(new RunStart(project, session, preview, modelLabel, store.EffectivePermissionMode, effort));
+            if (!question)
+                monitor.RunStarted(new RunStart(project, session, preview, modelLabel, store.EffectivePermissionMode, effort, startBranch?.Label));
 
             // В state.json, а не только в памяти: если шлюз убьют посреди запуска, следующему
             // экземпляру нужно знать, кому и про что сказать «прервано».
@@ -342,7 +351,10 @@ public sealed class ChatWorker(
         });
 
         await SendRenderedAsync(
-            prompt.Chat, Answer(kind, result) + note + Footer(kind, result, modelLabel, effort, cacheUntil), prompt.ReplyTo, stoppingToken);
+            prompt.Chat,
+            Answer(kind, result) + note + Footer(kind, result, modelLabel, effort, cacheUntil,
+                question ? null : BranchCaption(startBranch, git.Head(project))),
+            prompt.ReplyTo, stoppingToken);
 
         // Упёрлись в лимит — следующие задачи упрутся в него же; очередь чистим,
         // чтобы не жечь её на отказах.
@@ -459,13 +471,17 @@ public sealed class ChatWorker(
     /// агент его не сообщает. «Кэш до» — время, а не обратный отсчёт: сообщение не обновляется,
     /// и «ещё 50 мин» через полчаса читалось бы как неправда.
     /// </summary>
-    private static string Footer(AgentRunKind kind, AgentRunResult result, string? model, string? effort, DateTimeOffset? cacheUntil)
+    private static string Footer(
+        AgentRunKind kind, AgentRunResult result, string? model, string? effort, DateTimeOffset? cacheUntil, string? branch)
     {
         var parts = new List<string>();
 
         if (kind == AgentRunKind.Question) parts.Add("💬 вопрос");
         else if (result.SessionId is { Length: > 0 } session) parts.Add($"🧵 `{session}`");
         else return "";
+
+        // В код-спане: «_» и «*» в имени ветки иначе ушли бы в курсив, а «`» закрыл бы спан.
+        if (branch is not null) parts.Add($"🌿 `{branch.Replace('`', '\'')}`");
 
         // Разбивка контекста модель не звала — подписывать её моделью значило бы соврать.
         // Effort в скобках вплотную к модели: «opus-5-5(H)» — это одна характеристика ответа,
@@ -485,6 +501,18 @@ public sealed class ChatWorker(
 
         return "\n\n" + string.Join(" · ", parts);
     }
+
+    /// <summary>
+    /// Ветка для подписи под ответом. Агент мог переключить её сам — тогда видно, откуда и куда:
+    /// по одной конечной ветке не понять, что запуск начинался в другой.
+    /// </summary>
+    private static string? BranchCaption(GitHead? start, GitHead? end) => (start?.Label, end?.Label) switch
+    {
+        ({ } from, { } to) when from != to => $"{from} → {to}",
+        (_, { } to) => to,
+        ({ } from, null) => from,
+        _ => null,
+    };
 
     /// <summary>
     /// Снимает очередь полосы целиком: после лимита до сброса окна запускать нечего, после

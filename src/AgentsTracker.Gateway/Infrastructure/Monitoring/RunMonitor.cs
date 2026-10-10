@@ -7,8 +7,10 @@ namespace AgentsTracker.Gateway.Infrastructure.Monitoring;
 public sealed record StepRecord(DateTimeOffset At, string Description, bool Nested);
 
 /// <summary>С чем стартовал запуск: то, что известно до ответа CLI.</summary>
+/// <param name="Branch">Ветка папки проекта на старте, уже подписью; null — не git.</param>
 public sealed record RunStart(
-    string ProjectPath, string? SessionId, string PromptPreview, string? Model, string PermissionMode, string? Effort);
+    string ProjectPath, string? SessionId, string PromptPreview, string? Model, string PermissionMode, string? Effort,
+    string? Branch);
 
 /// <summary>Идущий запуск. <paramref name="DroppedSteps"/> — сколько ранних шагов не поместилось в список.</summary>
 public sealed record CurrentRun(

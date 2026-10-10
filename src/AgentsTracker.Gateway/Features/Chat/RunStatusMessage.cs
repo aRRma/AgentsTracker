@@ -18,6 +18,7 @@ internal sealed class RunStatusMessage : IAsyncDisposable
     private readonly IChatChannel _channel;
     private readonly ChatId _chat;
     private readonly string _thread;
+    private readonly Func<string?>? _branch;
     private readonly ILogger _logger;
     private readonly Stopwatch _elapsed = Stopwatch.StartNew();
     private readonly CancellationTokenSource _cts = new();
@@ -29,11 +30,12 @@ internal sealed class RunStatusMessage : IAsyncDisposable
     private string _lastRendered = "";
     private Task _loop = Task.CompletedTask;
 
-    private RunStatusMessage(IChatChannel channel, ChatId chat, string thread, ILogger logger)
+    private RunStatusMessage(IChatChannel channel, ChatId chat, string thread, Func<string?>? branch, ILogger logger)
     {
         _channel = channel;
         _chat = chat;
         _thread = thread;
+        _branch = branch;
         _logger = logger;
     }
 
@@ -49,11 +51,16 @@ internal sealed class RunStatusMessage : IAsyncDisposable
         get { lock (_lock) return _toolCalls; }
     }
 
+    /// <param name="branch">
+    /// Ветка проекта, перечитывается каждый такт: агент сам может переключить её посреди запуска.
+    /// null — без ветки (вопрос идёт вне проекта).
+    /// </param>
     /// <param name="replyTo">Сообщение, ответом на которое идёт статус; null — просто в чат.</param>
     public static async Task<RunStatusMessage> StartAsync(
-        IChatChannel channel, ChatId chat, string thread, MessageRef? replyTo, ILogger logger, CancellationToken ct)
+        IChatChannel channel, ChatId chat, string thread, Func<string?>? branch, MessageRef? replyTo, ILogger logger,
+        CancellationToken ct)
     {
-        var status = new RunStatusMessage(channel, chat, thread, logger);
+        var status = new RunStatusMessage(channel, chat, thread, branch, logger);
         var text = status.Render();
         status._message = await channel.SendAsync(chat, new OutgoingMessage(text, Rich: false, ReplyTo: replyTo), ct);
         status._lastRendered = text;
@@ -77,7 +84,8 @@ internal sealed class RunStatusMessage : IAsyncDisposable
         var elapsed = _elapsed.Elapsed;
         // Деление тиков, а не TotalSeconds: целочисленное — точное, номер кадра не сползёт.
         var frame = Clock[(int)(elapsed.Ticks / Tick.Ticks) % Clock.Length];
-        var lines = new List<string> { $"{frame} Работаю… {elapsed.Elapsed} · 🧵 {_thread}" };
+        var branch = _branch?.Invoke() is { } name ? $" · 🌿 {name}" : "";
+        var lines = new List<string> { $"{frame} Работаю… {elapsed.Elapsed} · 🧵 {_thread}{branch}" };
 
         lock (_lock)
         {

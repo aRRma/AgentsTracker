@@ -381,6 +381,7 @@
       $('run').innerHTML = `
         <div class="prompt">${esc(st.promptPreview)}</div>
         <div class="runmeta"><span>сессия <b class="mono">${esc(st.sessionId ? shortId(st.sessionId) : 'новая')}</b></span>
+          ${st.branch ? `<span>ветка <b class="mono">${esc(st.branch)}</b></span>` : ''}
           <span>${esc(st.model || 'модель по умолчанию')}</span><span>${esc(st.permissionMode)}</span>${st.effort ? `<span>${esc(st.effort)}</span>` : ''}
           <span>вызовов инструментов <b>${r.toolCalls}</b></span></div>
         <div class="tape" tabindex="0">${r.droppedSteps ? `<p><span class="hint">… ещё ${r.droppedSteps} ранних шагов</span></p>` : ''}${steps || '<p><span class="hint">ждём первый шаг…</span></p>'}</div>`;
