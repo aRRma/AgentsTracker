@@ -102,14 +102,8 @@ public sealed class ClaudeBackend(
 
         // Оба потока читаем одновременно — иначе заполненный пайп заблокирует процесс.
         var stream = new StreamCollector(observer, logger, DateTimeOffset.UtcNow);
-        var errors = new StringBuilder();
-        var errorsClosed = false;
         var stdoutTask = PumpAsync(process.StandardOutput, stream.Feed);
-        var stderrTask = PumpAsync(process.StandardError, line =>
-        {
-            lock (errors)
-                if (!errorsClosed) errors.AppendLine(line);
-        });
+        var stderrTask = PumpAsync(process.StandardError, stream.FeedError);
 
         var cancelled = false;
         try
@@ -123,25 +117,17 @@ public sealed class ClaudeBackend(
             try { await process.WaitForExitAsync(CancellationToken.None); } catch { /* уже мёртв */ }
         }
 
+        // Канал вывода может держать фоновый процесс, которому агент его передал: конец потока
+        // придёт только с ним, а ни /stop, ни таймаут запуска сюда уже не дотягиваются. Канал не
+        // закрываем: фоновый процесс (чей-то dev-сервер) упал бы на первой же записи. Чтение
+        // идёт дальше вхолостую и кончится вместе с ним.
         if (!await DrainedAsync(stdoutTask, stderrTask))
-        {
-            // Канал вывода держит фоновый процесс, которому агент его передал: конец потока
-            // придёт только с ним, а ни /stop, ни таймаут запуска сюда уже не дотягиваются.
-            // Канал не закрываем: фоновый процесс (чей-то dev-сервер) упал бы на первой же
-            // записи. Чтение идёт дальше вхолостую и кончится вместе с ним.
             logger.LogWarning(
                 "claude завершился, а его вывод не закрылся за {Grace} с — канал держит фоновый процесс агента; беру прочитанное",
                 DrainGrace.TotalSeconds);
-            stream.Close();
-        }
 
         var output = stream.Result();
-        string stderr;
-        lock (errors)
-        {
-            errorsClosed = true;
-            stderr = errors.ToString();
-        }
+        var stderr = output.Errors;
 
         if (cancelled)
         {
@@ -238,9 +224,10 @@ public sealed class ClaudeBackend(
     /// <param name="CacheTtl">Срок последней записи основной ветки в кэш; null — записей не было.</param>
     /// <param name="FirstCacheRead">Чтение из кэша первого запроса основной ветки; null — ходов не было.</param>
     /// <param name="Subagents">В запуске работали сабагенты: при обрыве их итог теряется.</param>
+    /// <param name="Errors">stderr: туда CLI часто кладёт текст ошибки, оставляя итог пустым.</param>
     private sealed record StreamOutput(
         string? ResultLine, string Noise, long? ContextTokens, ContextCompaction? Compaction, string? MainModel,
-        DateTimeOffset? LastRequestUtc, TimeSpan? CacheTtl, long? FirstCacheRead, bool Subagents);
+        DateTimeOffset? LastRequestUtc, TimeSpan? CacheTtl, long? FirstCacheRead, bool Subagents, string Errors);
 
     /// <summary>
     /// Сколько ждать конца stdout и stderr после выхода процесса. Фоновый процесс агента
@@ -279,16 +266,17 @@ public sealed class ClaudeBackend(
     }
 
     /// <summary>
-    /// Разбирает stdout построчно: вызовы инструментов отдаёт наблюдателю, остальные события
-    /// не копит — в долгом запуске их мегабайты, а ответу они не нужны. Накопитель, а не
-    /// результат чтения: если канал не закрылся после выхода процесса, итог собирается из
-    /// уже прочитанного, а чтение бросается.
+    /// Разбирает stdout построчно и копит stderr: вызовы инструментов отдаёт наблюдателю,
+    /// остальные события не копит — в долгом запуске их мегабайты, а ответу они не нужны.
+    /// Накопитель, а не результат чтения: если канал не закрылся после выхода процесса, итог
+    /// собирается из уже прочитанного, а чтение бросается.
     /// </summary>
     /// <param name="started">Старт процесса — до него первый запрос к модели начаться не мог.</param>
     private sealed class StreamCollector(IAgentRunObserver observer, ILogger logger, DateTimeOffset started)
     {
         private readonly Lock _gate = new();
         private readonly StringBuilder _noise = new();
+        private readonly StringBuilder _errors = new();
         private string? _resultLine;
         private string? _lastEvent;
         private long? _context;
@@ -372,21 +360,28 @@ public sealed class ClaudeBackend(
             }
         }
 
-        /// <summary>Дальше строки не принимаются: итог берётся из того, что успело прийти.</summary>
-        public void Close()
+        /// <summary>Строка stderr. После итога не копится: фоновый процесс писал бы туда сутками.</summary>
+        public void FeedError(string line)
         {
-            lock (_gate) _closed = true;
+            lock (_gate)
+                if (!_closed) _errors.AppendLine(line);
         }
 
+        /// <summary>
+        /// Итог из того, что успело прийти; дальше строки не принимаются — их шлёт уже не
+        /// <c>claude</c>, а фоновый процесс, унаследовавший канал.
+        /// </summary>
         public StreamOutput Result()
         {
             lock (_gate)
             {
+                _closed = true;
+
                 var noise = new StringBuilder().Append(_noise);
                 if (_resultLine is null && _lastEvent is not null) noise.AppendLine(_lastEvent);
 
                 return new StreamOutput(_resultLine, noise.ToString().TrimEnd(), _context, _compaction, _mainModel,
-                    _lastRequest, _cacheTtl, _firstCacheRead, _subagents);
+                    _lastRequest, _cacheTtl, _firstCacheRead, _subagents, _errors.ToString());
             }
         }
     }

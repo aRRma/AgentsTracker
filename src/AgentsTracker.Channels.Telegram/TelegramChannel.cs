@@ -149,12 +149,13 @@ public sealed class TelegramChannel(
 
     /// <summary>
     /// Пауза перед следующим опросом после ошибки: 1, 2, 4… до минуты, а если канал назвал срок —
-    /// его. Серия сбрасывается, когда ошибок не было дольше минуты: опрос снова работает.
+    /// его. Серия сбрасывается, когда ошибок не было дольше двух минут — дольше самой длинной
+    /// паузы вместе с запросом: значит, опрос между ними работал.
     /// </summary>
     private sealed class PollingBackoff
     {
         private static readonly TimeSpan Ceiling = TimeSpan.FromMinutes(1);
-        private static readonly TimeSpan QuietReset = TimeSpan.FromMinutes(1);
+        private static readonly TimeSpan QuietReset = TimeSpan.FromMinutes(2);
 
         private DateTimeOffset _last;
 
@@ -163,7 +164,7 @@ public sealed class TelegramChannel(
         public TimeSpan Next(TimeSpan? requested)
         {
             var now = DateTimeOffset.UtcNow;
-            Streak = now - _last > QuietReset + Ceiling ? 1 : Streak + 1;
+            Streak = now - _last > QuietReset ? 1 : Streak + 1;
             _last = now;
 
             var exponential = TimeSpan.FromSeconds(1 << Math.Min(Streak - 1, 6));

@@ -107,10 +107,13 @@ internal static class ClaudeProjectSettings
                     continue;
                 }
 
+                // BOM (Блокнот, PowerShell 5) ломает разбор: хуки не попали бы в список карточки,
+                // а правила «всегда» — мимо отпечатка. Снимаем сразу, для обоих.
                 var content = File.ReadAllBytes(full);
+                if (content.AsSpan().StartsWith<byte>([0xEF, 0xBB, 0xBF])) content = content[3..];
+
                 hash.AppendData(relative == LocalSettings ? WithoutAllowRules(content) : content);
-                // BOM (Блокнот, PowerShell 5) ломает разбор: хуки не попали бы в список карточки.
-                if (settings) Describe(relative, content.AsSpan().StartsWith<byte>([0xEF, 0xBB, 0xBF]) ? content[3..] : content, dangerous, rules, other);
+                if (settings) Describe(relative, content, dangerous, rules, other);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
