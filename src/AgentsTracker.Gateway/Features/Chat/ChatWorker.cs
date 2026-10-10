@@ -266,9 +266,13 @@ public sealed class ChatWorker(
         if (result.Usage is { } usage && kind != AgentRunKind.ContextReport)
         {
             // Промах считаем только у продолжения задачи: сжатие переписывает сессию нарочно,
-            // а новой сессии читать нечего. Прошлый контекст берём до RecordContext ниже.
+            // а новой сессии читать нечего. Прошлый контекст берём до RecordContext ниже. Без срока
+            // кэша (сессия старше поля или сжата) запись заново ожидаема: после сжатия кэша под
+            // пересказ ещё нет, и первый запрос прочитает только общее начало, а не «половину».
             var previous = kind == AgentRunKind.Task && session is { } resumed
-                ? store.SessionsFor(project).FirstOrDefault(s => string.Equals(s.Id, resumed, StringComparison.Ordinal))?.ContextTokens ?? 0
+                && store.SessionsFor(project).FirstOrDefault(s => string.Equals(s.Id, resumed, StringComparison.Ordinal))
+                    is { CacheUntilUtc: not null } known
+                ? known.ContextTokens
                 : 0;
             store.RecordRun(project, prompt.Text, result.SessionId, usage, CacheGuard.Miss(previous, usage.FirstCacheRead));
             store.RecordModelVersion(model, usage.PrimaryModel);

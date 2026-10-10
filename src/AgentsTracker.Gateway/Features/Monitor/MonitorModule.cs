@@ -165,7 +165,7 @@ public sealed class MonitorModule : IFeatureModule
     {
         var ru = CultureInfo.GetCultureInfo("ru-RU");
         var sb = new StringBuilder();
-        sb.AppendLine("Дата;Запусков;Ходов;Входные токены;Выходные токены;Кэш чтение;Кэш запись;Минут");
+        sb.AppendLine("Дата;Запусков;Ходов;Входные токены;Выходные токены;Кэш чтение;Кэш запись;Минут;Промахов кэша");
 
         foreach (var (day, t) in usage.ByDay.OrderBy(p => p.Key, StringComparer.Ordinal))
         {
@@ -176,7 +176,9 @@ public sealed class MonitorModule : IFeatureModule
               .Append(t.OutputTokens).Append(';')
               .Append(t.CacheReadTokens).Append(';')
               .Append(t.CacheWriteTokens).Append(';')
-              .Append((t.DurationMs / 60000.0).ToString("0.#", ru))
+              .Append((t.DurationMs / 60000.0).ToString("0.#", ru)).Append(';')
+              // Последним столбцом: таблицы, собранные по старой выгрузке, не съезжают.
+              .Append(t.CacheMisses)
               .AppendLine();
         }
 

@@ -59,8 +59,10 @@ public static class CacheGuard
     {
         if (!Worth(session)) return false;
 
+        // Модель «по умолчанию» (fromModel — null) отвечала на прошлом запуске, и кэш записан на ней:
+        // без этой ветки уход с неё молча сбрасывал бы кэш, а предупреждение молчало.
         var model = session!.CacheModel is { } cached
-                    && string.Equals(fromModel, cached, StringComparison.Ordinal)
+                    && (fromModel is null || string.Equals(fromModel, cached, StringComparison.Ordinal))
                     && toModel is not null && !string.Equals(toModel, cached, StringComparison.Ordinal);
 
         var mode = string.Equals(fromMode, session.CacheMode, StringComparison.Ordinal)
