@@ -308,7 +308,8 @@ session.
   that uses it. The traps that cost the most: a working folder is «проект» and never «репозиторий»;
   the user writes a «задача», the agent performs a «запуск» (never «прогон»); the card is a
   «карточка подтверждения», while «режим» means only `--permission-mode`; a one-off `/ask` is a
-«вопрос», never a «режим»; «сессия» is the branch, «контекст» is how much of the window it takes; «лимит» is the
+«вопрос», never a «режим»; «сессия» is the conversation, «контекст» is how much of the window it takes, and
+  «ветка» is only the git branch; «лимит» is the
   subscription and «предел» is anything technical; «журнал» is `/audit` and «лог» is `ILogger`; a
   live check of a scratch instance is a «смоук-тест» and the instance itself is a «пробный
   экземпляр» — those two are the section titles in `operations.md`, and a third name for either
