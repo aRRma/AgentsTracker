@@ -82,15 +82,17 @@ the fingerprint, and the card comes again. A вопрос is not checked: it run
 recreated before every вопрос — otherwise a task's agent could plant a `.claude/settings.json` there
 and its hook would run on every `/ask`; a folder that fails to clear refuses the вопрос.
 
-What keeps the fingerprint honest and stable: settings files are always parsed (up to 16 MB —
-a `settings.json` padded with spaces must not hide its hook; above that it is an item «проверьте
-вручную»); hooks, command keys and MCP servers come first on the card and `allow` rules fold into
-one line, so a hook never drops into «и ещё N»; `permissions.allow` of `settings.local.json` is
-left out of the fingerprint — the CLI writes there on «Всегда», which the user approved on a card —
-while a hook in that file still counts; `__pycache__`, `node_modules`, `.pyc` and `.log` inside the
-folders are skipped; a linked folder is not followed but becomes an item; each folder has its own
-cap of 2000 files.
-After a CLI update, recheck the trust skip with the same temp-folder run.
+What keeps the fingerprint honest: settings files are always parsed (up to 16 MB — a
+`settings.json` padded with spaces must not hide its hook; above that it is an item «проверьте
+вручную»); hooks, command keys, MCP servers and `env` variables (with masked values:
+`NODE_OPTIONS=--require` runs code) come first on the card and `allow` rules fold into one line, so
+a hook never drops into «и ещё N»; every file counts, `allow` rules of `settings.local.json` and
+`node_modules`/`.pyc`/`.log` included — whatever is skipped by name could be changed after trust —
+at the price of one more card after «Всегда» with the agent's rule; a linked folder is not followed
+but becomes an item; each folder has its own cap of 2000 files. After «Доверять» the project is
+inspected again: if the files changed while the card waited, a new card comes with the new list.
+«Отклонить» and silence drop the task queue, like a refused limit — otherwise every queued task
+would wait for its own card. After a CLI update, recheck the trust skip with the same temp-folder run.
 
 ### Waiting for a response
 

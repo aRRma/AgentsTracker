@@ -9,7 +9,7 @@ public sealed record AgentProbe(string Executable, string? Version);
 /// <see cref="Items"/> и помнит его по <see cref="Fingerprint"/>.
 /// </summary>
 /// <param name="Fingerprint">Меняется с любым из этих файлов: изменённые настройки — новый вопрос.</param>
-/// <param name="Items">Что в них есть, строками для человека; без значений секретов.</param>
+/// <param name="Items">Что в них есть, строками для человека; секреты под маской.</param>
 public sealed record ProjectSettings(string Fingerprint, IReadOnlyList<string> Items);
 
 /// <summary>

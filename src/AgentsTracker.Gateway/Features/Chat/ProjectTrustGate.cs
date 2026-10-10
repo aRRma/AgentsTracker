@@ -21,52 +21,70 @@ public sealed class ProjectTrustGate(
     /// <summary>Сколько пунктов показать: длинный список не влез бы в карточку и не читался бы.</summary>
     private const int ItemsShown = 12;
 
-    /// <summary>
-    /// true — запускать можно: настроек нет или им уже доверились. false — нет, и пользователь
-    /// уже знает почему.
-    /// </summary>
-    public async Task<bool> EnsureAsync(ChatId chat, MessageRef? replyTo, string project, CancellationToken ct)
+    /// <summary>Чем кончилась проверка доверия.</summary>
+    public enum Outcome
     {
-        if (agent.InspectProject(project) is not { } settings) return true;
-        if (store.IsProjectTrusted(project, settings.Fingerprint)) return true;
+        /// <summary>Запускать можно: настроек нет или им доверились.</summary>
+        Trusted,
 
+        /// <summary>«Отклонить» или молчание: задача не запущена, пользователю сказано почему.</summary>
+        Declined,
+
+        /// <summary>Карточку снял /stop — ответ на него пользователь уже получил.</summary>
+        Cancelled,
+    }
+
+    public async Task<Outcome> EnsureAsync(ChatId chat, MessageRef? replyTo, string project, CancellationToken ct)
+    {
         var name = Path.GetFileName(project.TrimEnd('\\', '/'));
-        var summary = $"{name}: пунктов {settings.Items.Count}, отпечаток {settings.Fingerprint[..8]}";
-        logger.LogInformation("Спрашиваю доверие к проекту {Project}: {Items}", project, Text.Redact(string.Join("; ", settings.Items)));
 
-        // Карточке нужен запуск: по нему брокер находит чат и снимает её по /stop.
-        var scope = new RunScope(Guid.NewGuid().ToString("N"), chat, replyTo, project, null);
-        using var registration = broker.BeginRun(scope);
-
-        try
+        while (agent.InspectProject(project) is { } settings && !store.IsProjectTrusted(project, settings.Fingerprint))
         {
-            var (key, user) = await broker.AskChoiceAsync(
-                scope, Card(name, settings), [new("trust", "🛡 Доверять"), new("deny", "❌ Отклонить")], ct);
+            var summary = $"{name}: пунктов {settings.Items.Count}, отпечаток {settings.Fingerprint[..8]}";
+            logger.LogInformation("Спрашиваю доверие к проекту {Project}: {Items}", project, string.Join("; ", settings.Items));
 
-            audit.Write(AuditEvent.Now(AuditKinds.Trust, summary, user, chat, project, outcome: key));
-            if (key == "trust")
+            // Карточке нужен запуск: по нему брокер находит чат и снимает её по /stop.
+            var scope = new RunScope(Guid.NewGuid().ToString("N"), chat, replyTo, project, null);
+            using var registration = broker.BeginRun(scope);
+
+            try
             {
-                store.TrustProject(project, settings.Fingerprint);
-                return true;
-            }
+                var (key, user) = await broker.AskChoiceAsync(
+                    scope, Card(name, settings), [new("trust", "🛡 Доверять"), new("deny", "❌ Отклонить")], ct);
 
-            await SayAsync(chat, replyTo,
-                $"Задача не запущена: проекту {name} нет доверия. Уберите из него настройки агента или пришлите задачу снова и нажмите «Доверять».",
-                ct);
-            return false;
+                audit.Write(AuditEvent.Now(AuditKinds.Trust, summary, user, chat, project, outcome: key));
+                if (key != "trust")
+                {
+                    await SayAsync(chat, replyTo,
+                        $"Задача не запущена: проекту {name} нет доверия. Уберите из него настройки агента или пришлите задачу снова и нажмите «Доверять».",
+                        ct);
+                    return Outcome.Declined;
+                }
+
+                // Доверие — тому, что человек видел: файлы могли смениться, пока карточка ждала
+                // (git pull, правка), и тогда — новая карточка с новым списком.
+                if (agent.InspectProject(project)?.Fingerprint == settings.Fingerprint)
+                {
+                    store.TrustProject(project, settings.Fingerprint);
+                    return Outcome.Trusted;
+                }
+
+                logger.LogWarning("Настройки агента в проекте {Project} изменились, пока карточка ждала — спрашиваю снова", project);
+            }
+            catch (TimeoutException)
+            {
+                audit.Write(AuditEvent.Now(AuditKinds.Trust, summary, null, chat, project, outcome: "timeout"));
+                await SayAsync(chat, replyTo, $"Задача не запущена: на вопрос о доверии к проекту {name} не ответили.", ct);
+                return Outcome.Declined;
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                audit.Write(AuditEvent.Now(AuditKinds.Trust, summary, null, chat, project, outcome: "cancel"));
+                return Outcome.Cancelled;
+            }
         }
-        catch (TimeoutException)
-        {
-            audit.Write(AuditEvent.Now(AuditKinds.Trust, summary, null, chat, project, outcome: "timeout"));
-            await SayAsync(chat, replyTo, $"Задача не запущена: на вопрос о доверии к проекту {name} не ответили. Пришлите её снова.", ct);
-            return false;
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            // /stop снял карточку — ответ на него пользователь уже получил.
-            audit.Write(AuditEvent.Now(AuditKinds.Trust, summary, null, chat, project, outcome: "cancel"));
-            return false;
-        }
+
+        return Outcome.Trusted;
     }
 
     private string Card(string name, ProjectSettings settings)

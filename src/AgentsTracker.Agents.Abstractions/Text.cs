@@ -76,7 +76,7 @@ public static partial class Text
 
     /// <summary>Ключ командной строки: <c>--token abc</c>, <c>--api-key "abc"</c>.</summary>
     [GeneratedRegex(
-        @"(?<head>(?<![\w-])--?[\w-]*(?:token|secret|passw(?:or)?d|api-?key)[\w-]*\s+)(?<quote>[""']?)(?:(?<=[""'])[^""']+|[^\s""')]+)",
+        @"(?<head>(?<![\w-])--?[\w-]*(?:token|secret|passw(?:or)?d|api-?key)[\w-]*\s+)(?<quote>[""']?)(?:(?<=[""'])(?:(?!\k<quote>).)+|[^\s""')]+)",
         RegexOptions.IgnoreCase)]
     private static partial Regex SecretFlag();
 
@@ -85,7 +85,7 @@ public static partial class Text
     /// <c>"password": "…"</c>, <c>--token=…</c>.
     /// </summary>
     [GeneratedRegex(
-        @"(?<head>[\w.$:-]*(?:token|secret|passw(?:or)?d|pwd|api[_-]?key|apikey|access[_-]?key|private[_-]?key|credential)s?[\w.-]*[""']?\s*[:=]\s*)(?<quote>[""']?)(?:(?<=[""'])[^""']+|[^\s""'&;,)]+)",
+        @"(?<head>[\w.$:-]*(?:token|secret|passw(?:or)?d|pwd|api[_-]?key|apikey|access[_-]?key|private[_-]?key|credential)s?[\w.-]*[""']?\s*[:=]\s*)(?<quote>[""']?)(?:(?<=[""'])(?:(?!\k<quote>).)+|[^\s""'&;,)]+)",
         RegexOptions.IgnoreCase)]
     private static partial Regex SecretAssignment();
 }

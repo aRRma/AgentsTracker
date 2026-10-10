@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 
 namespace AgentsTracker.Agents.Claude;
 
@@ -13,10 +12,13 @@ namespace AgentsTracker.Agents.Claude;
 /// </summary>
 internal static class ClaudeProjectSettings
 {
-    private const string LocalSettings = ".claude/settings.local.json";
-
-    /// <summary>Файлы, которые CLI читает из проекта и по которым выполняет команды.</summary>
-    private static readonly string[] Files = [".claude/settings.json", LocalSettings, ".mcp.json"];
+    /// <summary>
+    /// Файлы, которые CLI читает из проекта и по которым выполняет команды. В отпечаток идут
+    /// целиком, правила allow тоже: правило, дописанное после доверия (git pull, правка),
+    /// пропускало бы команды мимо карточек. Цена — после «Всегда» с правилом агента следующая
+    /// задача спросит доверие ещё раз.
+    /// </summary>
+    private static readonly string[] Files = [".claude/settings.json", ".claude/settings.local.json", ".mcp.json"];
 
     /// <summary>
     /// Папки, содержимое которых агент запускает или которыми расширяет свои права: скилл
@@ -29,13 +31,9 @@ internal static class ClaudeProjectSettings
     private static readonly string[] CommandKeys = ["apiKeyHelper", "awsAuthRefresh", "awsCredentialExport", "otelHeadersHelper"];
 
     /// <summary>
-    /// Что рождается само при работе скриптов, а не приходит с репозиторием: без исключения
-    /// каждый запуск Python-хука менял бы отпечаток, и доверие спрашивалось бы заново всякий раз.
+    /// Файлы в папках считаются все, без исключений по имени: <c>node_modules</c> или <c>.pyc</c>
+    /// хук исполняет так же, как сам скрипт, и пропуск по имени дал бы менять их после доверия.
     /// </summary>
-    private static readonly string[] ArtifactFolders = ["__pycache__", "node_modules"];
-
-    private static readonly string[] ArtifactExtensions = [".pyc", ".log"];
-
     private const int MaxFilesPerFolder = 2000;
 
     /// <summary>
@@ -107,13 +105,12 @@ internal static class ClaudeProjectSettings
                     continue;
                 }
 
-                // BOM (Блокнот, PowerShell 5) ломает разбор: хуки не попали бы в список карточки,
-                // а правила «всегда» — мимо отпечатка. Снимаем сразу, для обоих.
                 var content = File.ReadAllBytes(full);
-                if (content.AsSpan().StartsWith<byte>([0xEF, 0xBB, 0xBF])) content = content[3..];
+                hash.AppendData(content);
 
-                hash.AppendData(relative == LocalSettings ? WithoutAllowRules(content) : content);
-                if (settings) Describe(relative, content, dangerous, rules, other);
+                // BOM (Блокнот, PowerShell 5) ломает разбор: хуки не попали бы в список карточки.
+                if (settings) Describe(relative, content.AsSpan().StartsWith<byte>([0xEF, 0xBB, 0xBF]) ? content[3..] : content,
+                    dangerous, rules, other);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -140,32 +137,6 @@ internal static class ClaudeProjectSettings
 
     private static string Relative(string projectPath, string full) =>
         Path.GetRelativePath(projectPath, full).Replace('\\', '/');
-
-    /// <summary>
-    /// <c>settings.local.json</c> для отпечатка — без <c>permissions.allow</c>: туда CLI сам
-    /// дописывает правило по кнопке «Всегда», и после каждого нажатия доверие спрашивалось бы
-    /// снова. Правило «всегда» человек уже одобрил на карточке; хуки и всё остальное в файле
-    /// по-прежнему меняют отпечаток.
-    /// </summary>
-    private static byte[] WithoutAllowRules(byte[] content)
-    {
-        try
-        {
-            if (JsonNode.Parse(content, documentOptions: ParseOptions) is JsonObject root
-                && root["permissions"] is JsonObject permissions)
-            {
-                permissions.Remove("allow");
-                return Encoding.UTF8.GetBytes(root.ToJsonString());
-            }
-        }
-        catch (Exception ex) when (ex is JsonException or ArgumentException)
-        {
-            // Не разобран (или два ключа с одним именем — JsonNode такое не берёт): в отпечаток как
-            // есть. Исключение отсюда нарушило бы контракт InspectProject «не бросает».
-        }
-
-        return content;
-    }
 
     private static readonly JsonDocumentOptions ParseOptions = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
 
@@ -224,11 +195,13 @@ internal static class ClaudeProjectSettings
                 && permissions.TryGetProperty("allow", out var allow) && allow.ValueKind == JsonValueKind.Array)
                 rules.AddRange(allow.EnumerateArray().Where(r => r.ValueKind == JsonValueKind.String).Select(r => r.GetString()!));
 
-            // Значения переменных не показываем: там бывают ключи, а для решения хватает имён.
+            // Переменная окружения — тоже код: NODE_OPTIONS=--require подгружает скрипт,
+            // ANTHROPIC_BASE_URL уводит запросы с ключом. Со значением: без него не решить, а
+            // ключи в значениях закроет маска пунктов.
             if (root.TryGetProperty("env", out var env) && env.ValueKind == JsonValueKind.Object)
             {
-                var names = env.EnumerateObject().Select(p => p.Name).ToList();
-                if (names.Count > 0) other.Add($"переменные окружения: {string.Join(", ", names)}");
+                foreach (var variable in env.EnumerateObject())
+                    dangerous.Add($"переменная окружения {variable.Name}={variable.Value}");
             }
 
             if (root.TryGetProperty("enabledPlugins", out var plugins) && plugins.ValueKind == JsonValueKind.Object)
@@ -311,15 +284,12 @@ internal static class ClaudeProjectSettings
             {
                 foreach (var file in Directory.EnumerateFiles(directory))
                 {
-                    if (ArtifactExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase)) continue;
                     if (walked.Files.Count >= MaxFilesPerFolder) return walked with { Truncated = true };
                     walked.Files.Add(file);
                 }
 
                 foreach (var child in Directory.EnumerateDirectories(directory))
                 {
-                    if (ArtifactFolders.Contains(Path.GetFileName(child), StringComparer.OrdinalIgnoreCase)) continue;
-
                     if (new DirectoryInfo(child).Attributes.HasFlag(FileAttributes.ReparsePoint)) walked.LinkedFolders.Add(child);
                     else pending.Push(child);
                 }

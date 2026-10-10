@@ -99,10 +99,13 @@ public sealed class ChatWorker(
     /// </summary>
     public bool Stop()
     {
+        // Карточка доверия висит до запуска, когда прерывать ещё нечего: без неё в ответе
+        // /stop сказал бы «ничего не выполняется», сняв её.
+        var cards = broker.HasPending;
         broker.CancelAll();
 
         // Не «||»: короткое замыкание оставило бы вопрос идти после остановленной задачи.
-        return _tasks.Cancel() | _questions.Cancel();
+        return _tasks.Cancel() | _questions.Cancel() | cards;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -156,7 +159,14 @@ public sealed class ChatWorker(
         var project = question ? QuestionDirectory() : store.ProjectPath;
         while (!question)
         {
-            if (!await trust.EnsureAsync(prompt.Chat, prompt.ReplyTo, project, stoppingToken)) return;
+            switch (await trust.EnsureAsync(prompt.Chat, prompt.ReplyTo, project, stoppingToken))
+            {
+                case ProjectTrustGate.Outcome.Declined:
+                    await DropQueueAsync(lane, prompt.Chat, "после решения о доверии к проекту", stoppingToken);
+                    return;
+                case ProjectTrustGate.Outcome.Cancelled:
+                    return;
+            }
 
             var current = store.ProjectPath;
             if (ProjectCatalog.Same(current, project)) break;
@@ -178,7 +188,7 @@ public sealed class ChatWorker(
         {
             Audit(prompt, AuditKinds.LimitRefused, "лимит тарифа");
             await SendPlainAsync(prompt.Chat, exhausted, prompt.ReplyTo, stoppingToken);
-            await DropQueueAsync(lane, prompt.Chat, stoppingToken);
+            await DropQueueAsync(lane, prompt.Chat, AfterLimitReset, stoppingToken);
             return;
         }
 
@@ -336,7 +346,7 @@ public sealed class ChatWorker(
 
         // Упёрлись в лимит — следующие задачи упрутся в него же; очередь чистим,
         // чтобы не жечь её на отказах.
-        if (result.RateLimited) await DropQueueAsync(lane, prompt.Chat, stoppingToken);
+        if (result.RateLimited) await DropQueueAsync(lane, prompt.Chat, AfterLimitReset, stoppingToken);
     }
 
     /// <summary>
@@ -477,12 +487,14 @@ public sealed class ChatWorker(
     }
 
     /// <summary>
-    /// Снимает очередь полосы целиком: до сброса окна запускать нечего. Задачи не переносим,
-    /// а возвращаем пользователю — за время ожидания они могли устареть. Только свою полосу:
-    /// у вопроса своя модель и, бывает, свой лимит, а общий лимит другая полоса проверит
-    /// перед своим запуском сама.
+    /// Снимает очередь полосы целиком: после лимита до сброса окна запускать нечего, после
+    /// отказа в доверии каждая следующая задача ждала бы свою карточку до четверти часа. Задачи
+    /// не переносим, а возвращаем пользователю — за время ожидания они могли устареть. Только
+    /// свою полосу: у вопроса своя модель и, бывает, свой лимит, а общий лимит другая полоса
+    /// проверит перед своим запуском сама.
     /// </summary>
-    private async Task DropQueueAsync(Lane lane, ChatId chat, CancellationToken ct)
+    /// <param name="when">Когда прислать снова: «после сброса лимита».</param>
+    private async Task DropQueueAsync(Lane lane, ChatId chat, string when, CancellationToken ct)
     {
         var dropped = lane.Drain();
         var question = lane == _questions;
@@ -490,16 +502,14 @@ public sealed class ChatWorker(
 
         if (dropped == 0) return;
 
-        logger.LogWarning("Очередь снята после лимита тарифа: {Count} шт., вопросы: {Question}", dropped, question);
+        logger.LogWarning("Очередь снята: {Count} шт., вопросы: {Question}, прислать {When}", dropped, question, when);
 
         var what = question ? dropped.Count("вопрос", "вопроса", "вопросов") : $"{dropped} задач(и)";
 
-        await SendPlainAsync(
-            chat,
-            $"Очередь снята, не запущено: {what} — пришлите их снова после сброса лимита.",
-            null,
-            ct);
+        await SendPlainAsync(chat, $"Очередь снята, не запущено: {what} — пришлите их снова {when}.", null, ct);
     }
+
+    private const string AfterLimitReset = "после сброса лимита";
 
     /// <summary>
     /// Ответ агента: markdown переводится в формат канала и режется под его лимит.
