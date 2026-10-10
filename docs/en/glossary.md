@@ -21,6 +21,8 @@ English (`IAgentLimits`, `ProjectPath`, `audit\`) — this glossary is about tex
 | The agent's continuous context | **сессия** | диалог, история, тред |
 | How much of the model's window a session takes, in tokens | **контекст** («заполнен на 62%») | память, окно, история |
 | Retelling the conversation briefly to free the context (`/compact`) | **сжать** / **сжатие** | очистить, компактить, сократить |
+| The start of a session the model keeps on its side and reads cheaper than anew (prompt cache) | **кэш** («кэш до 15:42», «кэш остыл») | кеш, память, буфер |
+| A run that leaves no turn in the session, only to keep the cache from going cold | **подогрев** | прогрев, пинг, keep-alive |
 | A one-off request with no session and no project (`/ask`) | **вопрос** | запрос, режим ASK, режим вопроса |
 | The agent asking about an action | **подтверждение** | согласование, запрос разрешения, апрув |
 | The message with the decision buttons | **карточка подтверждения** | карточка согласования, запрос |
@@ -65,6 +67,12 @@ stay «✅ Разрешить» / «❌ Отклонить», because those are 
 anew. The контекст is how much room that branch takes in the model right now: it is looked at and
 compressed. «Сжать» keeps the same сессия with a smaller контекст; «Новая сессия» starts another
 branch with an empty one.
+
+**контекст / кэш.** The контекст is how much of the model's window a session takes. The кэш is how
+much longer the model keeps that session ready: an hour after the start of the last request, five
+minutes for a сабагент. The кэш «остывает»: after that the next run writes the whole context anew
+and spends more of the лимит. A model switch and the `plan` mode reset the кэш too. A подогрев is a
+run that only extends the кэш and leaves no turn in the session.
 
 **задача / вопрос.** A задача goes into the project's session and continues it. A вопрос is a
 one-off, outside any session and project, answered by its own model, and leaves nothing behind. A
