@@ -356,12 +356,28 @@ public sealed class ChatWorker(
     /// <summary>
     /// Рабочая папка вопроса. Не проект: иначе подтянулись бы его CLAUDE.md и настройки,
     /// а вопрос к проекту не относится. И не папка данных: там state.json и секреты.
-    /// Пустая папка во временных — нечего читать и нечего испортить.
+    /// Пустая папка во временных — нечего читать и нечего испортить. Пустая заново перед каждым
+    /// вопросом: агент задачи может сам положить туда <c>.claude/settings.json</c>, и его хук
+    /// выполнялся бы на каждом /ask — а доверие к проекту у вопроса не спрашивается.
     /// </summary>
-    private static string QuestionDirectory()
+    private string QuestionDirectory()
     {
         var path = Path.Combine(Path.GetTempPath(), "AgentsTracker-question");
+        try
+        {
+            if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(ex, "Папка вопроса не очищена: {Path}", path);
+        }
+
         Directory.CreateDirectory(path);
+
+        // Не очистилась — запускать в ней нельзя: настройки в ней выполнились бы без вопроса.
+        if (agent.InspectProject(path) is not null)
+            throw new InvalidOperationException($"в папке вопроса {path} остались настройки агента — удалите её вручную");
+
         return path;
     }
 

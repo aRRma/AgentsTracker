@@ -78,7 +78,9 @@ The host asks instead, before the run: `IAgentBackend.InspectProject` (for Claud
 `statusLine`…), `env` names, plugins and the files of `.claude/{skills,commands,agents,hooks}`,
 and gives a SHA-256 fingerprint of all of them; `ProjectTrustGate` shows the «Доверять проекту?»
 card and keeps the fingerprint in `GatewayState.TrustedProjects`. Any change of those files changes
-the fingerprint, and the card comes again. A вопрос is not checked: it runs in an empty temp folder.
+the fingerprint, and the card comes again. A вопрос is not checked: it runs in an empty temp folder,
+recreated before every вопрос — otherwise a task's agent could plant a `.claude/settings.json` there
+and its hook would run on every `/ask`; a folder that fails to clear refuses the вопрос.
 
 What keeps the fingerprint honest and stable: settings files are always parsed (up to 16 MB —
 a `settings.json` padded with spaces must not hide its hook; above that it is an item «проверьте

@@ -132,7 +132,8 @@ A card finds its chat by the **run id**, not by a "current chat": each run gets 
   subfolder: `/project` may change while the message waits in the queue. A вопрос (`/ask`) gets no
   `--add-dir` at all.
 - A вопрос (`AgentRunKind.Question`) runs with `--no-session-persistence`, `--tools WebSearch,WebFetch`
-  and `--strict-mcp-config` in an empty `%TEMP%\AgentsTracker-question` — never in the project or the
+  and `--strict-mcp-config` in an empty `%TEMP%\AgentsTracker-question`, recreated before every
+  вопрос (a task could plant a hook there, and the trust gate skips вопросы) — never in the project or the
   data directory, and its `SessionId` never reaches `SessionStore`. Its model is `Gateway:Question`,
   not the chat selection. Its permissions are the same as a task's cards-wise: `--permission-prompt-tool`,
   the `tg` server and `send_file` (checked against the chat's project) stay — running in parallel

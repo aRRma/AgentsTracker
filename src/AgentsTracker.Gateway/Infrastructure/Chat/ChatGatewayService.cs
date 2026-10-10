@@ -23,8 +23,9 @@ public sealed class ChatGatewayService(
 
     /// <summary>
     /// Пауза между попытками растёт от первой до потолка. Сеть, которой нет, ждём без предела:
-    /// компьютер включается раньше роутера, а шлюз, который сдался через пару минут, молчал
-    /// до следующего входа в Windows — Планировщик по коду выхода его не поднимал.
+    /// компьютер включается раньше роутера, а шлюз, который сдался через пару минут, Планировщик
+    /// перезапускает не больше трёх раз с интервалом в минуту — дальше он молчал до следующего
+    /// входа в Windows.
     /// </summary>
     private static readonly TimeSpan ConnectRetryDelay = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan ConnectRetryCeiling = TimeSpan.FromMinutes(5);
