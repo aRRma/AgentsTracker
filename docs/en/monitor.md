@@ -11,6 +11,12 @@ MCP port (`/` returns 404 there). There is deliberately no authorization, only l
 the endpoints **only read**: `/stop` and switching the project stay in chat, where there's a
 list of the channel's allowed users and an audit log.
 
+The same filter answers 403 to any `Host` other than `localhost`, `127.0.0.1` or `[::1]`: that
+closes DNS rebinding, where a foreign site points its own name at `127.0.0.1` and the browser
+treats the monitor's answers as that site's own. The port in `Host` is not checked — in a
+container it is the host's published port, not `MonitorPort`. Every answer also carries
+`X-Content-Type-Options: nosniff` and `X-Frame-Options: DENY`.
+
 Endpoints: `/`, `/api/snapshot`, `/api/events` (SSE), `/api/limits`,
 `/api/runs?project=&limit=`, `/api/stats`, `/api/stats.csv`, `/api/audit?count=`,
 `/api/log?count=&level=`. A new one is `api.MapGet` in `MonitorModule.MapEndpoints`,

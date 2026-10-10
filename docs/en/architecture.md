@@ -262,7 +262,13 @@ in under `Channel:Settings`.
 where, what"; addresses are stored as `UserKey`/`ChatKey` strings ("channel:value"), not as
 numbers: ids from different channels collide. There is also `NowByKeys` — for writing by
 ready-made keys from `state.json`. No secrets and no full texts (≤200 characters; the user's text
-is a `Text.Preview` excerpt, 80 characters: a token could have been pasted there).
+is a `Text.Preview` excerpt, 80 characters: a token could have been pasted there). `NowByKeys`
+masks secrets in every summary through `Text.ClipRedacted`: an approval writes the command
+itself, and a command carries a bot token from an environment variable or a curl header just as
+easily — the monitor serves the journal without a password. `Text.Redact` knows token shapes
+(Telegram, `sk-`, GitHub, AWS, Slack, JWT), `Authorization`/`Bearer`, a password in a URL and
+the values of `token=`/`--password`-like keys; `Text.Preview` masks too, so the log, the monitor
+and the run status get the same treatment.
 
 The kinds are in `AuditKinds`: `access.rejected`, `message`, `run.start`/`run.end`, `approval`,
 `question`, `file.send`, `file.receive`, `settings`, `rules`, `session.reset`, `limit.refused`, `gateway`. Menu

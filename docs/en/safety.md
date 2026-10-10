@@ -106,6 +106,9 @@ the task history to anyone logged into this computer.
 
 - don't need it — turn it off: `"MonitorPort": 0`;
 - in a container, publish the port as `127.0.0.1:5100:5100`, not outward;
+- a site open in your browser can't read the monitor either: the gateway answers only to the
+  address `127.0.0.1` or `localhost`, not to another site's name;
+- tokens and passwords in commands land in the journal and the log as `***`;
 - the bot token on disk is encrypted (DPAPI) and only your account on this machine can decrypt it;
   a container has no DPAPI — keep the `.env` to yourself there.
 

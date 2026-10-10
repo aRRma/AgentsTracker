@@ -35,11 +35,23 @@ public sealed class MonitorModule : IFeatureModule
         if (options.MonitorPort <= 0) return;
 
         // Kestrel гонит оба порта через один конвейер: без фильтра страница открылась бы и на
-        // порту MCP. Фильтр по локальному порту соединения, а не по Host — тот приходит любым.
+        // порту MCP. Порт берём у соединения, а не из Host — тот приходит любым.
         var monitorPort = options.MonitorPort;
         var api = endpoints.MapGroup("")
             .AddEndpointFilter(async (context, next) =>
-                context.HttpContext.Connection.LocalPort == monitorPort ? await next(context) : Results.NotFound());
+            {
+                var http = context.HttpContext;
+                if (http.Connection.LocalPort != monitorPort) return Results.NotFound();
+
+                // DNS rebinding: чужой сайт перепривязывает своё имя на 127.0.0.1, и браузер
+                // считает ответ монитора своим — журнал с командами уходит этому сайту. Host
+                // у такого запроса — имя чужого сайта, поэтому пускаем только локальные имена.
+                if (!IsLocalHost(http.Request.Host.Host)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+                http.Response.Headers.XContentTypeOptions = "nosniff";
+                http.Response.Headers.XFrameOptions = "DENY";
+                return await next(context);
+            });
 
         api.MapGet("/", () => Results.Bytes(Page.Value, "text/html; charset=utf-8"));
 
@@ -90,6 +102,14 @@ public sealed class MonitorModule : IFeatureModule
         api.MapGet("/api/log", (RingBufferLog log, int? count, string? level) =>
             Results.Json(log.Tail(Math.Clamp(count ?? 200, 1, 500), RingBufferLog.Level(level ?? "Information")), Json));
     }
+
+    /// <summary>
+    /// Имя, под которым монитор открывают с этой машины. В контейнере тоже: порт опубликован
+    /// только на 127.0.0.1 хоста, и браузер приходит с одним из этих имён.
+    /// </summary>
+    private static bool IsLocalHost(string host) =>
+        host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+        || host is "127.0.0.1" or "[::1]" or "::1";
 
     private static object Snapshot(LiveState live, SessionStore store, ChatWorker worker, IAgentBackend agent) => new
     {

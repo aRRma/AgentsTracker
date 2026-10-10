@@ -69,7 +69,7 @@ public sealed class ClaudeBackend(
             psi.ArgumentList.Add(arg);
 
         // Промпт в лог целиком не пишем: это сообщение пользователя, хватит начала.
-        logger.LogInformation("claude -p «{Prompt}» {Args}", Truncate(prompt.ReplaceLineEndings(" "), 80),
+        logger.LogInformation("claude -p «{Prompt}» {Args}", Text.Preview(prompt),
             string.Join(' ', psi.ArgumentList.Skip(2)));
 
         using var process = new Process { StartInfo = psi };

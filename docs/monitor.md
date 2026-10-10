@@ -10,6 +10,12 @@
 404). Авторизации нет намеренно, только loopback — поэтому эндпоинты **только читают**: `/stop`
 и смена проекта остаются в чате, где есть список разрешённых пользователей канала и аудит.
 
+Тот же фильтр отвечает 403 на любой `Host`, кроме `localhost`, `127.0.0.1` и `[::1]`: так
+закрыт DNS rebinding, когда чужой сайт направляет своё имя на `127.0.0.1` и браузер считает
+ответы монитора ответами этого сайта. Порт в `Host` не проверяется — в контейнере там
+опубликованный порт хоста, а не `MonitorPort`. Каждый ответ несёт ещё
+`X-Content-Type-Options: nosniff` и `X-Frame-Options: DENY`.
+
 Эндпоинты: `/`, `/api/snapshot`, `/api/events` (SSE), `/api/limits`,
 `/api/runs?project=&limit=`, `/api/stats`, `/api/stats.csv`, `/api/audit?count=`,
 `/api/log?count=&level=`. Новый — `api.MapGet` в `MonitorModule.MapEndpoints`,

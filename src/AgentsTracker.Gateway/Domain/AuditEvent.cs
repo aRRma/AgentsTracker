@@ -43,12 +43,14 @@ public sealed record AuditEvent(
 
     /// <summary>
     /// То же, но адреса уже строками — для записи по данным из state.json, где лежат
-    /// готовые Key (прерванный запуск прошлого экземпляра).
+    /// готовые Key (прерванный запуск прошлого экземпляра). Секреты маскируются здесь, в одном
+    /// месте на все виды: подтверждение пишет сюда команду, а в ней бывает токен из переменной
+    /// окружения, и журнал без пароля отдаёт монитор.
     /// </summary>
     public static AuditEvent NowByKeys(
         string kind, string summary, string? userKey = null, string? chatKey = null,
         string? project = null, string? session = null, string? outcome = null) =>
-        new(DateTimeOffset.Now, kind, Text.Clip(summary.ReplaceLineEndings(" "), SummaryLimit), userKey, chatKey,
+        new(DateTimeOffset.Now, kind, Text.ClipRedacted(summary.ReplaceLineEndings(" "), SummaryLimit), userKey, chatKey,
             project is { Length: > 0 } ? Path.GetFileName(project.TrimEnd('\\', '/')) : null,
             session is { Length: > 8 } ? session[..8] : session,
             outcome);

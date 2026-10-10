@@ -37,7 +37,7 @@ public sealed class OperatorConsole(
         var (runId, toolName, input, suggested) = request;
         var signature = BuildSignature(toolName, input);
 
-        // Только начало: в полной команде может быть токен из заголовка curl.
+        // Только начало и с маской: в полной команде может быть токен из заголовка curl.
         var brief = Text.Preview(Highlight(toolName, input) ?? "");
         logger.LogInformation("Запрошено подтверждение: {Tool} {Key}", toolName, brief);
 
@@ -53,7 +53,7 @@ public sealed class OperatorConsole(
 
         if (store.IsAlwaysAllowed(signature))
         {
-            logger.LogInformation("Автоматически разрешено по правилу «всегда»: {Signature}", signature);
+            logger.LogInformation("Автоматически разрешено по правилу «всегда»: {Tool} {Key}", toolName, brief);
             Audit(run, AuditKinds.Approval, signature, "rule");
             return ApprovalDecision.Allow();
         }
