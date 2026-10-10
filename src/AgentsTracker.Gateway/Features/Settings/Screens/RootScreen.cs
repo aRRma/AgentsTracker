@@ -65,12 +65,5 @@ public sealed class RootScreen(
         return (html, keyboard);
     }
 
-    private SessionRecord? ActiveSession()
-    {
-        var active = store.SessionId;
-        if (active is null) return null;
-
-        return store.SessionsFor(store.ProjectPath)
-            .FirstOrDefault(s => string.Equals(s.Id, active, StringComparison.Ordinal));
-    }
+    private SessionRecord? ActiveSession() => store.Session(store.SessionId);
 }

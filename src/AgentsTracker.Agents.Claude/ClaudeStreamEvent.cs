@@ -39,8 +39,7 @@ public static class ClaudeStreamEvent
         return String(root, "type") switch
         {
             "result" => Line.Result,
-            "assistant" => new Line(true, false, ToolCalls(root), ContextTokens(root), MainModel: MainModel(root),
-                CacheTtl: CacheTtl(root), CacheRead: CacheRead(root)),
+            "assistant" => Assistant(root),
             "system" when String(root, "subtype") == "compact_boundary" => new Line(true, false, [], Compaction: Compaction(root)),
             "user" when !Nested(root) => new Line(true, false, [], MainInput: true),
             _ => Line.Other,
@@ -48,28 +47,42 @@ public static class ClaudeStreamEvent
     }
 
     /// <summary>
-    /// Срок записи в кэш по разбивке usage.cache_creation (проверено на CLI 2.1.292): у основной
-    /// ветки на подписке — ephemeral_1h, при оплате сверх подписки — ephemeral_5m. Чтение без
-    /// записи срок не сообщает — тогда null, и шлюз берёт прошлый.
+    /// Ход модели. Вызовы инструментов — у любого хода, остальное — только у основной ветки:
+    /// у сабагентов своё окно, своя модель и свой кэш. Модель берём отсюда, а не из modelUsage
+    /// итога: там сабагенты вперемешку с основной моделью, и сабагент на sonnet легко пишет
+    /// больше, чем сама сессия. Контекст хода — всё, что модель получила на входе: новые токены
+    /// плюс прочитанные и записанные в кэш.
     /// </summary>
-    private static TimeSpan? CacheTtl(JsonElement root)
+    private static Line Assistant(JsonElement root)
     {
-        if (!TryMainTurn(root, out var message, out _)
-            || !message.TryGetProperty("usage", out var usage)
-            || !usage.TryGetProperty("cache_creation", out var creation)
-            || creation.ValueKind != JsonValueKind.Object)
+        var calls = ToolCalls(root);
+        if (!TryMainTurn(root, out var message, out var model)) return new Line(true, false, calls);
+
+        if (!message.TryGetProperty("usage", out var usage) || usage.ValueKind != JsonValueKind.Object)
+            return new Line(true, false, calls, MainModel: model);
+
+        var read = Number(usage, "cache_read_input_tokens");
+        var context = Number(usage, "input_tokens") + read + Number(usage, "cache_creation_input_tokens");
+
+        return new Line(true, false, calls, context > 0 ? context : null, MainModel: model,
+            CacheTtl: CacheTtl(usage), CacheRead: read);
+    }
+
+    /// <summary>
+    /// Срок записи в кэш по разбивке usage.cache_creation (проверено на CLI 2.1.292): у основной
+    /// ветки на подписке — ephemeral_1h, при оплате сверх подписки — ephemeral_5m. Обе сразу
+    /// бывают после веб-поиска: CLI сам дописывает пятиминутную запись хвоста, а начало сессии
+    /// живёт час. Чтение без записи срок не сообщает — тогда null, и шлюз берёт прошлый.
+    /// </summary>
+    private static TimeSpan? CacheTtl(JsonElement usage)
+    {
+        if (!usage.TryGetProperty("cache_creation", out var creation) || creation.ValueKind != JsonValueKind.Object)
             return null;
 
         if (Number(creation, "ephemeral_1h_input_tokens") > 0) return TimeSpan.FromHours(1);
         if (Number(creation, "ephemeral_5m_input_tokens") > 0) return TimeSpan.FromMinutes(5);
         return null;
     }
-
-    private static long? CacheRead(JsonElement root) =>
-        TryMainTurn(root, out var message, out _)
-        && message.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object
-            ? Number(usage, "cache_read_input_tokens")
-            : null;
 
     /// <summary>
     /// parent_tool_use_id лежит в корне события (проверено на CLI 2.1.261): у шага сабагента
@@ -97,26 +110,6 @@ public static class ClaudeStreamEvent
         model = name;
         return true;
     }
-
-    /// <summary>Контекст хода — всё, что модель получила на входе: новые токены плюс прочитанные и записанные в кэш.</summary>
-    private static long? ContextTokens(JsonElement root)
-    {
-        if (!TryMainTurn(root, out var message, out _)
-            || !message.TryGetProperty("usage", out var usage)
-            || usage.ValueKind != JsonValueKind.Object)
-            return null;
-
-        var total = Number(usage, "input_tokens") + Number(usage, "cache_read_input_tokens")
-                    + Number(usage, "cache_creation_input_tokens");
-        return total > 0 ? total : null;
-    }
-
-    /// <summary>
-    /// Модель основной ветки. По modelUsage итога её не узнать: там сабагенты вперемешку
-    /// с основной моделью, и сабагент на sonnet легко пишет больше, чем сама сессия.
-    /// </summary>
-    private static string? MainModel(JsonElement root) =>
-        TryMainTurn(root, out _, out var model) ? model : null;
 
     /// <summary>compact_metadata события compact_boundary (проверено на CLI 2.1.261).</summary>
     private static ContextCompaction? Compaction(JsonElement root)

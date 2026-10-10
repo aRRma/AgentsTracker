@@ -67,9 +67,7 @@ public sealed class StatusScreen(
     {
         var state = store.Snapshot();
         var project = store.ProjectPath;
-        var session = store.SessionId is { } id
-            ? store.SessionsFor(project).FirstOrDefault(s => string.Equals(s.Id, id, StringComparison.Ordinal))
-            : null;
+        var session = store.Session(store.SessionId);
 
         var busy = worker.IsBusy;
 

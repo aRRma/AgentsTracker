@@ -158,18 +158,13 @@ public sealed class AgentScreen(
                 return null;
         }
 
-        var session = ActiveSession();
+        var session = store.Session(store.SessionId);
         if (!CacheGuard.WillReset(session, fromModel, toModel, fromMode, toMode)) return null;
 
         return $"Кэш сессии жив до {session!.CacheUntilUtc!.Value.Clock}. После смены следующий запуск "
                + $"запишет заново {session.ContextTokens.Tokens} токенов контекста и потратит заметно больше "
                + "лимита тарифа, чем обычный шаг. Дешевле сменить в начале новой сессии.";
     }
-
-    private SessionRecord? ActiveSession() =>
-        store.SessionId is { } id
-            ? store.SessionsFor(store.ProjectPath).FirstOrDefault(s => string.Equals(s.Id, id, StringComparison.Ordinal))
-            : null;
 
     public Task<(string Html, Keyboard Keyboard)> RenderAsync(UserId user, CancellationToken ct) =>
         Task.FromResult(_confirmations.Asked(user) is { } asked && CacheWarning(asked) is { } warning

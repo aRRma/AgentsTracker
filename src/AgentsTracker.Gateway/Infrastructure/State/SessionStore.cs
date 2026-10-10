@@ -185,6 +185,18 @@ public sealed class SessionStore
         }
     }
 
+    /// <summary>Запись сессии по id, копией; null — id пуст или шлюз такой сессии не знает.</summary>
+    public SessionRecord? Session(string? sessionId)
+    {
+        if (sessionId is not { Length: > 0 }) return null;
+
+        lock (_gate)
+        {
+            var record = _state.Sessions.FirstOrDefault(r => string.Equals(r.Id, sessionId, StringComparison.Ordinal));
+            return record is null ? null : Clone(record);
+        }
+    }
+
     /// <summary>Забывает все сессии проекта и начинает новую. Возвращает, сколько записей снято.</summary>
     public int ForgetSessions(string projectPath)
     {

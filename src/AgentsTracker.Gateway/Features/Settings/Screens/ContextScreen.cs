@@ -88,9 +88,7 @@ public sealed class ContextScreen(
     {
         var project = store.ProjectPath;
         var active = store.SessionId;
-        var session = active is null
-            ? null
-            : store.SessionsFor(project).FirstOrDefault(s => string.Equals(s.Id, active, StringComparison.Ordinal));
+        var session = store.Session(active);
 
         if (active is not null && _confirmations.Asked(user) is { } asked)
             return Confirmation(asked, session);
