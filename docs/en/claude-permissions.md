@@ -95,8 +95,10 @@ permission lets an action through silently.
 - A rule matches from the start of the string: `git -C <folder> push --force` and
   `git push origin master --force` do not match `git push --force*`. So the git denies are written
   as `git*push*--force*`: a false hit (the same words in a commit message) costs one rewording.
-  `allow` and `ask` for git have a `git -C * …` twin: in a worktree almost every command goes
-  through `git -C`.
+  `ask` is written the same way (`git*checkout*`, `git*stash*drop*`), except `push` and `clean`:
+  those words are common in commit messages and `git stash push` is an ordinary command, so they
+  get the `git push*` + `git -C * push*` pair. `allow` always comes as a `git -C * …` pair: a broad
+  `allow` would admit whatever is missing from `ask`.
 - Wrappers (`wsl git`, `bash -c "git …"`, `pwsh -c`) match no `allow` and go to a card or the
   `auto` mode classifier. They need no rules of their own.
 - A git `allow` names a subcommand, not a global option: `git --no-pager*` would silently admit
