@@ -247,7 +247,10 @@ session.
   only: `.md .txt .json .cs .js .html`, archives `.zip .7z`, screenshots `.png .jpg .jpeg`).
   From plan mode the file is saved before `ExitPlanMode` as well.
 - **Subagents only with `model: "sonnet"`.** In every `Agent` call and in a Workflow `agent()`. Do not
-  inherit the parent's model, do not take opus/fable — it saves the plan limits.
+  inherit the parent's model, do not take opus/fable — it saves the plan limits. Give a subagent at
+  most ~30 minutes of work and have it write its interim result into an `.md` file: a run timeout or
+  `/stop` kills it with the process and its final report is lost, the file is not. Its cache lives
+  5 minutes (the main branch — an hour), so do not leave it waiting on a long build.
 - **The environment is Windows, Russian locale, Moscow (UTC+3).** Console output can arrive as
   mojibake — set UTF-8 (`chcp 65001`, `[Console]::OutputEncoding`). Windows and .NET messages are in
   Russian — do not search them by their English text. In code, parse and format through
