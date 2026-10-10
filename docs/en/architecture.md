@@ -205,6 +205,13 @@ is the input of the **last** main-branch turn (sub-agents have their own window)
 `SessionStore.RecordContext` keeps them on the `SessionRecord` with the measurement time, and the
 «Контекст» screen shows them without starting the agent. Percent — `LimitMath.Percent`, as everywhere.
 
+The cache lifetime comes from the run as well: `RunUsage.LastRequestUtc` and `CacheTtl` (the
+contract — `cli-contract.md`, "Context"). `SessionStore.RecordCache` turns them into
+`SessionRecord.CacheUntilUtc`, keeping the last known lifetime when a run only read the cache, and
+returns the value the answer's footer prints as «🧊 кэш до 15:42» — a time, not a countdown, because
+the message never changes. `ContextScreen.Cache` is the only place that turns the value into text for
+«Статус» and «Контекст»; `/api/snapshot` sends it raw in `sessions[].cacheUntilUtc`.
+
 «Сжать» and «Новая сессия» on that screen go through `PendingConfirmations`: the first press only
 asks, «Да» works only for the same action, the same session and within 2 minutes; the pending
 question is dropped on «Нет» and on reopening the screen.

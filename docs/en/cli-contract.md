@@ -227,6 +227,23 @@ Checked on CLI 2.1.261.
   `{"type":"system","subtype":"compact_boundary","compact_metadata":{"pre_tokens":…,"post_tokens":…}}`,
   the `result` text is empty, `num_turns: 0`, but `modelUsage` is not — compaction is a model call
   and spends the plan. After it the context size is `post_tokens` until the next real turn.
+- **Cache.** Checked on CLI 2.1.292 with `claude -p --resume`, the way the gateway runs:
+  - The main branch writes the cache with a **one-hour** lifetime (`usage.cache_creation.ephemeral_1h_input_tokens`),
+    sub-agents with a **five-minute** one (`ephemeral_5m`). Billing past the subscription is said to
+    drop the main branch to 5 minutes too, so the lifetime is read from the event, not assumed.
+  - The lifetime runs from the **start** of the request that read or wrote the entry; every read
+    extends it for free. The stream gives a turn only when it is complete, so the backend takes the time
+    of the last main-branch input (a `user` event without `parent_tool_use_id`, or the process start)
+    as the request start: a little early, so «кэш до» errs on the safe side.
+    `RunUsage.LastRequestUtc` + `CacheTtl` → `SessionRecord.CacheUntilUtc`.
+  - The cache is a prefix match: tools → system prompt → history. A new process with `--resume`
+    keeps it. Commits, edited files, `--add-dir` appearing, `--effort` and the modes
+    `default`/`acceptEdits`/`auto` keep it too. **Lost:** a model switch (caches are per model, and the other
+    model's thinking blocks are dropped from the history) and `--permission-mode plan` (different
+    tools — nothing is read at all). A compaction replaces the start of the session, so after it the
+    old cache does not count (`LastRequestUtc = null`).
+  - A run with `--resume <id> --fork-session --no-session-persistence` reads the whole cached prefix,
+    extends it by another hour and leaves no turn in the session (checked over 110 minutes).
 - Testing this from Git Bash: MSYS turns a leading `/context` into `C:/Program Files/Git/context`,
   and the model gets a path instead of a command. `MSYS_NO_PATHCONV=1`, or test from PowerShell;
   `ProcessStartInfo.ArgumentList` in the gateway is not affected.
