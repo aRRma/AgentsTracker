@@ -118,6 +118,12 @@ A card finds its chat by the **run id**, not by a "current chat": each run gets 
 `RunScope` registered by `ChatWorker`. An unknown id is a refusal. Subagents send the same header
 (same process). Do not bring back a single `ActiveChat` — a task and a вопрос run at once.
 
+- `-p` skips the CLI's workspace trust dialog: a project's `.claude/settings.json` hooks and
+  `.mcp.json` servers run with no card at all (verified live). So before a task's run
+  `ProjectTrustGate` shows «Доверять проекту?» for whatever `IAgentBackend.InspectProject` finds and
+  keeps the fingerprint in `GatewayState.TrustedProjects`; a change of those files asks again. Do not
+  skip the gate for any kind that runs in the project folder (`/context` and `/compact` included).
+  Details — `docs/en/cli-contract.md`, "Project settings and the trust dialog".
 - `--bare` is not allowed: it does not read `~/.claude` and breaks the subscription OAuth login.
 - `--allowedTools` holds only `mcp__tg__send_file`: its policy belongs to the gateway. Do not add
   other tools there — that bypasses the cards past the machine's config.

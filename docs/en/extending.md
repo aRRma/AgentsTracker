@@ -68,6 +68,12 @@ parallel, and the host finds the chat by that id — a call without it is refuse
 to carry the id from the request to its confirmation channel itself (Claude puts it into a header
 of the run's own MCP config).
 
+`IAgentBackend.InspectProject` lists everything the agent would run from the project folder on its
+own — hooks, MCP servers, pre-approved rules, files that carry them — with a fingerprint that
+changes with any of those files; `null` only when there is nothing of the kind. A backend that
+returns `null` while its CLI reads such files silently brings back the hole the «Доверять
+проекту?» card closes.
+
 `grep -rn Claude src/AgentsTracker.Gateway --include=*.cs` must only find `Program.cs` and
 comments. Agent settings live in `Gateway:<Id>`, the host does not read them.
 

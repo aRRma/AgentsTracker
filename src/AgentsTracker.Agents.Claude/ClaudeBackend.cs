@@ -29,6 +29,8 @@ public sealed class ClaudeBackend(
 
     public AgentProbe Probe() => new(locator.Resolve(), locator.TryGetVersion());
 
+    public ProjectSettings? InspectProject(string projectPath) => ClaudeProjectSettings.Inspect(projectPath);
+
     public async Task<AgentRunResult> RunAsync(AgentRunRequest request, IAgentRunObserver observer, CancellationToken ct)
     {
         var started = Stopwatch.StartNew();

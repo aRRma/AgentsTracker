@@ -50,6 +50,13 @@ public sealed class GatewayState
     /// </summary>
     public Dictionary<string, List<string>> AlwaysAllowByProject { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Доверие к проекту: нормализованный путь → отпечаток настроек агента в проекте, которым
+    /// доверились. Другой отпечаток — настройки изменились, и доверие спрашивается снова:
+    /// иначе однажды одобренный проект мог бы потом принести новый хук молча.
+    /// </summary>
+    public Dictionary<string, string> TrustedProjects { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Известные шлюзу сессии всех проектов.</summary>
     public List<SessionRecord> Sessions { get; set; } = [];
 

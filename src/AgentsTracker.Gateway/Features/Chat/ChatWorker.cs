@@ -18,6 +18,7 @@ public sealed class ChatWorker(
     IAgentLimits limits,
     ApprovalBroker broker,
     AttachmentInbox inbox,
+    ProjectTrustGate trust,
     SessionStore store,
     IOptions<GatewayOptions> options,
     IAuditLog audit,
@@ -167,6 +168,19 @@ public sealed class ChatWorker(
             return;
         }
 
+        // Вопрос идёт в пустой временной папке — настроек агента там нет. Проект задачи проверяем
+        // снова после карточки доверия: пока она ждала, /project мог смениться, а доверие
+        // спрашивали про прежний.
+        var project = question ? QuestionDirectory() : store.ProjectPath;
+        while (!question)
+        {
+            if (!await trust.EnsureAsync(prompt.Chat, prompt.ReplyTo, project, stoppingToken)) return;
+
+            var current = store.ProjectPath;
+            if (ProjectCatalog.Same(current, project)) break;
+            project = current;
+        }
+
         var session = question ? null : store.SessionId;
 
         // Пока команда ждала в очереди, /new мог снять сессию: разбирать и сжимать нечего,
@@ -185,7 +199,6 @@ public sealed class ChatWorker(
             $"{(question ? "вопрос, " : "")}{modelLabel ?? "модель по умолчанию"}, {store.EffectivePermissionMode}, effort {effort ?? "—"}",
             session);
 
-        var project = question ? QuestionDirectory() : store.ProjectPath;
         var preview = Text.Preview(prompt.Text);
 
         // Сессию и папку фиксируем до запуска: переключение из меню посреди работы иначе

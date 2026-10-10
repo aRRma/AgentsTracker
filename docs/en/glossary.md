@@ -27,6 +27,8 @@ English (`IAgentLimits`, `ProjectPath`, `audit\`) — this glossary is about tex
 | The agent asking about an action | **подтверждение** | согласование, запрос разрешения, апрув |
 | The message with the decision buttons | **карточка подтверждения** | карточка согласования, запрос |
 | What the «Всегда» button writes down | **правило «всегда»** | разрешение, allow-правило |
+| The agent's own settings stored in a project (hooks, MCP servers, rules in `.claude/`) | **настройки агента в проекте** | конфиг проекта, локальные настройки |
+| The user's consent for the agent to run the agent's settings in a project | **доверие к проекту** («Доверять проекту?») | разрешение, траст, допуск |
 | `--permission-mode` | **режим** | режим разрешений, уровень доступа, политика |
 | A subscription ceiling | **лимит тарифа** | лимит плана, квота |
 | A limit period | **окно** («5 часов», «неделя») | период, интервал |
@@ -93,6 +95,11 @@ a run timeout («предел канала», «Превышен предел в
 for another reason (`/stop`, a gateway restart) — отменено. The gateway itself did not let
 something through by its own rule (a file type, a size) — отказ. Three different things; do not
 swap the words.
+
+**подтверждение / доверие к проекту.** A подтверждение is about one action in the middle of a run.
+The доверие к проекту is about the whole project and comes before the run: may the agent run the
+настройки агента в проекте (hooks, MCP servers) that it starts on its own, with no approval card at
+all. It is asked by the «Доверять проекту?» card and drops by itself when those files change.
 
 ## Adding a term
 

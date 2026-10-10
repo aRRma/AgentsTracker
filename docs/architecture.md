@@ -9,7 +9,8 @@
 
 ```
 src/AgentsTracker.Agents.Abstractions/   контракты агента, без Telegram и без конкретного CLI:
-  IAgentBackend         Probe() (бинарник, версия), RunAsync(AgentRunRequest, IAgentRunObserver)
+  IAgentBackend         Probe() (бинарник, версия), RunAsync(AgentRunRequest, IAgentRunObserver),
+                        InspectProject — настройки агента в проекте (ProjectSettings: отпечаток и пункты)
   AgentRun.cs           запрос (промпт, папка, сессия, модель, усилие, режим, таймаут, папка вложений), наблюдатель, результат
   AgentCapabilities     какие модели/усилия/режимы агент поддерживает (усилие null — не поддерживает)
   IOperatorConsole      что агент просит у человека: ApproveAsync, AskAsync, SendFileAsync; PersistentRule — правило «всегда»
@@ -19,6 +20,7 @@ src/AgentsTracker.Agents.Claude/         Claude Code за этими контр�
   ClaudeBackend         процесс claude -p: аргументы, stream-json, «сессия не найдена», лимит
   ClaudeCapabilities    какие модели, усилия и режимы принимает CLI; Selectable — что предлагается из чата
   ClaudeLimits, ClaudeSkillCatalog, ClaudePluginRegistry, ClaudeCliLocator, ClaudeStreamEvent
+  ClaudeProjectSettings хуки, allow, MCP-серверы и скиллы из .claude/ и .mcp.json проекта, их отпечаток
   Mcp/                  McpConfigFile — mcp-gateway-<pid>-<запуск>.json на запуск: токен и id запуска; ClaudePermissionTool — полезная нагрузка CLI ↔ IOperatorConsole;
                         ClaudeSendFileTool — файл от агента в чат, политика остаётся на стороне хоста
 src/AgentsTracker.Channels.Abstractions/ контракты канала, без конкретного мессенджера:
@@ -51,7 +53,8 @@ src/AgentsTracker.Gateway/
   Features/             вертикальные срезы, у каждого свой *Module:
     Approvals/          карточки подтверждения, ApprovalBroker, /rules
     Chat/               ChatWorker (две полосы — задачи и вопросы, запуск, сессии), RunStatusMessage, /new /stop,
-                        AttachmentInbox — картинки из чата: скачивание, проверки, папка inbox, чистка
+                        AttachmentInbox — картинки из чата: скачивание, проверки, папка inbox, чистка,
+                        ProjectTrustGate — карточка «Доверять проекту?» до запуска задачи
     Settings/           SettingsMenuCoordinator + Screens/*, /menu /status /sessions /agent /skills /project /usage;
                         PendingConfirmations — второе нажатие для необратимых кнопок («Контекст»)
     Question/           /ask и кнопки «Задать вопрос»: разовый запуск без сессии (QuestionLauncher)
@@ -92,6 +95,13 @@ src/AgentsTracker.Gateway/
 Кнопки: цепочка `IChatButtonHandler` (`Dispatch/`), каждый узнаёт своё по префиксу в `CanHandle`:
 `cfg:` — меню (`SettingsCallbackHandler`), всё остальное (шестнадцатеричный id запроса) —
 `ApprovalCallbackHandler` → `ApprovalBroker`.
+
+Перед запуском задачи `ChatWorker` спрашивает `ProjectTrustGate`: если в проекте лежат настройки
+агента (`IAgentBackend.InspectProject` не `null`) и их отпечатку ещё не доверились, карточка
+«Доверять проекту?» уходит через `ApprovalBroker` под своим коротким `RunScope` (поэтому `/stop` её
+снимает). «❌ Отклонить», молчание и `/stop` — это запуска нет. После карточки проект читается
+заново: если `/project` сменился, пока она ждала, проверяется и новый. Почему — `cli-contract.md`,
+«Настройки проекта и диалог доверия».
 
 ### Две полосы: задача и вопрос параллельно
 
@@ -265,7 +275,7 @@ README — руководство пользователя: меняя защи�
 статус запуска получают то же самое.
 
 Виды перечислены в `AuditKinds`: `access.rejected`, `message`, `run.start`/`run.end`, `approval`,
-`question`, `file.send`, `file.receive`, `settings`, `rules`, `session.reset`, `limit.refused`, `gateway`. Экраны
+`question`, `file.send`, `file.receive`, `settings`, `rules`, `trust`, `session.reset`, `limit.refused`, `gateway`. Экраны
 меню пишут через `SettingsAudit.Changed`.
 
 Это не замена `ILogger`: в аудит идёт то, за что отвечает человек, в лог — то, что нужно для

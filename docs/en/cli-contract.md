@@ -59,6 +59,23 @@ run in a temp folder:
 claude -p "…" --permission-mode acceptEdits --output-format json
 ```
 
+### Project settings and the trust dialog
+
+`-p` skips the workspace trust dialog (stated in `claude --help`): the project's
+`.claude/settings.json` is read straight away. Verified on CLI 2.1.292 with a temp folder holding
+a `SessionStart` hook — the hook ran with `--permission-mode default`, without any question; the
+same run in a folder without settings did not. So a cloned foreign repository would run its hooks
+and MCP servers with no approval card at all. `--permission-mode`, passed explicitly, still
+overrides the repository's `defaultMode`.
+
+The host asks instead, before the run: `IAgentBackend.InspectProject` (for Claude —
+`ClaudeProjectSettings`) lists hooks, `allow` rules, MCP servers, command keys (`apiKeyHelper`,
+`statusLine`…), `env` names, plugins and the files of `.claude/{skills,commands,agents,hooks}`,
+and gives a SHA-256 fingerprint of all of them; `ProjectTrustGate` shows the «Доверять проекту?»
+card and keeps the fingerprint in `GatewayState.TrustedProjects`. Any change of those files changes
+the fingerprint, and the card comes again. A вопрос is not checked: it runs in an empty temp folder.
+After a CLI update, recheck the trust skip with the same temp-folder run.
+
 ### Waiting for a response
 
 `ApprovalBroker` holds the MCP call on a `TaskCompletionSource` until a button is pressed and

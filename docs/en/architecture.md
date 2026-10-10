@@ -9,7 +9,8 @@ of this is called by in buttons, messages and here are in `glossary.md`.
 
 ```
 src/AgentsTracker.Agents.Abstractions/   agent contracts, no Telegram and no specific CLI:
-  IAgentBackend         Probe() (binary, version), RunAsync(AgentRunRequest, IAgentRunObserver)
+  IAgentBackend         Probe() (binary, version), RunAsync(AgentRunRequest, IAgentRunObserver),
+                        InspectProject — the agent's settings in a project (ProjectSettings: fingerprint and items)
   AgentRun.cs           request (prompt, folder, session, model, effort, mode, timeout, attachments folder), observer, result
   AgentCapabilities     which models/efforts/modes the agent supports (effort null — not supported)
   IOperatorConsole      what the agent asks a human for: ApproveAsync, AskAsync, SendFileAsync; PersistentRule — an "always" rule
@@ -19,6 +20,7 @@ src/AgentsTracker.Agents.Claude/         Claude Code behind those contracts:
   ClaudeBackend         the claude -p process: arguments, stream-json, "session not found", limit
   ClaudeCapabilities    which models, efforts and modes the CLI accepts; Selectable — what is offered from the chat
   ClaudeLimits, ClaudeSkillCatalog, ClaudePluginRegistry, ClaudeCliLocator, ClaudeStreamEvent
+  ClaudeProjectSettings hooks, allow, MCP servers and skills from the project's .claude/ and .mcp.json, their fingerprint
   Mcp/                  McpConfigFile — mcp-gateway-<pid>-<run>.json per run: the token plus the run id; ClaudePermissionTool — the CLI ↔ IOperatorConsole payload;
                         ClaudeSendFileTool — a file from the agent into the chat, the policy stays on the host side
 src/AgentsTracker.Channels.Abstractions/ channel contracts, no specific messenger:
@@ -51,7 +53,8 @@ src/AgentsTracker.Gateway/
   Features/             vertical slices, each with its own *Module:
     Approvals/          approval cards, ApprovalBroker, /rules
     Chat/               ChatWorker (two lanes — tasks and вопросы, launch, sessions), RunStatusMessage, /new /stop,
-                        AttachmentInbox — pictures from the chat: download, checks, inbox folder, cleanup
+                        AttachmentInbox — pictures from the chat: download, checks, inbox folder, cleanup,
+                        ProjectTrustGate — the «Доверять проекту?» card before a task's run
     Settings/           SettingsMenuCoordinator + Screens/*, /menu /status /sessions /agent /skills /project /usage;
                         PendingConfirmations — the second press for irreversible buttons («Контекст»)
     Question/           /ask and the «Задать вопрос» buttons: a one-off run with no session (QuestionLauncher)
@@ -93,6 +96,13 @@ Details — `cli-contract.md`.
 Buttons: the `IChatButtonHandler` chain (`Dispatch/`), each recognizing its own by the prefix in
 `CanHandle`: `cfg:` — the menu (`SettingsCallbackHandler`), everything else (a hex request id) —
 `ApprovalCallbackHandler` → `ApprovalBroker`.
+
+Before a task's run `ChatWorker` asks `ProjectTrustGate`: if the project holds the agent's own
+settings (`IAgentBackend.InspectProject` is not `null`) and their fingerprint is not trusted yet,
+a «Доверять проекту?» card goes through `ApprovalBroker` under a short-lived `RunScope` of its own
+(so `/stop` withdraws it). «❌ Отклонить», silence and `/stop` all mean no run. The project is
+re-read after the card: if `/project` changed while it waited, the new one is checked too. Why —
+`cli-contract.md`, "Project settings and the trust dialog".
 
 ### Two lanes: a task and a вопрос in parallel
 
@@ -271,7 +281,7 @@ the values of `token=`/`--password`-like keys; `Text.Preview` masks too, so the 
 and the run status get the same treatment.
 
 The kinds are in `AuditKinds`: `access.rejected`, `message`, `run.start`/`run.end`, `approval`,
-`question`, `file.send`, `file.receive`, `settings`, `rules`, `session.reset`, `limit.refused`, `gateway`. Menu
+`question`, `file.send`, `file.receive`, `settings`, `rules`, `trust`, `session.reset`, `limit.refused`, `gateway`. Menu
 screens write through `SettingsAudit.Changed`.
 
 This is not a replacement for `ILogger`: the audit gets what a human is answerable for, the log

@@ -453,6 +453,16 @@ public sealed class SessionStore
         return rules;
     }
 
+    /// <summary>Доверились ли настройкам агента в проекте именно с этим отпечатком.</summary>
+    public bool IsProjectTrusted(string projectPath, string fingerprint)
+    {
+        lock (_gate)
+            return _state.TrustedProjects.GetValueOrDefault(ProjectCatalog.Normalize(projectPath)) == fingerprint;
+    }
+
+    public void TrustProject(string projectPath, string fingerprint) =>
+        Mutate(s => s.TrustedProjects[ProjectCatalog.Normalize(projectPath)] = fingerprint);
+
     /// <summary>Засчитывает запуск слэш-команды: «/plugin:skill» или «/skill», без аргументов.</summary>
     public void RecordSkillUse(string command)
     {
@@ -627,6 +637,7 @@ public sealed class SessionStore
         state.ActiveSessions = new Dictionary<string, string>(state.ActiveSessions, StringComparer.OrdinalIgnoreCase);
         state.AlwaysAllowByProject = new Dictionary<string, List<string>>(state.AlwaysAllowByProject, StringComparer.OrdinalIgnoreCase);
         state.ModelVersions = new Dictionary<string, string>(state.ModelVersions, StringComparer.OrdinalIgnoreCase);
+        state.TrustedProjects = new Dictionary<string, string>(state.TrustedProjects, StringComparer.OrdinalIgnoreCase);
 
         // Старые версии писали голое имя инструмента («WebSearch»). Теперь в сигнатуру входят
         // аргументы, так что такие записи не совпадут никогда — убираем из /rules.

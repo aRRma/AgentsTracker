@@ -86,7 +86,23 @@ the chat is real; the "it only sees the project" limit is not.
   That's the most reliable option there is;
 - create a separate Windows account for the bot if the computer holds other people's data.
 
-## 6. A Long Task Ate the Plan's Limits
+## 6. Someone Else's Project Brought Its Own Commands
+
+A project may hold the agent's own settings — the `.claude` folder and the `.mcp.json` file. The
+agent runs them on its own, with no approval card: a command at the start of every task, for
+example. In your own project that's convenient; in a downloaded foreign one it's someone else's
+code on your computer.
+
+**How to close it:**
+
+- before the first task in such a project the gateway sends a «Доверять проекту?» ("Trust the
+  project?") card with the list of what the agent will run on its own. Don't recognize the
+  commands — press «❌ Отклонить»;
+- those files changed — the card comes again, even if you trusted the project before;
+- look at a foreign repository with your own eyes first: open `.claude/settings.json` and
+  `.mcp.json`, and only then trust it.
+
+## 7. A Long Task Ate the Plan's Limits
 
 "Sort out the whole photo archive" can cost a day's worth of the subscription and still hit the
 one-hour-per-task ceiling halfway through.
@@ -97,7 +113,7 @@ one-hour-per-task ceiling halfway through.
 - ask for big things in parts: "start with the January folder";
 - `/stop` interrupts a task, `/status` shows what's running.
 
-## 7. Someone Else Can See the Computer
+## 8. Someone Else Can See the Computer
 
 The web monitor at `127.0.0.1:5100` is open without a password: it changes nothing, but it shows
 the task history to anyone logged into this computer.
@@ -112,7 +128,7 @@ the task history to anyone logged into this computer.
 - the bot token on disk is encrypted (DPAPI) and only your account on this machine can decrypt it;
   a container has no DPAPI — keep the `.env` to yourself there.
 
-## 8. No Answer, and the Card Just Hangs
+## 9. No Answer, and the Card Just Hangs
 
 Not a risk, but it worries people: if no button is pressed for 15 minutes, the agent treats that as
 a refusal and finishes the task. Silence means "no", and that's right — a forgotten card can't
@@ -125,4 +141,5 @@ grant permission after the fact.
 3. There's a separate "for the bot" folder; secrets and keys are outside it and in the denials.
 4. Deleting files and stopping programs raise a question.
 5. `/rules` is empty or makes sense, `/audit` has been looked at at least once.
-6. A backup of what you'd miss exists and doesn't depend on this machine.
+6. You don't trust a foreign project until you've read its `.claude/settings.json`.
+7. A backup of what you'd miss exists and doesn't depend on this machine.
