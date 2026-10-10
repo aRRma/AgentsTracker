@@ -50,16 +50,20 @@
 - сеть из оболочки: `curl`, `wget`, `Invoke-WebRequest`, `Invoke-RestMethod`. Это канал утечки:
   прочитанное агент может отправить наружу. Ходить в интернет он может через свои инструменты
   (`WebFetch`), которые видны в карточке;
-- необратимое в git: `push --force`, `reset --hard`, `rebase`, удаление `.git`;
+- необратимое в git: `push --force`, `reset --hard`, `rebase`, удаление `.git` — шаблонами
+  `git*push*--force*`, `git*reset*--hard*`, `git*rebase*`: они ловят любой порядок аргументов,
+  `git -C`, `--no-pager` и `git.exe`;
+- удаление репозитория через плагин GitHub (`delete_repository`);
 - то, что запускает чужой код или меняет систему: `docker run`/`exec`, `sudo`, `dotnet nuget
   add source`, `dotnet nuget push`.
 
 **Спрашивать (`ask`):**
 
-- `git push`, `git checkout`/`restore`, `git clean`, `git branch -D`, `git stash drop` —
-  обратимо, но легко потерять работу;
-- то, что выбрасывает правки молча: `git switch -f`/`--discard-changes`/`-C`, `git stash pop`
-  (stash общий для всех worktree), `git worktree remove`/`prune`;
+- git, после которого работа пропадает или уходит наружу: `git push` (тег `v*` — это релиз),
+  `git checkout`/`restore` (стирают правки), `git switch -f`/`--discard-changes`,
+  `git branch -D`, `git stash drop`/`clear`, `git clean`, `git worktree remove --force`;
+- запись в GitHub через плагин: `push_files`, `create_or_update_file`, `merge_pull_request` и
+  другие — они пишут от вашего имени мимо всех правил git;
 - правка `~/.claude/settings.json` и хуков: агент не должен сам расширять свои права;
 - удаление файлов из PowerShell (`Remove-Item`), остановка процессов и задач Планировщика.
 
@@ -67,7 +71,10 @@
 
 - чтение всего (`Read(**/*)`) — минус то, что в `deny`;
 - сборка и тесты: `dotnet build/test/format/restore`;
-- только чтение в git: `status`, `diff`, `log`, `show`, `blame`, `branch`;
+- git, который откатывается через `git reflog`: чтение, `add`, `commit`, `reset`, `merge`,
+  `cherry-pick`, `fetch`, `tag`, `switch`, `stash`, `worktree` — и всё это через `git -C`.
+  Опасные варианты тех же команд стоят в `ask`/`deny` и сильнее;
+- чтение через плагин GitHub: `get_*`, `list_*`, `search_*`;
 - диагностика: `tasklist`, `netstat`, `Get-Process`, `docker ps`/`logs`, `tail`, `head`.
 
 Ошибка в `allow` дешевле, чем в `deny`: лишний вопрос раздражает, лишнее разрешение
@@ -82,9 +89,13 @@
   но не `curl.exe` — на него отдельное правило.
 - `git push --force*` не ловит `git push -f` — два правила. Зато `*` работает в любом месте
   строки: `Bash(mongosh*drop*)`.
-- Правило сравнивает начало строки: `git -C <папка> push --force` не совпадает с
-  `git push --force*`. В worktree почти каждая команда идёт через `git -C`, поэтому у каждого
-  запрета и «спросить» для git есть пара `git -C * …`.
+- Правило сравнивает строку с начала: `git -C <папка> push --force` и
+  `git push origin master --force` не совпадают с `git push --force*`. Поэтому запреты git
+  написаны как `git*push*--force*`: ложное срабатывание (те же слова в тексте коммита) стоит
+  одной переформулировки. У `allow` и `ask` для git — пара `git -C * …`: в worktree почти каждая
+  команда идёт через `git -C`.
+- Обёртки (`wsl git`, `bash -c "git …"`, `pwsh -c`) не совпадают ни с одним `allow` и уходят на
+  карточку или классификатор режима `auto`. Ловить их правилами не нужно.
 - `allow` на широкий префикс пропускает и разрушительный вариант: `git switch*` пускает
   `git switch -f`, `git branch*` — `git branch -D`. `ask` и `deny` сильнее `allow`, поэтому
   опасные варианты перечислены в них отдельно.
@@ -92,6 +103,7 @@
   пустит. `Bash(git status)` без звёздочки — только эта команда без аргументов.
 - Составные команды разбираются по частям: `deny` срабатывает, если совпала хотя бы одна
   часть `a && b`, `$(…)`, `a; b`. Для `allow` наоборот — каждая часть должна быть разрешена.
+  Проверено 11.10.2026 и в Bash, и в PowerShell: `git log -1; git stash drop` спросил про `drop`.
 - Пути: `//**/.env` — по всей файловой системе, `~/…` — от домашней папки, `**/.env` —
   только внутри текущего проекта. Одинарный `/…` — **не** корень диска, а корень источника
   настроек; не используйте.

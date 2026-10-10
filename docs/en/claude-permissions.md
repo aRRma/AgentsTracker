@@ -51,16 +51,20 @@ Below is the principle and representative examples, not a full list: that's in
 - network access from the shell: `curl`, `wget`, `Invoke-WebRequest`, `Invoke-RestMethod`. This
   is an exfiltration channel: whatever the agent read, it could send out. It can still reach
   the internet through its own tools (`WebFetch`), which are visible in the card;
-- irreversible git actions: `push --force`, `reset --hard`, `rebase`, deleting `.git`;
+- irreversible git actions: `push --force`, `reset --hard`, `rebase`, deleting `.git` — as
+  `git*push*--force*`, `git*reset*--hard*`, `git*rebase*` patterns: they catch any argument
+  order, `git -C`, `--no-pager` and `git.exe`;
+- deleting a repository through the GitHub plugin (`delete_repository`);
 - anything that runs someone else's code or changes the system: `docker run`/`exec`, `sudo`,
   `dotnet nuget add source`, `dotnet nuget push`.
 
 **Ask (`ask`):**
 
-- `git push`, `git checkout`/`restore`, `git clean`, `git branch -D`, `git stash drop` —
-  reversible, but easy to lose work over;
-- what throws changes away silently: `git switch -f`/`--discard-changes`/`-C`, `git stash pop`
-  (the stash is shared by all worktrees), `git worktree remove`/`prune`;
+- git after which work is lost or leaves the machine: `git push` (a `v*` tag is a release),
+  `git checkout`/`restore` (they wipe changes), `git switch -f`/`--discard-changes`,
+  `git branch -D`, `git stash drop`/`clear`, `git clean`, `git worktree remove --force`;
+- writes to GitHub through the plugin: `push_files`, `create_or_update_file`,
+  `merge_pull_request` and the rest — they write in your name past every git rule;
 - editing `~/.claude/settings.json` and hooks: the agent shouldn't be able to expand its own
   permissions;
 - deleting files from PowerShell (`Remove-Item`), stopping processes and scheduled tasks.
@@ -69,7 +73,10 @@ Below is the principle and representative examples, not a full list: that's in
 
 - reading everything (`Read(**/*)`) — minus what's in `deny`;
 - build and tests: `dotnet build/test/format/restore`;
-- read-only git: `status`, `diff`, `log`, `show`, `blame`, `branch`;
+- git that `git reflog` can undo: reading, `add`, `commit`, `reset`, `merge`, `cherry-pick`,
+  `fetch`, `tag`, `switch`, `stash`, `worktree` — and all of it through `git -C`. The dangerous
+  variants of the same commands sit in `ask`/`deny` and win;
+- reading through the GitHub plugin: `get_*`, `list_*`, `search_*`;
 - diagnostics: `tasklist`, `netstat`, `Get-Process`, `docker ps`/`logs`, `tail`, `head`.
 
 A mistake in `allow` is cheaper than one in `deny`: an extra question is annoying, an extra
@@ -84,9 +91,13 @@ permission lets an action through silently.
   `curl.exe` — that needs its own rule.
 - `git push --force*` doesn't catch `git push -f` — two separate rules. On the other hand `*`
   works anywhere in the string: `Bash(mongosh*drop*)`.
-- A rule matches the start of the string: `git -C <folder> push --force` does not match
-  `git push --force*`. In a worktree almost every command goes through `git -C`, so every git deny
-  and ask has a `git -C * …` twin.
+- A rule matches from the start of the string: `git -C <folder> push --force` and
+  `git push origin master --force` do not match `git push --force*`. So the git denies are written
+  as `git*push*--force*`: a false hit (the same words in a commit message) costs one rewording.
+  `allow` and `ask` for git have a `git -C * …` twin: in a worktree almost every command goes
+  through `git -C`.
+- Wrappers (`wsl git`, `bash -c "git …"`, `pwsh -c`) match no `allow` and go to a card or the
+  `auto` mode classifier. They need no rules of their own.
 - An `allow` on a broad prefix lets the destructive variant through too: `git switch*` admits
   `git switch -f`, `git branch*` admits `git branch -D`. `ask` and `deny` beat `allow`, so the
   dangerous variants are listed there separately.
@@ -94,7 +105,8 @@ permission lets an action through silently.
   `Bash(tail*)` will. `Bash(git status)` without an asterisk matches only that exact command
   with no arguments.
 - Compound commands are parsed by parts: `deny` fires if at least one part of `a && b`, `$(…)`,
-  `a; b` matches. For `allow` it's the opposite — every part must be allowed.
+  `a; b` matches. For `allow` it's the opposite — every part must be allowed. Checked on
+  11.10.2026 in both Bash and PowerShell: `git log -1; git stash drop` asked about `drop`.
 - Paths: `//**/.env` — anywhere on the filesystem, `~/…` — from the home folder, `**/.env` —
   only inside the current project. A single leading `/…` is **not** the disk root, but the
   root of the settings source; don't use it.
