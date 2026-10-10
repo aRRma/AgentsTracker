@@ -29,7 +29,9 @@ not enough. Inside is the same result as `dotnet publish`, so everything below a
 the same way: fill in `appsettings.Local.json` next to the exe and run `install --start`.
 
 Archive layout: a folder `AgentsTracker-<tag>-<kind>` with the application and, next to it,
-`install.txt` — a short guide for the user (source — `../install-quickstart.txt`). The
+`install.txt` — a short guide for the user (source — `../install-quickstart.txt`) and
+`claude-settings.example.json` — the agent's permission rules for `~/.claude/settings.json`
+(`claude-permissions.md`, "Moving to Another PC"). The
 application sits in a folder named after the archive so that extracting "here" does not scatter
 a hundred and a half files across the downloads folder, and so the installed folder's name shows
 which version it is.

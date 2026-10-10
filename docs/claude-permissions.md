@@ -80,6 +80,49 @@
 Ошибка в `allow` дешевле, чем в `deny`: лишний вопрос раздражает, лишнее разрешение
 пропускает действие молча.
 
+## Перенос на другой ПК
+
+Правила живут не в шлюзе, а в `~/.claude/settings.json` того пользователя Windows, от которого
+работает шлюз. `install` ставит задачу Планировщика от текущего пользователя — значит, файл
+нужен в его профиле: `%USERPROFILE%\.claude\settings.json`.
+
+1. Войдите под этим пользователем и запустите `claude` один раз — он создаст `~/.claude`.
+2. Файла `settings.json` нет или в нём ничего важного — скопируйте пример целиком. В архиве
+   релиза он лежит рядом с `install.txt`, в исходниках — в `docs\examples\`:
+
+   ```powershell
+   Copy-Item claude-settings.example.json $env:USERPROFILE\.claude\settings.json
+   ```
+
+   Файл уже есть (плагины, `env`, хуки) — не затирайте его, а перенесите из примера только три
+   массива `permissions.allow`, `ask`, `deny`. Совпавшие строки не мешают: списки объединяются.
+3. Прокси — по своей сети: `HTTPS_PROXY` в `env`, `NO_PROXY` обязательно с `127.0.0.1`
+   (раздел выше). В примере прокси нет.
+4. Токены в `env` не кладите: агент читает этот файл без вопроса.
+5. Привычки, которые держат агента на стороне «без вопроса», — в `~/.claude/CLAUDE.md`:
+
+   ```markdown
+   # Git
+
+   - Ветки — через `git switch`, не `git checkout`: `checkout` спрашивает всегда.
+   - Убрать файл из индекса — `git reset -- <файл>`, не `git restore --staged`.
+   - Удалить слитую ветку — `git branch -d`, не `-D`.
+   - git вызывать как `git` — не `git.exe`, не через `wsl`, `bash -c` или `pwsh -c`.
+   - Force push, `reset --hard` и `rebase` запрещены. Вместо rebase — `merge`.
+   ```
+
+6. Проверьте: в Claude Code на этой машине попросите выполнить
+   `git log -1 --grep="push x --force"`. Правильный ответ — отказ («denied»): сработал запрет.
+
+**Docker.** У контейнера свой профиль — том `claude-home` (`/home/app/.claude`). Запишите пример
+туда от пользователя контейнера, чтобы CLI мог потом сам менять файл (включать плагины):
+
+```bash
+docker compose exec -T gateway sh -c "cat > /home/app/.claude/settings.json" < docs/examples/claude-settings.example.json
+```
+
+Правила `PowerShell(...)` и `git.exe` в Linux не нужны, но и не мешают.
+
 ## Ловушки в синтаксисе
 
 - **`Bash(...)` и `PowerShell(...)` — разные инструменты.** Правило `Bash(git push -f*)`

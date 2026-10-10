@@ -83,6 +83,51 @@ Below is the principle and representative examples, not a full list: that's in
 A mistake in `allow` is cheaper than one in `deny`: an extra question is annoying, an extra
 permission lets an action through silently.
 
+## Moving to Another PC
+
+The rules live not in the gateway but in `~/.claude/settings.json` of the Windows user the
+gateway runs as. `install` creates the Task Scheduler task for the current user, so the file
+belongs in that user's profile: `%USERPROFILE%\.claude\settings.json`.
+
+1. Sign in as that user and run `claude` once — it creates `~/.claude`.
+2. No `settings.json`, or nothing important in it — copy the example whole. In a release archive
+   it sits next to `install.txt`, in the sources — in `docs\examples\`:
+
+   ```powershell
+   Copy-Item claude-settings.example.json $env:USERPROFILE\.claude\settings.json
+   ```
+
+   The file already exists (plugins, `env`, hooks) — do not overwrite it; move over only the three
+   arrays `permissions.allow`, `ask`, `deny` from the example. Duplicate lines do no harm: the
+   lists are merged.
+3. Proxy — per your network: `HTTPS_PROXY` in `env`, `NO_PROXY` must include `127.0.0.1`
+   (section above). The example has no proxy.
+4. Do not put tokens in `env`: the agent reads this file without asking.
+5. The habits that keep the agent on the "no question" side go into `~/.claude/CLAUDE.md`:
+
+   ```markdown
+   # Git
+
+   - Ветки — через `git switch`, не `git checkout`: `checkout` спрашивает всегда.
+   - Убрать файл из индекса — `git reset -- <файл>`, не `git restore --staged`.
+   - Удалить слитую ветку — `git branch -d`, не `-D`.
+   - git вызывать как `git` — не `git.exe`, не через `wsl`, `bash -c` или `pwsh -c`.
+   - Force push, `reset --hard` и `rebase` запрещены. Вместо rebase — `merge`.
+   ```
+
+6. Check: in Claude Code on that machine ask it to run `git log -1 --grep="push x --force"`.
+   The right outcome is a refusal ("denied"): the deny rule fired.
+
+**Docker.** The container has its own profile — the `claude-home` volume (`/home/app/.claude`).
+Write the example there as the container's user, so the CLI can later change the file itself
+(enabling plugins):
+
+```bash
+docker compose exec -T gateway sh -c "cat > /home/app/.claude/settings.json" < docs/examples/claude-settings.example.json
+```
+
+The `PowerShell(...)` and `git.exe` rules are not needed on Linux, but do no harm.
+
 ## Syntax Pitfalls
 
 - **`Bash(...)` and `PowerShell(...)` are different tools.** A `Bash(git push -f*)` rule

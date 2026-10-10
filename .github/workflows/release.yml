@@ -73,6 +73,10 @@ jobs:
             Get-Content docs/install-quickstart.txt -Raw |
               Set-Content "stage/install.txt" -Encoding utf8BOM
 
+            # Правила разрешений агента живут в профиле пользователя, а не в шлюзе: без файла
+            # в архиве на новой машине их пришлось бы собирать по документации.
+            Copy-Item docs/examples/claude-settings.example.json "stage/claude-settings.example.json"
+
             Compress-Archive "stage/*" "assets/$name.zip"
             Remove-Item stage -Recurse -Force
           }

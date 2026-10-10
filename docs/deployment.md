@@ -29,7 +29,9 @@
 всё как ниже: заполнить `appsettings.Local.json` рядом с exe и выполнить `install --start`.
 
 Раскладка архива: папка `AgentsTracker-<тег>-<вариант>` с приложением и рядом с ней
-`install.txt` — короткая инструкция для пользователя (исходник — `docs/install-quickstart.txt`).
+`install.txt` — короткая инструкция для пользователя (исходник — `docs/install-quickstart.txt`) и
+`claude-settings.example.json` — правила разрешений агента для `~/.claude/settings.json`
+([claude-permissions.md](claude-permissions.md), «Перенос на другой ПК»).
 Приложение убрано в папку с именем архива, чтобы распаковка «сюда» не рассыпала полторы сотни
 файлов по папке загрузок, а по имени установленной папки было видно версию.
 
