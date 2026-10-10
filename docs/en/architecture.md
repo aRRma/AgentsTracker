@@ -45,6 +45,7 @@ src/AgentsTracker.Gateway/
   Program.cs            data directory, service commands, lists of agents (Gateway:Agent), channels (Gateway:Channel:Type) and features
   Domain/               pure models: GatewayState (state.json), AuditEvent
   Infrastructure/       Configuration (GatewayOptions, ProjectCatalog), State (SessionStore),
+                        Git (GitRepository — the project's branch and worktrees from the .git files),
                         Chat (ChatGatewayService, ChatDispatcher, MarkdownRenderer, StartupNotice —
                         «запущен»/«прерван» after a restart, Dispatch/ — handler contracts),
                         Container.Detected — in a container no autostart is installed, the monitor listens on any,
@@ -248,6 +249,23 @@ question is dropped on «Нет» and on reopening the screen.
 steps (folder → project) in pages of 12. The current project comes first in its group, and after
 a selection the page resets to the first one — otherwise the `▶` marker could end up off-screen.
 
+`GitRepository` — the project's branch and its worktrees for «Статус», the project list, the run
+status, the footer under an answer, the audit (`run.start`) and the monitor. It reads the `.git`
+files itself, with no `git` process: the caption is needed on every tick of the run status. It is
+the branch of the project folder, not "the agent's branch": the agent can move into another worktree
+through absolute paths and the gateway will not see it. Rules not to loosen:
+
+- a file is opened with `FileShare.ReadWrite | FileShare.Delete` and only after its write time or
+  length changed — otherwise the agent's `git checkout` on Windows fails renaming `HEAD.lock`;
+- a UNC path and a network drive are never read: the path in `.git` is written by whoever handed over
+  the project, and a UNC path would make Windows give a foreign server the account's hash;
+- only `ref: refs/heads/<name>` or a SHA is shown, and the class never throws — a failed caption
+  must not cost the agent's answer.
+
+The caption (`GitHead.Label`) is cut to 40 characters, and escaping it is the caller's job: git
+allows `<`, `&`, `_` and a backtick in a branch name. The footer compares the branch at the start
+and at the end of the run and shows `master → feature` if the agent switched it itself.
+
 ## State, secrets, configuration layers
 
 `%LOCALAPPDATA%\AgentsTracker\` (`AppPaths.DataDirectory`, ACL — the owner and SYSTEM):
@@ -311,7 +329,8 @@ answer would vanish silently. On a 429 in the middle of a multi-part answer
 the agent's file in `ApprovalBroker` — both through `RateLimitRetry.OnceAsync`
 (`Channels.Abstractions`), one shared ceiling. Sums, tokens and time — `DisplayFormat`.
 
-The footer under an answer (`ChatWorker.Footer`): the session id (or «💬 вопрос»), the model that
+The footer under an answer (`ChatWorker.Footer`): the session id (or «💬 вопрос»), the project's
+branch in a code span (`🌿`, see `GitRepository` above), the model that
 **actually** answered — the `message.model` of the last main-thread turn in the stream (not the one
 with the most output tokens in `modelUsage`: a sonnet subagent easily outwrites the session itself;
 that is only the fallback when the stream named no model), shortened to
