@@ -40,6 +40,12 @@ public sealed record RunUsage
     /// неё или по ключу API. null — запуск ничего не записал в кэш, срок не узнать.
     /// </summary>
     public TimeSpan? CacheTtl { get; init; }
+
+    /// <summary>
+    /// Сколько первый запрос основной ветки прочитал из кэша. Меньше половины прошлого контекста —
+    /// промах: сессия записала себя заново. null — модель не вызывалась.
+    /// </summary>
+    public long? FirstCacheRead { get; init; }
 }
 
 public sealed record ModelRunUsage(

@@ -205,7 +205,8 @@ public sealed class SessionStore
     /// Расход запуска: статистика, а при известном id — ещё и сама сессия, чтобы к ней
     /// можно было вернуться из меню.
     /// </summary>
-    public void RecordRun(string projectPath, string prompt, string? sessionId, RunUsage usage)
+    /// <param name="cacheMiss">Запуск записал сессию в кэш заново (<see cref="CacheGuard.Miss"/>).</param>
+    public void RecordRun(string projectPath, string prompt, string? sessionId, RunUsage usage, bool cacheMiss = false)
     {
         var project = ProjectCatalog.Normalize(projectPath);
         var now = DateTimeOffset.Now;
@@ -215,7 +216,14 @@ public sealed class SessionStore
             s.LastActivityUtc = now.ToUniversalTime();
             s.Usage.SinceUtc ??= now;
             s.Usage.Total.Add(usage);
-            Bucket(s.Usage.ByDay, DayKey(now)).Add(usage);
+            var day = Bucket(s.Usage.ByDay, DayKey(now));
+            day.Add(usage);
+
+            if (cacheMiss)
+            {
+                s.Usage.Total.CacheMisses++;
+                day.CacheMisses++;
+            }
 
             foreach (var model in usage.Models)
                 Bucket(s.Usage.ByModel, model.Model).Add(model);

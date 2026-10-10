@@ -12,6 +12,21 @@ public static class CacheGuard
     /// </summary>
     public const long MinContextTokens = 100_000;
 
+    /// <summary>
+    /// С какого прошлого контекста считать промахи. Инструменты и системный промпт — около 20k,
+    /// они общие у всех сессий одной модели; меньше — промахиваться почти нечем.
+    /// </summary>
+    public const long MissContextTokens = 20_000;
+
+    /// <summary>
+    /// Промах: первый запрос продолжения прочитал из кэша меньше половины прошлого контекста —
+    /// сессия записала себя заново (пауза дольше срока, смена модели или режима).
+    /// </summary>
+    /// <param name="previousContext">Контекст сессии после прошлого запуска.</param>
+    /// <param name="firstCacheRead">Чтение из кэша первым запросом этого запуска.</param>
+    public static bool Miss(long previousContext, long? firstCacheRead) =>
+        previousContext >= MissContextTokens && firstCacheRead is { } read && read < previousContext / 2;
+
     /// <summary>Режим со своим кэшем; null — режим из группы с общим кэшем.</summary>
     public static string? ModeScope(AgentCapabilities capabilities, string mode) =>
         capabilities.OwnCacheModes?.Contains(mode, StringComparer.Ordinal) == true ? mode : null;

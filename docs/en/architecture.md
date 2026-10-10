@@ -222,6 +222,12 @@ a typed `/model` or `/mode` is a decision already, so it runs at once (`AgentScr
 warning is appended to the reply. `CacheGuard.Mismatch` adds «следующий запуск запишет кэш заново»
 to the cache line when the menu selection already differs from the cache.
 
+Misses are counted, not guessed: `RunUsage.FirstCacheRead` is what the first main-branch request of a
+run read from the cache, and `CacheGuard.Miss` calls a continued task a miss when that is under half of
+the session's previous context (from 20k up — below that only the shared tools and system prompt are
+at stake). `UsageTotals.CacheMisses` goes to `/usage` next to the share read from the cache, and to
+`/api/snapshot` in `usage.total` and `usage.byDay`.
+
 «Сжать» and «Новая сессия» on that screen go through `PendingConfirmations`: the first press only
 asks, «Да» works only for the same action, the same session and within 2 minutes; the pending
 question is dropped on «Нет» and on reopening the screen.

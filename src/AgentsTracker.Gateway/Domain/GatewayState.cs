@@ -192,6 +192,10 @@ public sealed class UsageTotals
     public long OutputTokens { get; set; }
     public long CacheReadTokens { get; set; }
     public long CacheWriteTokens { get; set; }
+
+    /// <summary>Запуски, которые записали сессию в кэш заново вместо чтения (правило — <c>CacheGuard.Miss</c>).</summary>
+    public int CacheMisses { get; set; }
+
     public long DurationMs { get; set; }
 
     public void Add(RunUsage usage)

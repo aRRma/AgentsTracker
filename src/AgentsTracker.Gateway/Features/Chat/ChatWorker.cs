@@ -265,7 +265,12 @@ public sealed class ChatWorker(
         // Разбивка контекста модель не звала: в статистике она была бы запуском без расхода.
         if (result.Usage is { } usage && kind != AgentRunKind.ContextReport)
         {
-            store.RecordRun(project, prompt.Text, result.SessionId, usage);
+            // Промах считаем только у продолжения задачи: сжатие переписывает сессию нарочно,
+            // а новой сессии читать нечего. Прошлый контекст берём до RecordContext ниже.
+            var previous = kind == AgentRunKind.Task && session is { } resumed
+                ? store.SessionsFor(project).FirstOrDefault(s => string.Equals(s.Id, resumed, StringComparison.Ordinal))?.ContextTokens ?? 0
+                : 0;
+            store.RecordRun(project, prompt.Text, result.SessionId, usage, CacheGuard.Miss(previous, usage.FirstCacheRead));
             store.RecordModelVersion(model, usage.PrimaryModel);
         }
 

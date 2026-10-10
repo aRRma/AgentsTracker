@@ -17,10 +17,11 @@ public static class ClaudeStreamEvent
     /// <param name="MainInput">
     /// Ввод основной ветки (результаты инструментов): следующий запрос к модели начнётся после него.
     /// </param>
+    /// <param name="CacheRead">Сколько токенов этот ход основной ветки прочитал из кэша; null — ход не основной.</param>
     public sealed record Line(
         bool IsJson, bool IsResult, IReadOnlyList<RunActivity> ToolCalls,
         long? ContextTokens = null, ContextCompaction? Compaction = null, string? MainModel = null,
-        TimeSpan? CacheTtl = null, bool MainInput = false)
+        TimeSpan? CacheTtl = null, bool MainInput = false, long? CacheRead = null)
     {
         public static readonly Line Text = new(false, false, []);
         public static readonly Line Other = new(true, false, []);
@@ -39,7 +40,7 @@ public static class ClaudeStreamEvent
         {
             "result" => Line.Result,
             "assistant" => new Line(true, false, ToolCalls(root), ContextTokens(root), MainModel: MainModel(root),
-                CacheTtl: CacheTtl(root)),
+                CacheTtl: CacheTtl(root), CacheRead: CacheRead(root)),
             "system" when String(root, "subtype") == "compact_boundary" => new Line(true, false, [], Compaction: Compaction(root)),
             "user" when !Nested(root) => new Line(true, false, [], MainInput: true),
             _ => Line.Other,
@@ -63,6 +64,12 @@ public static class ClaudeStreamEvent
         if (Number(creation, "ephemeral_5m_input_tokens") > 0) return TimeSpan.FromMinutes(5);
         return null;
     }
+
+    private static long? CacheRead(JsonElement root) =>
+        TryMainTurn(root, out var message, out _)
+        && message.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object
+            ? Number(usage, "cache_read_input_tokens")
+            : null;
 
     /// <summary>
     /// parent_tool_use_id лежит в корне события (проверено на CLI 2.1.261): у шага сабагента

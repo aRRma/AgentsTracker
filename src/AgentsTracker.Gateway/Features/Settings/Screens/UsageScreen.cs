@@ -1,3 +1,4 @@
+using System.Globalization;
 using AgentsTracker.Gateway.Infrastructure.Audit;
 using AgentsTracker.Gateway.Infrastructure.Chat;
 using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
@@ -54,7 +55,8 @@ public sealed class UsageScreen(SessionStore store, IAgentLimits limits, IAuditL
             Время в CLI: <b>{E(TimeSpan.FromMilliseconds(total.DurationMs).Elapsed)}</b>
 
             Токены: ввод {E(total.InputTokens.Tokens)} · вывод {E(total.OutputTokens.Tokens)}
-            Кэш: чтение {E(total.CacheReadTokens.Tokens)} · запись {E(total.CacheWriteTokens.Tokens)}
+            Кэш: чтение {E(total.CacheReadTokens.Tokens)} · запись {E(total.CacheWriteTokens.Tokens)}{CacheShare(total)}
+            Промахов кэша: <b>{total.CacheMisses}</b> <i>— сессия записала себя заново: пауза дольше срока кэша, смена модели или режима</i>
 
             <b>По дням</b>
             {(days.Any() ? string.Join("\n", days) : "<i>пусто</i>")}
@@ -64,5 +66,18 @@ public sealed class UsageScreen(SessionStore store, IAgentLimits limits, IAuditL
             """;
 
         return (html, new Keyboard([[Button("♻️ Сбросить", "usage:reset")], [BackButton]]));
+    }
+
+    /// <summary>
+    /// Доля входа, прочитанная из кэша. Главная цифра экономии: чтение в разы дешевле записи,
+    /// и падение доли видно раньше, чем расход окна.
+    /// </summary>
+    private static string CacheShare(UsageTotals total)
+    {
+        var input = total.InputTokens + total.CacheReadTokens + total.CacheWriteTokens;
+        if (input == 0) return "";
+
+        var share = LimitMath.Percent(total.CacheReadTokens / (decimal)input);
+        return $" · из кэша {share.ToString(CultureInfo.InvariantCulture)}%";
     }
 }

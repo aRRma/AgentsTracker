@@ -145,7 +145,7 @@ public sealed class MonitorModule : IFeatureModule
         {
             state.Usage.SinceUtc,
             state.Usage.Total,
-            ByDay = state.Usage.ByDay.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => new { Day = p.Key, p.Value.Runs, p.Value.Turns, p.Value.InputTokens, p.Value.OutputTokens, p.Value.CacheReadTokens, p.Value.CacheWriteTokens, p.Value.DurationMs }),
+            ByDay = state.Usage.ByDay.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => new { Day = p.Key, p.Value.Runs, p.Value.Turns, p.Value.InputTokens, p.Value.OutputTokens, p.Value.CacheReadTokens, p.Value.CacheWriteTokens, p.Value.CacheMisses, p.Value.DurationMs }),
             ByModel = state.Usage.ByModel.OrderByDescending(p => p.Value.Runs).Select(p => new { Model = p.Key, p.Value.Runs, p.Value.InputTokens, p.Value.OutputTokens, p.Value.CacheReadTokens, p.Value.CacheWriteTokens }),
             Skills = state.SkillUsage.OrderByDescending(p => p.Value).Select(p => new { Command = p.Key, Count = p.Value }),
             Sessions = state.Sessions.OrderByDescending(s => s.LastActivityUtc).Select(s => new

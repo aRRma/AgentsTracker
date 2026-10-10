@@ -142,6 +142,7 @@ public sealed class ClaudeBackend(
                     ContextTokens = output.Compaction?.After ?? output.ContextTokens ?? 0,
                     LastRequestUtc = output.LastRequestUtc,
                     CacheTtl = output.CacheTtl,
+                    FirstCacheRead = output.FirstCacheRead,
                 }
                 : null,
             Compaction = output.Compaction,
@@ -185,9 +186,10 @@ public sealed class ClaudeBackend(
     /// <param name="MainModel">Модель последнего хода основной ветки; null — ходов не было.</param>
     /// <param name="LastRequestUtc">Начало последнего запроса основной ветки; null — после него было сжатие или ходов не было.</param>
     /// <param name="CacheTtl">Срок последней записи основной ветки в кэш; null — записей не было.</param>
+    /// <param name="FirstCacheRead">Чтение из кэша первого запроса основной ветки; null — ходов не было.</param>
     private sealed record StreamOutput(
         string? ResultLine, string Noise, long? ContextTokens, ContextCompaction? Compaction, string? MainModel,
-        DateTimeOffset? LastRequestUtc, TimeSpan? CacheTtl);
+        DateTimeOffset? LastRequestUtc, TimeSpan? CacheTtl, long? FirstCacheRead);
 
     /// <summary>
     /// Читает stdout построчно: вызовы инструментов отдаёт наблюдателю, остальные события
@@ -210,6 +212,7 @@ public sealed class ClaudeBackend(
         var requestStart = started;
         DateTimeOffset? lastRequest = null;
         TimeSpan? cacheTtl = null;
+        long? firstCacheRead = null;
 
         while (await stdout.ReadLineAsync(CancellationToken.None) is { } line)
         {
@@ -254,6 +257,7 @@ public sealed class ClaudeBackend(
                 mainModel = model;
                 lastRequest = requestStart;
                 if (parsed.CacheTtl is { } ttl) cacheTtl = ttl;
+                firstCacheRead ??= parsed.CacheRead;
             }
 
             foreach (var activity in parsed.ToolCalls)
@@ -267,7 +271,7 @@ public sealed class ClaudeBackend(
 
         if (resultLine is null && lastEvent is not null) noise.AppendLine(lastEvent);
 
-        return new StreamOutput(resultLine, noise.ToString().TrimEnd(), context, compaction, mainModel, lastRequest, cacheTtl);
+        return new StreamOutput(resultLine, noise.ToString().TrimEnd(), context, compaction, mainModel, lastRequest, cacheTtl, firstCacheRead);
     }
 
     private IEnumerable<string> BuildArguments(
