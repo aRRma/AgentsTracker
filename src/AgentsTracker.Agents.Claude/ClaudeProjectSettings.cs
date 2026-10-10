@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace AgentsTracker.Agents.Claude;
 
@@ -12,8 +13,10 @@ namespace AgentsTracker.Agents.Claude;
 /// </summary>
 internal static class ClaudeProjectSettings
 {
+    private const string LocalSettings = ".claude/settings.local.json";
+
     /// <summary>Файлы, которые CLI читает из проекта и по которым выполняет команды.</summary>
-    private static readonly string[] Files = [".claude/settings.json", ".claude/settings.local.json", ".mcp.json"];
+    private static readonly string[] Files = [".claude/settings.json", LocalSettings, ".mcp.json"];
 
     /// <summary>
     /// Папки, содержимое которых агент запускает или которыми расширяет свои права: скилл
@@ -25,13 +28,35 @@ internal static class ClaudeProjectSettings
     /// <summary>Ключи настроек, значение которых — команда оболочки.</summary>
     private static readonly string[] CommandKeys = ["apiKeyHelper", "awsAuthRefresh", "awsCredentialExport", "otelHeadersHelper"];
 
-    private const int MaxFiles = 2000;
+    /// <summary>
+    /// Что рождается само при работе скриптов, а не приходит с репозиторием: без исключения
+    /// каждый запуск Python-хука менял бы отпечаток, и доверие спрашивалось бы заново всякий раз.
+    /// </summary>
+    private static readonly string[] ArtifactFolders = ["__pycache__", "node_modules"];
+
+    private static readonly string[] ArtifactExtensions = [".pyc", ".log"];
+
+    private const int MaxFilesPerFolder = 2000;
+
+    /// <summary>
+    /// Файл из папок больше этого — в отпечаток размером и временем: читать мегабайты ради
+    /// скилла незачем. Файлы настроек читаются всегда: раздутый пробелами settings.json иначе
+    /// прятал бы хук от разбора.
+    /// </summary>
     private const long MaxHashedBytes = 1024 * 1024;
+
+    private const long MaxSettingsBytes = 16 * 1024 * 1024;
     private const int ItemLength = 160;
+
+    /// <summary>Сколько правил allow показать поимённо: дальше они сворачиваются в одну строку.</summary>
+    private const int RulesListed = 3;
 
     public static ProjectSettings? Inspect(string projectPath)
     {
         var found = new List<(string Relative, string Full)>();
+        var dangerous = new List<string>();
+        var rules = new List<string>();
+        var other = new List<string>();
 
         foreach (var relative in Files)
         {
@@ -39,56 +64,67 @@ internal static class ClaudeProjectSettings
             if (File.Exists(full)) found.Add((relative, full));
         }
 
-        var folderFiles = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var folder in Folders)
         {
-            var count = 0;
-            foreach (var full in Walk(Path.Combine(projectPath, folder)))
-            {
-                if (found.Count >= MaxFiles) break;
-                found.Add((Path.GetRelativePath(projectPath, full).Replace('\\', '/'), full));
-                count++;
-            }
+            var walk = Walk(Path.Combine(projectPath, folder));
+            foreach (var full in walk.Files) found.Add((Relative(projectPath, full), full));
 
-            if (count > 0) folderFiles[folder] = count;
+            if (walk.Files.Count > 0) other.Add($"{FolderCaption(folder)} (файлов: {walk.Files.Count})");
+            if (walk.Truncated) other.Add($"{FolderCaption(folder)}: файлов больше {MaxFilesPerFolder} — отпечаток по первым");
+
+            // Ссылка ведёт за пределы проверки: содержимое цели не разобрано и в отпечаток не вошло.
+            foreach (var link in walk.LinkedFolders)
+            {
+                var relative = Relative(projectPath, link);
+                found.Add((relative, link));
+                dangerous.Add($"{relative}: ссылка на другую папку — не проверена, посмотрите вручную");
+            }
         }
 
         if (found.Count == 0) return null;
 
-        var items = new List<string>();
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
 
         foreach (var (relative, full) in found.OrderBy(f => f.Relative, StringComparer.Ordinal))
         {
             hash.AppendData(Encoding.UTF8.GetBytes(relative + "\0"));
+            var settings = Files.Contains(relative, StringComparer.Ordinal);
 
-            byte[]? content = null;
             try
             {
+                if (Directory.Exists(full))
+                {
+                    hash.AppendData(Encoding.UTF8.GetBytes($"link:{new DirectoryInfo(full).LinkTarget}\0"));
+                    continue;
+                }
+
                 var info = new FileInfo(full);
-                // Большой файл — по размеру и времени: читать мегабайты ради скилла незачем,
-                // а замену всё равно видно по этим двум полям.
-                if (info.Length > MaxHashedBytes)
+                if (info.Length > (settings ? MaxSettingsBytes : MaxHashedBytes))
+                {
                     hash.AppendData(Encoding.UTF8.GetBytes($"{info.Length}:{info.LastWriteTimeUtc.Ticks}\0"));
-                else
-                    hash.AppendData(content = File.ReadAllBytes(full));
+                    if (settings) dangerous.Add($"{relative}: больше {MaxSettingsBytes / 1024 / 1024} МБ — не разобран, проверьте вручную");
+                    continue;
+                }
+
+                var content = File.ReadAllBytes(full);
+                hash.AppendData(relative == LocalSettings ? WithoutAllowRules(content) : content);
+                if (settings) Describe(relative, content, dangerous, rules, other);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 // Нечитаемый файл не повод пропустить проверку: агент-то его, возможно, прочтёт.
                 hash.AppendData(Encoding.UTF8.GetBytes("unreadable\0"));
-                items.Add($"{relative}: не прочитан ({ex.Message}) — проверьте вручную");
-                continue;
+                dangerous.Add($"{relative}: не прочитан ({ex.Message}) — проверьте вручную");
             }
-
-            if (content is not null && Files.Contains(relative, StringComparer.Ordinal))
-                Describe(relative, content, items);
         }
 
-        foreach (var (folder, count) in folderFiles)
-            items.Add($"{FolderCaption(folder)} (файлов: {count})");
-
-        if (found.Count >= MaxFiles) items.Add($"файлов больше {MaxFiles} — отпечаток по первым");
+        // Опасное первым: карточка показывает начало списка, и хук не должен уйти в «и ещё N»
+        // за дюжиной безобидных правил.
+        var items = new List<string>(dangerous);
+        items.AddRange(rules.Count <= RulesListed
+            ? rules.Select(r => $"правило «всегда»: {r}")
+            : [$"правила «всегда» ({rules.Count}): {string.Join(", ", rules)}"]);
+        items.AddRange(other);
 
         // Файл есть, а исполняемого в нём ничего: всё равно спрашиваем — список ключей CLI растёт
         // от версии к версии, и «ничего опасного» по сегодняшнему списку завтра может стать неправдой.
@@ -97,16 +133,46 @@ internal static class ClaudeProjectSettings
         return new ProjectSettings(Convert.ToHexStringLower(hash.GetHashAndReset())[..16], [.. items.Select(i => Text.Clip(i, ItemLength))]);
     }
 
-    private static void Describe(string relative, byte[] content, List<string> items)
+    private static string Relative(string projectPath, string full) =>
+        Path.GetRelativePath(projectPath, full).Replace('\\', '/');
+
+    /// <summary>
+    /// <c>settings.local.json</c> для отпечатка — без <c>permissions.allow</c>: туда CLI сам
+    /// дописывает правило по кнопке «Всегда», и после каждого нажатия доверие спрашивалось бы
+    /// снова. Правило «всегда» человек уже одобрил на карточке; хуки и всё остальное в файле
+    /// по-прежнему меняют отпечаток.
+    /// </summary>
+    private static byte[] WithoutAllowRules(byte[] content)
+    {
+        try
+        {
+            if (JsonNode.Parse(content, documentOptions: ParseOptions) is JsonObject root
+                && root["permissions"] is JsonObject permissions)
+            {
+                permissions.Remove("allow");
+                return Encoding.UTF8.GetBytes(root.ToJsonString());
+            }
+        }
+        catch (JsonException)
+        {
+            // Не разобран — в отпечаток как есть.
+        }
+
+        return content;
+    }
+
+    private static readonly JsonDocumentOptions ParseOptions = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
+
+    private static void Describe(string relative, byte[] content, List<string> dangerous, List<string> rules, List<string> other)
     {
         JsonDocument document;
         try
         {
-            document = JsonDocument.Parse(content, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+            document = JsonDocument.Parse(content, ParseOptions);
         }
         catch (JsonException)
         {
-            items.Add($"{relative}: не разобран как JSON — проверьте вручную");
+            dangerous.Add($"{relative}: не разобран как JSON — проверьте вручную");
             return;
         }
 
@@ -117,7 +183,7 @@ internal static class ClaudeProjectSettings
 
             if (relative == ".mcp.json")
             {
-                Servers(root, items);
+                Servers(root, dangerous);
                 return;
             }
 
@@ -126,46 +192,43 @@ internal static class ClaudeProjectSettings
                 foreach (var hookEvent in hooks.EnumerateObject())
                 {
                     foreach (var command in HookCommands(hookEvent.Value))
-                        items.Add($"хук {hookEvent.Name}: {command}");
+                        dangerous.Add($"хук {hookEvent.Name}: {command}");
                 }
             }
-
-            if (root.TryGetProperty("permissions", out var permissions) && permissions.ValueKind == JsonValueKind.Object
-                && permissions.TryGetProperty("allow", out var allow) && allow.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var rule in allow.EnumerateArray().Where(r => r.ValueKind == JsonValueKind.String))
-                    items.Add($"правило «всегда»: {rule.GetString()}");
-            }
-
-            if (root.TryGetProperty("mcpServers", out _)) Servers(root, items);
-
-            if (root.TryGetProperty("enableAllProjectMcpServers", out var all) && all.ValueKind == JsonValueKind.True)
-                items.Add("все MCP-серверы проекта включены без вопроса");
-
-            if (root.TryGetProperty("enabledMcpjsonServers", out var enabled) && enabled.ValueKind == JsonValueKind.Array)
-                items.Add($"включены MCP-серверы: {string.Join(", ", enabled.EnumerateArray().Select(e => e.ToString()))}");
 
             foreach (var key in CommandKeys)
             {
                 if (root.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String)
-                    items.Add($"команда {key}: {value.GetString()}");
+                    dangerous.Add($"команда {key}: {value.GetString()}");
             }
 
             if (root.TryGetProperty("statusLine", out var status) && status.ValueKind == JsonValueKind.Object
                 && status.TryGetProperty("command", out var statusCommand))
-                items.Add($"команда statusLine: {statusCommand}");
+                dangerous.Add($"команда statusLine: {statusCommand}");
+
+            if (root.TryGetProperty("mcpServers", out _)) Servers(root, dangerous);
+
+            if (root.TryGetProperty("enableAllProjectMcpServers", out var all) && all.ValueKind == JsonValueKind.True)
+                dangerous.Add("все MCP-серверы проекта включены без вопроса");
+
+            if (root.TryGetProperty("enabledMcpjsonServers", out var enabled) && enabled.ValueKind == JsonValueKind.Array)
+                dangerous.Add($"включены MCP-серверы: {string.Join(", ", enabled.EnumerateArray().Select(e => e.ToString()))}");
+
+            if (root.TryGetProperty("permissions", out var permissions) && permissions.ValueKind == JsonValueKind.Object
+                && permissions.TryGetProperty("allow", out var allow) && allow.ValueKind == JsonValueKind.Array)
+                rules.AddRange(allow.EnumerateArray().Where(r => r.ValueKind == JsonValueKind.String).Select(r => r.GetString()!));
 
             // Значения переменных не показываем: там бывают ключи, а для решения хватает имён.
             if (root.TryGetProperty("env", out var env) && env.ValueKind == JsonValueKind.Object)
             {
                 var names = env.EnumerateObject().Select(p => p.Name).ToList();
-                if (names.Count > 0) items.Add($"переменные окружения: {string.Join(", ", names)}");
+                if (names.Count > 0) other.Add($"переменные окружения: {string.Join(", ", names)}");
             }
 
             if (root.TryGetProperty("enabledPlugins", out var plugins) && plugins.ValueKind == JsonValueKind.Object)
             {
                 var names = plugins.EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.True).Select(p => p.Name).ToList();
-                if (names.Count > 0) items.Add($"плагины: {string.Join(", ", names)}");
+                if (names.Count > 0) other.Add($"плагины: {string.Join(", ", names)}");
             }
         }
     }
@@ -220,27 +283,47 @@ internal static class ClaudeProjectSettings
         _ => "скрипты хуков",
     };
 
-    /// <summary>
-    /// Файлы папки вглубь, без перехода по ссылкам: junction внутри <c>.claude</c> увёл бы обход
-    /// в чужое дерево, а то и по кругу. Список целиком, а не ленивый: перечисление бросает
-    /// по ходу, а не при создании.
-    /// </summary>
-    private static List<string> Walk(string root)
-    {
-        if (!Directory.Exists(root)) return [];
+    private sealed record Walked(List<string> Files, List<string> LinkedFolders, bool Truncated);
 
-        try
+    /// <summary>
+    /// Файлы папки вглубь. Ссылку на папку не обходим — junction увёл бы обход в чужое дерево,
+    /// а то и по кругу, — но и не молчим о ней: она становится пунктом карточки. Ссылка на файл
+    /// читается как файл: её содержимое и есть то, что выполнит агент.
+    /// </summary>
+    private static Walked Walk(string root)
+    {
+        var walked = new Walked([], [], false);
+        if (!Directory.Exists(root)) return walked;
+
+        var pending = new Stack<string>();
+        pending.Push(root);
+
+        while (pending.Count > 0)
         {
-            return [.. Directory.EnumerateFiles(root, "*", new EnumerationOptions
+            var directory = pending.Pop();
+            try
             {
-                RecurseSubdirectories = true,
-                AttributesToSkip = FileAttributes.ReparsePoint,
-                IgnoreInaccessible = true,
-            }).Take(MaxFiles)];
+                foreach (var file in Directory.EnumerateFiles(directory))
+                {
+                    if (ArtifactExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase)) continue;
+                    if (walked.Files.Count >= MaxFilesPerFolder) return walked with { Truncated = true };
+                    walked.Files.Add(file);
+                }
+
+                foreach (var child in Directory.EnumerateDirectories(directory))
+                {
+                    if (ArtifactFolders.Contains(Path.GetFileName(child), StringComparer.OrdinalIgnoreCase)) continue;
+
+                    if (new DirectoryInfo(child).Attributes.HasFlag(FileAttributes.ReparsePoint)) walked.LinkedFolders.Add(child);
+                    else pending.Push(child);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Недоступная вложенная папка: остальное всё равно в отпечатке.
+            }
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return [];
-        }
+
+        return walked;
     }
 }

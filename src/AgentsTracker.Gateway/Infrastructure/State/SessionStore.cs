@@ -634,8 +634,10 @@ public sealed class SessionStore
 
             error = new JsonException("state.json пуст");
         }
-        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException or NotSupportedException)
+        catch (Exception ex)
         {
+            // Любое: null вместо списка или ключи, различные только регистром, роняют Rehydrate,
+            // а исключение из конструктора хранилища не дало бы шлюзу стартовать вовсе.
             error = ex;
         }
 

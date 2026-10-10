@@ -308,7 +308,10 @@ public sealed class ClaudeBackend(
 
         public void Feed(string line)
         {
-            if (line.Length == 0) return;
+            // Без замка: после закрытия сюда идёт вывод фонового процесса, иногда сутками, и
+            // разбирать его JSON ради того, чтобы выбросить, незачем. Опоздавшую строку отсечёт
+            // проверка под замком.
+            if (line.Length == 0 || Volatile.Read(ref _closed)) return;
 
             var parsed = ClaudeStreamEvent.Classify(line);
 

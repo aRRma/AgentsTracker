@@ -76,7 +76,7 @@ public static partial class Text
 
     /// <summary>Ключ командной строки: <c>--token abc</c>, <c>--api-key "abc"</c>.</summary>
     [GeneratedRegex(
-        @"(?<head>--?[\w-]*(?:token|secret|passw(?:or)?d|api-?key)[\w-]*\s+)(?<quote>[""']?)[^\s""')]+",
+        @"(?<head>(?<![\w-])--?[\w-]*(?:token|secret|passw(?:or)?d|api-?key)[\w-]*\s+)(?<quote>[""']?)[^\s""')]+",
         RegexOptions.IgnoreCase)]
     private static partial Regex SecretFlag();
 

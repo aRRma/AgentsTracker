@@ -32,7 +32,7 @@ public sealed class ProjectTrustGate(
 
         var name = Path.GetFileName(project.TrimEnd('\\', '/'));
         var summary = $"{name}: пунктов {settings.Items.Count}, отпечаток {settings.Fingerprint[..8]}";
-        logger.LogInformation("Спрашиваю доверие к проекту {Project}: {Items}", project, string.Join("; ", settings.Items));
+        logger.LogInformation("Спрашиваю доверие к проекту {Project}: {Items}", project, Text.Redact(string.Join("; ", settings.Items)));
 
         // Карточке нужен запуск: по нему брокер находит чат и снимает её по /stop.
         var scope = new RunScope(Guid.NewGuid().ToString("N"), chat, replyTo, project, null);
@@ -69,17 +69,26 @@ public sealed class ProjectTrustGate(
         }
     }
 
-    private static string Card(string name, ProjectSettings settings)
+    private string Card(string name, ProjectSettings settings)
     {
         var card = new StringBuilder()
             .Append("🛡 <b>Доверять проекту ").Append(ChatHtml.Escape(name)).Append("?</b>\n\n")
             .Append("В проекте лежат настройки агента. Он выполнит их сам, без карточек подтверждения:\n");
 
+        // Предел по длине, а не только по числу: экранирование раздувает «&» и «<» впятеро, и
+        // карточка сверх лимита канала не ушла бы вовсе — задача упала бы с невнятной ошибкой.
+        var budget = channel.Limits.MessageLength - 600;
+        var shown = 0;
         foreach (var item in settings.Items.Take(ItemsShown))
-            card.Append("• <code>").Append(ChatHtml.Escape(item)).Append("</code>\n");
+        {
+            var line = $"• <code>{ChatHtml.Escape(item)}</code>\n";
+            if (card.Length + line.Length > budget) break;
+            card.Append(line);
+            shown++;
+        }
 
-        if (settings.Items.Count > ItemsShown)
-            card.Append("• и ещё ").Append(settings.Items.Count - ItemsShown).Append('\n');
+        if (settings.Items.Count > shown)
+            card.Append("• и ещё ").Append(settings.Items.Count - shown).Append('\n');
 
         return card
             .Append("\nНе узнаёте эти команды или проект не ваш — отклоните. ")

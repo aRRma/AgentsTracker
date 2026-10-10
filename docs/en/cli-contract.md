@@ -79,6 +79,15 @@ The host asks instead, before the run: `IAgentBackend.InspectProject` (for Claud
 and gives a SHA-256 fingerprint of all of them; `ProjectTrustGate` shows the «Доверять проекту?»
 card and keeps the fingerprint in `GatewayState.TrustedProjects`. Any change of those files changes
 the fingerprint, and the card comes again. A вопрос is not checked: it runs in an empty temp folder.
+
+What keeps the fingerprint honest and stable: settings files are always parsed (up to 16 MB —
+a `settings.json` padded with spaces must not hide its hook; above that it is an item «проверьте
+вручную»); hooks, command keys and MCP servers come first on the card and `allow` rules fold into
+one line, so a hook never drops into «и ещё N»; `permissions.allow` of `settings.local.json` is
+left out of the fingerprint — the CLI writes there on «Всегда», which the user approved on a card —
+while a hook in that file still counts; `__pycache__`, `node_modules`, `.pyc` and `.log` inside the
+folders are skipped; a linked folder is not followed but becomes an item; each folder has its own
+cap of 2000 files.
 After a CLI update, recheck the trust skip with the same temp-folder run.
 
 ### Waiting for a response

@@ -149,6 +149,20 @@ public sealed class ChatWorker(
 
         if (!question) monitor.Dequeued();
 
+        // Доверие — первым: карточка ждёт до четверти часа, и модель, лимит и режим, посчитанные
+        // до неё, к запуску устарели бы. Вопрос идёт в пустой временной папке — настроек агента
+        // там нет. Проект задачи проверяем снова после карточки: пока она ждала, /project мог
+        // смениться, а доверие спрашивали про прежний.
+        var project = question ? QuestionDirectory() : store.ProjectPath;
+        while (!question)
+        {
+            if (!await trust.EnsureAsync(prompt.Chat, prompt.ReplyTo, project, stoppingToken)) return;
+
+            var current = store.ProjectPath;
+            if (ProjectCatalog.Same(current, project)) break;
+            project = current;
+        }
+
         // Вопрос идёт своей моделью из конфига, а не выбранной в меню: ради него и заведён
         // отдельный запуск — не тратить лимит тяжёлой модели на простой ответ.
         var model = question ? options.Value.Question.Model : store.EffectiveModel;
@@ -166,19 +180,6 @@ public sealed class ChatWorker(
             await SendPlainAsync(prompt.Chat, exhausted, prompt.ReplyTo, stoppingToken);
             await DropQueueAsync(lane, prompt.Chat, stoppingToken);
             return;
-        }
-
-        // Вопрос идёт в пустой временной папке — настроек агента там нет. Проект задачи проверяем
-        // снова после карточки доверия: пока она ждала, /project мог смениться, а доверие
-        // спрашивали про прежний.
-        var project = question ? QuestionDirectory() : store.ProjectPath;
-        while (!question)
-        {
-            if (!await trust.EnsureAsync(prompt.Chat, prompt.ReplyTo, project, stoppingToken)) return;
-
-            var current = store.ProjectPath;
-            if (ProjectCatalog.Same(current, project)) break;
-            project = current;
         }
 
         var session = question ? null : store.SessionId;

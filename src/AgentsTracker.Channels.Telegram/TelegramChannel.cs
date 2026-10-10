@@ -92,6 +92,12 @@ public sealed class TelegramChannel(
         {
             throw Translate(ex);
         }
+        catch (ArgumentException ex)
+        {
+            // Токен не той формы: клиент не создаётся вовсе. Это отказ в токене, а не сбой сети —
+            // иначе хост ждал бы связи без конца вместо выхода.
+            throw new ChannelRequestException(ex.Message, ChannelFailure.Unauthorized, inner: ex);
+        }
     }
 
     // Эмодзи уходит в описание: иконок у команд Bot API нет, а имя — только латиница.
