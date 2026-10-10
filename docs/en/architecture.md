@@ -212,6 +212,16 @@ returns the value the answer's footer prints as «🧊 кэш до 15:42» — a
 the message never changes. `ContextScreen.Cache` is the only place that turns the value into text for
 «Статус» and «Контекст»; `/api/snapshot` sends it raw in `sessions[].cacheUntilUtc`.
 
+The session also remembers what the cache was written with: `CacheModel` (the answering version) and
+`CacheMode` — the mode, if it is one of `AgentCapabilities.OwnCacheModes` (`plan` for Claude Code),
+otherwise `null`, because the other modes share the cache. `CacheGuard` holds the one rule:
+`WillReset` — a step away from what the cache was written with, while the cache is alive and the
+context is at least `MinContextTokens` (100k); a step back to it saves the cache and asks nothing.
+On the «Агент» screen such a button asks first through `PendingConfirmations` (the same as «Сжать»);
+a typed `/model` or `/mode` is a decision already, so it runs at once (`AgentScreen.Now`) and the
+warning is appended to the reply. `CacheGuard.Mismatch` adds «следующий запуск запишет кэш заново»
+to the cache line when the menu selection already differs from the cache.
+
 «Сжать» and «Новая сессия» on that screen go through `PendingConfirmations`: the first press only
 asks, «Да» works only for the same action, the same session and within 2 minutes; the pending
 question is dropped on «Нет» and on reopening the screen.

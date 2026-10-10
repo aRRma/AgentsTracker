@@ -254,7 +254,10 @@ public sealed class SessionStore
     /// считать его второй раз в другом месте значило бы рискнуть разойтись с «Статусом».
     /// Запуск без записи в кэш срок не сообщает — берём прошлый: он не меняется от запуска к запуску.
     /// </summary>
-    public DateTimeOffset? RecordCache(string sessionId, DateTimeOffset? lastRequestUtc, TimeSpan? ttl)
+    /// <param name="model">Модель, которая отвечала («opus-5-5»): на ней и записан кэш.</param>
+    /// <param name="mode">Режим со своим кэшем, в котором шёл запуск (<see cref="CacheGuard.ModeScope"/>).</param>
+    public DateTimeOffset? RecordCache(
+        string sessionId, DateTimeOffset? lastRequestUtc, TimeSpan? ttl, string? model, string? mode)
     {
         DateTimeOffset? until = null;
 
@@ -265,6 +268,8 @@ public sealed class SessionStore
 
             if (ttl is not null) record.CacheTtl = ttl;
             record.CacheUntilUtc = lastRequestUtc is { } start && record.CacheTtl is { } known ? start + known : null;
+            record.CacheModel = model;
+            record.CacheMode = mode;
             until = record.CacheUntilUtc;
         });
 
@@ -575,6 +580,8 @@ public sealed class SessionStore
         ContextUtc = record.ContextUtc,
         CacheUntilUtc = record.CacheUntilUtc,
         CacheTtl = record.CacheTtl,
+        CacheModel = record.CacheModel,
+        CacheMode = record.CacheMode,
     };
 
     private static RunRecord Clone(RunRecord record) => new()

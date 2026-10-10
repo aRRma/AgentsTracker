@@ -41,7 +41,10 @@ public static class ClaudeCapabilities
         PermissionMode: new AgentSetting(
             PermissionModes.All, PermissionModes.Selectable, PermissionModes.Resolve, PermissionModes.Describe),
         Context: true,
-        Questions: true);
+        Questions: true,
+        // У plan другой набор инструментов, а инструменты стоят в начале запроса: кэш не читается
+        // вовсе (проверено на CLI 2.1.292). default, acceptEdits и auto кэш делят.
+        OwnCacheModes: ["plan"]);
 
     /// <summary>
     /// Модель — любая непустая строка: CLI сам скажет, если такой нет. Алиас — в каноническом

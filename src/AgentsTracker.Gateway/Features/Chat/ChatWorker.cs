@@ -277,7 +277,8 @@ public sealed class ChatWorker(
         DateTimeOffset? cacheUntil = null;
         if (kind != AgentRunKind.ContextReport && result.SessionId is { Length: > 0 } cached
             && result.Usage is { } ran && (ran.LastRequestUtc is not null || result.Compaction is not null))
-            cacheUntil = store.RecordCache(cached, ran.LastRequestUtc, ran.CacheTtl);
+            cacheUntil = store.RecordCache(cached, ran.LastRequestUtc, ran.CacheTtl, ran.PrimaryModel,
+                CacheGuard.ModeScope(agent.Capabilities, request.PermissionMode));
 
         // Вопрос сессию не создавал и не продолжал — трогать активную нечего.
         var note = question ? "" : SettleSession(prompt.Chat, project, session, runSessionId, result);

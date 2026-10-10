@@ -1,5 +1,6 @@
 using AgentsTracker.Gateway.Features.Chat;
 using AgentsTracker.Gateway.Infrastructure.Audit;
+using AgentsTracker.Gateway.Infrastructure.Chat;
 using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
@@ -14,10 +15,45 @@ namespace AgentsTracker.Gateway.Features.Settings.Screens;
 public sealed class AgentScreen(
     SessionStore store, IAgentBackend agent, ChatWorker worker, IAuditLog audit, IOptions<GatewayOptions> options) : ISettingsScreen
 {
+    /// <summary>
+    /// Приставка команды, набранной руками: это уже решение, переспрашивать его кнопками нечем —
+    /// команда выполняется сразу, а предупреждение о кэше добавляет к ответу обработчик команды.
+    /// </summary>
+    internal const string Now = "now:";
+
+    private const string Yes = "yes:";
+    private const string Stale = "Подтверждение устарело — нажмите кнопку ещё раз";
+
+    private readonly PendingConfirmations _confirmations = new();
+
     public string Key => "agent";
+
+    public void Open(UserId user) => _confirmations.Cancel(user);
 
     public string? Apply(string argument, UserId user, ChatId chat)
     {
+        var now = argument.StartsWith(Now, StringComparison.Ordinal);
+        if (now) argument = argument[Now.Length..];
+
+        if (argument == "no")
+        {
+            _confirmations.Cancel(user);
+            return null;
+        }
+
+        if (argument.StartsWith(Yes, StringComparison.Ordinal))
+        {
+            argument = argument[Yes.Length..];
+            // Сессию сверяем с той, о которой спрашивали: после смены сессии «Да» сбросил бы
+            // кэш другой ветки, про которую вопроса не было.
+            if (!_confirmations.TryConfirm(user, argument, store.SessionId)) return Stale;
+        }
+        else if (!now && CacheWarning(argument) is not null)
+        {
+            _confirmations.Ask(user, argument, store.SessionId);
+            return null;
+        }
+
         var separator = argument.IndexOf(':');
         if (separator < 0) return null;
 
@@ -87,8 +123,71 @@ public sealed class AgentScreen(
 
     private static bool IsReset(string value) => value.Equals("reset", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Чем смена обернётся для кэша активной сессии; null — кэш не пострадает. Считается до
+    /// смены: после неё «сейчас» уже другое, и сравнивать не с чем.
+    /// </summary>
+    /// <param name="argument">Нажатие или команда: «model:opus», «mode:plan», «mode:reset».</param>
+    internal string? CacheWarning(string argument)
+    {
+        var separator = argument.IndexOf(':');
+        if (separator < 0) return null;
+
+        var kind = argument[..separator];
+        var value = argument[(separator + 1)..];
+        var caps = agent.Capabilities;
+
+        var fromModel = store.ModelLabel(store.EffectiveModel, caps.Model);
+        var fromMode = CacheGuard.ModeScope(caps, store.EffectivePermissionMode);
+        string? toModel = fromModel;
+        var toMode = fromMode;
+
+        switch (kind)
+        {
+            case "model":
+                toModel = store.ModelLabel(IsReset(value) ? null : caps.Model.Resolve(value), caps.Model);
+                break;
+
+            case "mode":
+                var mode = IsReset(value) ? options.Value.PermissionMode : caps.PermissionMode.Resolve(value);
+                if (mode is null) return null;
+                toMode = CacheGuard.ModeScope(caps, mode);
+                break;
+
+            default:
+                return null;
+        }
+
+        var session = ActiveSession();
+        if (!CacheGuard.WillReset(session, fromModel, toModel, fromMode, toMode)) return null;
+
+        return $"Кэш сессии жив до {session!.CacheUntilUtc!.Value.Clock}. После смены следующий запуск "
+               + $"запишет заново {session.ContextTokens.Tokens} токенов контекста и потратит заметно больше "
+               + "лимита тарифа, чем обычный шаг. Дешевле сменить в начале новой сессии.";
+    }
+
+    private SessionRecord? ActiveSession() =>
+        store.SessionId is { } id
+            ? store.SessionsFor(store.ProjectPath).FirstOrDefault(s => string.Equals(s.Id, id, StringComparison.Ordinal))
+            : null;
+
     public Task<(string Html, Keyboard Keyboard)> RenderAsync(UserId user, CancellationToken ct) =>
-        Task.FromResult(Render());
+        Task.FromResult(_confirmations.Asked(user) is { } asked && CacheWarning(asked) is { } warning
+            ? Confirmation(asked, warning)
+            : Render());
+
+    private static (string Html, Keyboard Keyboard) Confirmation(string asked, string warning)
+    {
+        var change = asked.StartsWith("model:", StringComparison.Ordinal) ? "модель" : "режим";
+
+        var html = $"""
+            🧊 <b>Сменить {change}? Кэш сбросится</b>
+
+            {E(warning)}
+            """;
+
+        return (html, new Keyboard([[Button("✅ Да, сменить", $"agent:{Yes}{asked}"), Button("↩️ Нет", "agent:no")]]));
+    }
 
     private (string Html, Keyboard Keyboard) Render()
     {

@@ -35,9 +35,14 @@ public sealed record AgentSetting(
 /// <see cref="AgentRunKind.Compact"/>). false — кнопок «Подробно» и «Сжать» нет.
 /// </param>
 /// <param name="Questions">Агент умеет разовый запуск без сессии (<see cref="AgentRunKind.Question"/>).</param>
+/// <param name="OwnCacheModes">
+/// Режимы со своим кэшем: переход в такой режим и выход из него заставляют следующий запуск
+/// записать контекст заново. Остальные режимы кэш делят. null — режим кэш не трогает.
+/// </param>
 public sealed record AgentCapabilities(
     AgentSetting Model,
     AgentSetting? Effort,
     AgentSetting PermissionMode,
     bool Context = false,
-    bool Questions = false);
+    bool Questions = false,
+    IReadOnlyList<string>? OwnCacheModes = null);

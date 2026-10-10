@@ -156,6 +156,18 @@ public sealed class SessionRecord
 
     /// <summary>Последний известный срок кэша: запуск, который только читал кэш, срок не сообщает.</summary>
     public TimeSpan? CacheTtl { get; set; }
+
+    /// <summary>
+    /// Модель, на которой записан кэш («opus-5-5»): у каждой модели свой кэш, и смена модели
+    /// заставит следующий запуск записать контекст заново. null — неизвестно.
+    /// </summary>
+    public string? CacheModel { get; set; }
+
+    /// <summary>
+    /// Режим со своим кэшем, в котором кэш записан (<see cref="AgentCapabilities.OwnCacheModes"/>);
+    /// null — один из режимов с общим кэшем. Переход между ними сбрасывает кэш.
+    /// </summary>
+    public string? CacheMode { get; set; }
 }
 
 /// <summary>Накопленная статистика запусков: всего, по дням и по моделям.</summary>

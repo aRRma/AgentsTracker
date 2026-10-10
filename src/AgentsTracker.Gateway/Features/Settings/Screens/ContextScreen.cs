@@ -113,7 +113,7 @@ public sealed class ContextScreen(
 
             🧵 Сессия: <b>{E(name)}</b>
             {Fill(session)}
-            🧊 Кэш: {Cache(session)}
+            🧊 Кэш: {Cache(session, Mismatch(store, agent, session))}
 
             <i>«Подробно» — из чего состоит контекст. «Сжать» — агент перескажет разговор кратко, сессия останется та же. «Новая сессия» — начать с чистого листа.</i>
             """;
@@ -146,19 +146,29 @@ public sealed class ContextScreen(
     /// и «Контекст» должны говорить одно и то же. Остывший кэш — повод сжать контекст или начать
     /// новую сессию: следующий запуск всё равно запишет весь контекст заново.
     /// </summary>
-    internal static string Cache(SessionRecord? session)
+    /// <param name="mismatch">Выбор в меню ушёл от модели или режима кэша (<see cref="CacheGuard.Mismatch"/>).</param>
+    internal static string Cache(SessionRecord? session, bool mismatch = false)
     {
         if (session?.CacheUntilUtc is not { } until) return "—";
 
         var left = until - DateTimeOffset.UtcNow;
         if (left > TimeSpan.Zero)
-            return left.TotalMinutes >= 1
+        {
+            var alive = left.TotalMinutes >= 1
                 ? $"ещё {(int)left.TotalMinutes} мин (до {until.Clock})"
                 : $"меньше минуты (до {until.Clock})";
+            return mismatch ? $"{alive}, но выбраны другие модель или режим — следующий запуск запишет кэш заново" : alive;
+        }
 
         var ago = -left;
         return ago.TotalHours < 1 ? $"остыл {(int)ago.TotalMinutes} мин назад" : $"остыл {E(until.Ago)}";
     }
+
+    /// <summary>Выбор в меню против модели и режима, на которых записан кэш активной сессии.</summary>
+    internal static bool Mismatch(SessionStore store, IAgentBackend agent, SessionRecord? session) =>
+        CacheGuard.Mismatch(session,
+            store.ModelLabel(store.EffectiveModel, agent.Capabilities.Model),
+            CacheGuard.ModeScope(agent.Capabilities, store.EffectivePermissionMode));
 
     /// <summary>Лампа и процент для строки списка; пусто, пока замера не было.</summary>
     internal static string Short(SessionRecord session) =>

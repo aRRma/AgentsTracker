@@ -1,4 +1,5 @@
 using AgentsTracker.Gateway.Features.Chat;
+using AgentsTracker.Gateway.Features.Settings.Screens;
 using AgentsTracker.Gateway.Infrastructure.Chat.Dispatch;
 
 namespace AgentsTracker.Gateway.Features.Settings;
@@ -56,7 +57,8 @@ public sealed class SettingsCommandHandler(
                 break;
 
             case "/model":
-                await ReplyAsync(chat, Agent().Apply("model:" + argument, user, chat) ?? "", ct);
+                var warning = CacheNote(Agent().CacheWarning("model:" + argument));
+                await ReplyAsync(chat, (Agent().Apply(AgentScreen.Now + "model:" + argument, user, chat) ?? "") + warning, ct);
                 break;
 
             case "/effort":
@@ -72,7 +74,10 @@ public sealed class SettingsCommandHandler(
     private Task ReplyAsync(ChatId chat, string text, CancellationToken ct) =>
         channel.SendAsync(chat, new OutgoingMessage(text, Rich: false), ct);
 
-    private ISettingsScreen Agent() => menu.Screen("agent");
+    private AgentScreen Agent() => (AgentScreen)menu.Screen("agent");
+
+    /// <summary>Предупреждение о кэше к ответу команды — её уже выполнили, так что это не вопрос, а факт.</summary>
+    private static string CacheNote(string? warning) => warning is null ? "" : $"\n🧊 {warning}";
 
     /// <summary>Меняет уровень усилий модели. Применяется со следующего запуска.</summary>
     private string ChangeEffort(string argument, UserId user, ChatId chat)
@@ -100,8 +105,9 @@ public sealed class SettingsCommandHandler(
     {
         if (argument.Equals("reset", StringComparison.OrdinalIgnoreCase))
         {
-            Agent().Apply("mode:reset", user, chat);
-            return $"🔐 Режим: {options.Value.PermissionMode} — как в конфиге. Применится со следующего запуска.";
+            var warning = CacheNote(Agent().CacheWarning("mode:reset"));
+            Agent().Apply(AgentScreen.Now + "mode:reset", user, chat);
+            return $"🔐 Режим: {options.Value.PermissionMode} — как в конфиге. Применится со следующего запуска.{warning}";
         }
 
         var setting = agent.Capabilities.PermissionMode;
@@ -119,10 +125,11 @@ public sealed class SettingsCommandHandler(
 
         if (mode == store.EffectivePermissionMode) return $"Уже {setting.Describe(mode)}.";
 
-        Agent().Apply("mode:" + mode, user, chat);
+        var cache = CacheNote(Agent().CacheWarning("mode:" + mode));
+        Agent().Apply(AgentScreen.Now + "mode:" + mode, user, chat);
 
         // Занятость спрашиваем у воркера, а не угадываем по тосту экрана.
         var note = worker.IsBusy ? "\nТекущий запуск доигрывает со старым режимом." : "";
-        return $"🔐 {setting.Describe(mode)}.\nПрименится со следующего запуска.{note}";
+        return $"🔐 {setting.Describe(mode)}.\nПрименится со следующего запуска.{note}{cache}";
     }
 }
