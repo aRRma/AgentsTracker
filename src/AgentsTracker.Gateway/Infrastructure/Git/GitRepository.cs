@@ -15,8 +15,15 @@ public sealed record GitHead(string? Branch, string? DetachedSha, string? Worktr
     /// разметку — на вызывающем: в имени ветки git разрешает «&lt;», «&amp;», «_» и «`».
     /// </summary>
     public string Label => Branch is { } branch
-        ? branch.Length > LabelLength ? branch[..(LabelLength - 1)] + "…" : branch
+        ? branch.Length > LabelLength ? Cut(branch) + "…" : branch
         : $"{DetachedSha} (без ветки)";
+
+    /// <summary>Не рвёт суррогатную пару: половина эмодзи — невалидный UTF-16, и канал отклонил бы сообщение.</summary>
+    private static string Cut(string branch)
+    {
+        var end = LabelLength - 1;
+        return char.IsHighSurrogate(branch[end - 1]) ? branch[..(end - 1)] : branch[..end];
+    }
 }
 
 /// <param name="Path">Папка worktree.</param>
@@ -76,13 +83,22 @@ public sealed class GitRepository(IOptions<GatewayOptions> options, ILogger<GitR
             // git ставит атрибут «скрытый» на служебные папки.
             foreach (var entry in Directory.GetDirectories(registry))
             {
-                if (ReadSmall(Path.Combine(entry, "gitdir")) is not { } pointer) continue;
-                if (Resolve(pointer, entry) is not { } dotGit) continue;
+                // Одна битая запись (NUL в пути, файл исчез между проверкой и чтением) не должна
+                // стоить всего списка.
+                try
+                {
+                    if (ReadSmall(Path.Combine(entry, "gitdir")) is not { } pointer) continue;
+                    if (Resolve(pointer, entry) is not { } dotGit) continue;
 
-                var folder = Path.GetDirectoryName(dotGit);
-                if (folder is null || !Directory.Exists(folder)) continue;
+                    var folder = Path.GetDirectoryName(dotGit);
+                    if (folder is null || !Directory.Exists(folder)) continue;
 
-                if (ReadHead(entry, main) is { } head) found.Add(new GitWorktree(folder, head));
+                    if (ReadHead(entry, main) is { } head) found.Add(new GitWorktree(folder, head));
+                }
+                catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException or NotSupportedException)
+                {
+                    logger.LogDebug(ex, "Запись worktree {Entry} не прочитана", entry);
+                }
             }
 
             found.Sort((a, b) => StringComparer.OrdinalIgnoreCase.Compare(a.Path, b.Path));
