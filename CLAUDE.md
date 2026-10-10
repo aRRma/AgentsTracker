@@ -141,8 +141,8 @@ A card finds its chat by the **run id**, not by a "current chat": each run gets 
   not prompts the host types. Details — `docs/en/cli-contract.md`, "Context" and "A question".
 - CLI arguments go through `ProcessStartInfo.ArgumentList`, do not concatenate a string.
 - The CLI's output is read until it ends or `DrainGrace` (5 s) after the exit, never by a bare
-  `await` on the reader: a background process the agent started keeps the pipe open, and the task
-  lane used to hang past `/stop` and the run timeout. Every `claude` sits in `ClaudeProcessJob`, so
+  `await` on the reader: a background process that escaped the CLI keeps the pipe open, and the task
+  lane would hang past `/stop` and the run timeout. Every `claude` sits in `ClaudeProcessJob`, so
   stopping the gateway kills it and everything it started.
 
 ### `--permission-mode` is always passed
