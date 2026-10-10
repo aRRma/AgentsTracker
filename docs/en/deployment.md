@@ -229,6 +229,9 @@ What matters:
   other languages — add a layer in the `Dockerfile`.
 - **Autostart** is set by `restart: unless-stopped`; the `install` command inside the container
   refuses to run and explains why.
+- **`init: true`** puts a tiny init in front of the gateway: as PID 1 it would have to reap the
+  agent's orphaned children (a background dev server after its run ended) and does not, so they
+  would pile up as zombies. Do not remove it from your own compose file.
 
 Update: `docker compose up -d --build`. Volumes survive a rebuild.
 
