@@ -506,11 +506,11 @@ public sealed class ChatWorker(
     /// Ветка для подписи под ответом. Агент мог переключить её сам — тогда видно, откуда и куда:
     /// по одной конечной ветке не понять, что запуск начинался в другой.
     /// </summary>
-    private static string? BranchCaption(GitHead? start, GitHead? end) => (start?.Label, end?.Label) switch
+    private static string? BranchCaption(GitHead? start, GitHead? end) => (start, end) switch
     {
-        ({ } from, { } to) when from != to => $"{from} → {to}",
-        (_, { } to) => to,
-        ({ } from, null) => from,
+        ({ } from, { } to) when (from.Branch, from.DetachedSha) != (to.Branch, to.DetachedSha) => $"{from.Label} → {to.Label}",
+        (_, { } to) => to.Label,
+        ({ } from, null) => from.Label,
         _ => null,
     };
 
