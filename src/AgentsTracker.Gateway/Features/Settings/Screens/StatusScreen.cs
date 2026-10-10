@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using AgentsTracker.Gateway.Features.Chat;
 using AgentsTracker.Gateway.Infrastructure.Audit;
 using AgentsTracker.Gateway.Infrastructure.Chat;
+using AgentsTracker.Gateway.Infrastructure.Git;
 using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
@@ -12,8 +13,12 @@ namespace AgentsTracker.Gateway.Features.Settings.Screens;
 /// взгляда, а движение показывает, что шлюз жив. «Обновить» перерисовывает тем же способом.
 /// </summary>
 public sealed class StatusScreen(
-    SessionStore store, IAgentBackend agent, ChatWorker worker, IAgentLimits limits, IAuditLog audit) : ISettingsScreen
+    SessionStore store, IAgentBackend agent, ChatWorker worker, IAgentLimits limits, GitRepository git, IAuditLog audit)
+    : ISettingsScreen
 {
+    /// <summary>Больше в строку статуса не влезает: остальные worktree — в списке проектов.</summary>
+    private const int WorktreesShown = 5;
+
     public string Key => "status";
 
     public string? Apply(string argument, UserId user, ChatId chat)
@@ -89,7 +94,7 @@ public sealed class StatusScreen(
             🕔 Последняя активность: {E(state.LastActivityUtc?.Ago ?? "—")}
 
             📁 <b>{E(Path.GetFileName(project))}</b>
-            <code>{E(project)}</code>
+            <code>{E(project)}</code>{Branch(project)}
             🧵 Сессия: {(session is null ? "<i>новая</i>" : $"<b>{E(session.Title)}</b> · {session.Turns} х")}
             📦 Контекст: {(session is { ContextTokens: > 0, ContextWindow: > 0 } ? ContextScreen.Fill(session, bar: false) : "—")}
             🧊 Кэш: {ContextScreen.Cache(session, ContextScreen.Mismatch(store, agent, session))}
@@ -110,5 +115,26 @@ public sealed class StatusScreen(
         ]);
 
         return (html, keyboard);
+    }
+
+    /// <summary>
+    /// Ветка проекта и соседние worktree того же репозитория. Без них параллельная работа в
+    /// другой папке не видна, и задача уходит не в ту ветку. Пусто — проект не в git.
+    /// </summary>
+    private string Branch(string project)
+    {
+        if (git.Head(project) is not { } head) return "";
+
+        var line = head.WorktreeOf is { } main
+            ? $"\n🌳 worktree от <b>{E(main)}</b> · 🌿 <code>{E(head.Label)}</code>"
+            : $"\n🌿 <code>{E(head.Label)}</code>";
+
+        var others = git.Worktrees(project).Where(w => !ProjectCatalog.Same(w.Path, project)).ToList();
+        if (others.Count == 0) return line;
+
+        var names = others.Take(WorktreesShown).Select(w => $"{E(Path.GetFileName(w.Path))} ({E(w.Head.Label)})");
+        var more = others.Count > WorktreesShown ? ", …" : "";
+
+        return $"{line}\n🌳 Worktree: {others.Count} — {string.Join(", ", names)}{more}";
     }
 }

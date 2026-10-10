@@ -1,4 +1,5 @@
 using AgentsTracker.Gateway.Infrastructure.Audit;
+using AgentsTracker.Gateway.Infrastructure.Git;
 using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 
 namespace AgentsTracker.Gateway.Features.Settings.Screens;
@@ -10,6 +11,7 @@ namespace AgentsTracker.Gateway.Features.Settings.Screens;
 public sealed class ProjectScreen(
     SessionStore store,
     ProjectCatalog catalog,
+    GitRepository git,
     IAuditLog audit,
     IOptions<GatewayOptions> options,
     ILogger<ProjectScreen> logger) : ISettingsScreen
@@ -142,7 +144,7 @@ public sealed class ProjectScreen(
         _nav.Update(user, p => p with { Page = clamped });
 
         var lines = page.Select(path =>
-            $"{Marker(ProjectCatalog.Same(path, current))} <b>{E(Path.GetFileName(path))}</b>\n   <code>{E(path)}</code>");
+            $"{Marker(ProjectCatalog.Same(path, current))} <b>{E(Path.GetFileName(path))}</b>{Branch(path)}\n   <code>{E(path)}</code>");
 
         var html = $"""
             📁 <b>{E(group ?? "Проект")}</b>
@@ -164,6 +166,14 @@ public sealed class ProjectScreen(
 
         return (html, new Keyboard(buttons));
     }
+
+    /// <summary>
+    /// Ветка рядом с именем: worktree лежат соседними папками, и без ветки «AgentsTracker» и
+    /// «AgentsTracker-cache» в списке различаются только суффиксом, который выбрал человек.
+    /// </summary>
+    private string Branch(string path) => git.Head(path) is { } head
+        ? $" · {(head.WorktreeOf is null ? "" : "🌳 ")}🌿 {E(head.Label)}"
+        : "";
 
     private string Source() => options.Value switch
     {
