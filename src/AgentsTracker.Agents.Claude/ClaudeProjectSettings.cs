@@ -46,7 +46,8 @@ internal static class ClaudeProjectSettings
     private const long MaxHashedBytes = 1024 * 1024;
 
     private const long MaxSettingsBytes = 16 * 1024 * 1024;
-    private const int ItemLength = 160;
+    // Длинный пункт карточки не режем до безобидного начала: хвост команды иначе прятался бы за «…».
+    private const int ItemLength = 400;
 
     /// <summary>Сколько правил allow показать поимённо: дальше они сворачиваются в одну строку.</summary>
     private const int RulesListed = 3;
@@ -108,7 +109,8 @@ internal static class ClaudeProjectSettings
 
                 var content = File.ReadAllBytes(full);
                 hash.AppendData(relative == LocalSettings ? WithoutAllowRules(content) : content);
-                if (settings) Describe(relative, content, dangerous, rules, other);
+                // BOM (Блокнот, PowerShell 5) ломает разбор: хуки не попали бы в список карточки.
+                if (settings) Describe(relative, content.AsSpan().StartsWith<byte>([0xEF, 0xBB, 0xBF]) ? content[3..] : content, dangerous, rules, other);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
