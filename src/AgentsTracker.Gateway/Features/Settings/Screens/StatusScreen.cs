@@ -16,9 +16,6 @@ public sealed class StatusScreen(
     SessionStore store, IAgentBackend agent, ChatWorker worker, IAgentLimits limits, GitRepository git, IAuditLog audit)
     : ISettingsScreen
 {
-    /// <summary>Больше в строку статуса не влезает: остальные worktree — в списке проектов.</summary>
-    private const int WorktreesShown = 5;
-
     public string Key => "status";
 
     public string? Apply(string argument, UserId user, ChatId chat)
@@ -118,23 +115,13 @@ public sealed class StatusScreen(
     }
 
     /// <summary>
-    /// Ветка проекта и соседние worktree того же репозитория. Без них параллельная работа в
-    /// другой папке не видна, и задача уходит не в ту ветку. Пусто — проект не в git.
+    /// Ветка проекта: без неё задача уходит не в ту ветку незаметно. Соседние worktree со своими
+    /// ветками видны в списке проектов. Пусто — проект не в git.
     /// </summary>
-    private string Branch(string project)
+    private string Branch(string project) => git.Head(project) switch
     {
-        if (git.Head(project) is not { } head) return "";
-
-        var line = head.WorktreeOf is { } main
-            ? $"\n🌳 worktree от <b>{E(main)}</b> · 🌿 <code>{E(head.Label)}</code>"
-            : $"\n🌿 <code>{E(head.Label)}</code>";
-
-        var others = git.Worktrees(project).Where(w => !ProjectCatalog.Same(w.Path, project)).ToList();
-        if (others.Count == 0) return line;
-
-        var names = others.Take(WorktreesShown).Select(w => $"{E(Path.GetFileName(w.Path))} ({E(w.Head.Label)})");
-        var more = others.Count > WorktreesShown ? ", …" : "";
-
-        return $"{line}\n🌳 Worktree: {others.Count} — {string.Join(", ", names)}{more}";
-    }
+        null => "",
+        { WorktreeOf: { } main } head => $"\n🌳 worktree от <b>{E(main)}</b> · 🌿 <code>{E(head.Label)}</code>",
+        var head => $"\n🌿 <code>{E(head.Label)}</code>",
+    };
 }

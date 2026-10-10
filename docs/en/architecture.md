@@ -45,7 +45,7 @@ src/AgentsTracker.Gateway/
   Program.cs            data directory, service commands, lists of agents (Gateway:Agent), channels (Gateway:Channel:Type) and features
   Domain/               pure models: GatewayState (state.json), AuditEvent
   Infrastructure/       Configuration (GatewayOptions, ProjectCatalog), State (SessionStore),
-                        Git (GitRepository — the project's branch and worktrees from the .git files),
+                        Git (GitRepository — the project's branch from the .git files),
                         Chat (ChatGatewayService, ChatDispatcher, MarkdownRenderer, StartupNotice —
                         «запущен»/«прерван» after a restart, Dispatch/ — handler contracts),
                         Container.Detected — in a container no autostart is installed, the monitor listens on any,
@@ -249,8 +249,10 @@ question is dropped on «Нет» and on reopening the screen.
 steps (folder → project) in pages of 12. The current project comes first in its group, and after
 a selection the page resets to the first one — otherwise the `▶` marker could end up off-screen.
 
-`GitRepository` — the project's branch and its worktrees for «Статус», the project list, the run
-status, the footer under an answer, the audit (`run.start`) and the monitor. It reads the `.git`
+`GitRepository` — the project's branch (and the 🌳 mark when the project is a worktree) for
+«Статус», the project list, the run status, the footer under an answer, the audit (`run.start`)
+and the monitor. Neighbouring worktrees are not listed separately: they already sit in the project
+list with their branches. `.git` is looked up to the drive root, the way git itself does. It reads the `.git`
 files itself, with no `git` process: the caption is needed on every tick of the run status. It is
 the branch of the project folder, not "the agent's branch": the agent can move into another worktree
 through absolute paths and the gateway will not see it. Rules not to loosen:

@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using AgentsTracker.Gateway.Features.Chat;
 using AgentsTracker.Gateway.Infrastructure.Audit;
-using AgentsTracker.Gateway.Infrastructure.Git;
 
 namespace AgentsTracker.Gateway.Features.Settings;
 
@@ -10,11 +9,8 @@ namespace AgentsTracker.Gateway.Features.Settings;
 /// команду за пользователем, а следующий его текст уходит агенту как «/команда текст» —
 /// иначе аргументы пришлось бы набирать вместе с длинным именем плагинного скилла.
 /// </summary>
-public sealed class SkillLauncher(SessionStore store, ChatWorker worker, GitRepository git, IAuditLog audit)
+public sealed class SkillLauncher(SessionStore store, ChatWorker worker, IAuditLog audit)
 {
-    /// <summary>Предел всплывающего уведомления Telegram: длиннее — 400, и уведомление теряется.</summary>
-    private const int ToastLength = 200;
-
     /// <summary>Что ждём от кого: пользователь → команда. Ждём по пользователю, а не по чату: чаты личные.</summary>
     private readonly ConcurrentDictionary<UserId, string> _pending = new();
 
@@ -31,13 +27,7 @@ public sealed class SkillLauncher(SessionStore store, ChatWorker worker, GitRepo
         var wasBusy = worker.IsBusy;
         worker.Enqueue(chat, user, text);
 
-        var reply = wasBusy ? $"📥 В очереди: {text}" : $"🚀 Запуск: {text}";
-
-        // Ветка на момент нажатия: скилл ревью без аргумента берёт текущую ветку, и по ней видно,
-        // что он проверит. Пока задача ждёт очереди, ветка может смениться — точную покажет
-        // статус запуска.
-        var branch = git.Head(store.ProjectPath) is { } head ? $" · 🌿 {head.Label}" : "";
-        return reply.Length + branch.Length <= ToastLength ? reply + branch : reply;
+        return wasBusy ? $"📥 В очереди: {text}" : $"🚀 Запуск: {text}";
     }
 
     public void Expect(UserId user, string command) => _pending[user] = command;
