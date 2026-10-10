@@ -80,7 +80,9 @@ MCP-серверы, заранее разрешённые правила, фай
 `IChatChannelModule` регистрирует `IChatChannel` и всё своё, читает настройки из
 `Gateway:Channel:Settings` и объявляет в `SecretKeys`, что шифрует `protect-secrets`. Свои типы
 `ChatId`/`UserId` (`Key` — «канал:значение»), свои `ChannelLimits`, сбои транспорта — только
-`ChannelRequestException`. Строка в списке `channels` в `Program.cs` (выбор по
+`ChannelRequestException`; отказ в ключе бота обязан выйти как `ChannelFailure.Unauthorized`, иначе
+хост примет его за сбой сети и будет повторять `ConnectAsync` без конца вместо выхода. Строка в
+списке `channels` в `Program.cs` (выбор по
 `Gateway:Channel:Type`), ссылка в `Gateway.csproj` и строка `COPY` в `Dockerfile`.
 
 Ответы на сообщения: заполнять `IncomingMessage.Message` и `InReplyTo` (сообщение, на которое

@@ -83,7 +83,9 @@ A project `src/AgentsTracker.Channels.<Name>` referencing `Channels.Abstractions
 `IChatChannelModule` registers `IChatChannel` and everything of its own, reads settings from
 `Gateway:Channel:Settings` and declares in `SecretKeys` what `protect-secrets` encrypts. Its own
 `ChatId`/`UserId` types (`Key` is "channel:value"), its own `ChannelLimits`, transport failures —
-only `ChannelRequestException`. A line in the `channels` list in `Program.cs` (selected by
+only `ChannelRequestException`; a rejected bot key must come out as `ChannelFailure.Unauthorized`,
+or the host takes it for a network failure and retries `ConnectAsync` forever instead of
+exiting. A line in the `channels` list in `Program.cs` (selected by
 `Gateway:Channel:Type`), a reference in `Gateway.csproj` and a `COPY` line in the `Dockerfile`.
 
 Replies: fill `IncomingMessage.Message` and `InReplyTo` (the message the user replied to — that is
