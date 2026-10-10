@@ -283,11 +283,12 @@ public sealed class ChatWorker(
 
         // Разбивка контекста и локальная команда вроде /cost модель не звали и кэш не трогали:
         // прошлый срок остаётся верным. Стирает его только сжатие — оно заменяет начало сессии.
+        // Прерванный запуск расхода не сообщает, поэтому модель — выбранная, а не ответившая.
         DateTimeOffset? cacheUntil = null;
         if (kind != AgentRunKind.ContextReport && result.SessionId is { Length: > 0 } cached
-            && result.Usage is { } ran && (ran.LastRequestUtc is not null || result.Compaction is not null))
-            cacheUntil = store.RecordCache(cached, ran.LastRequestUtc, ran.CacheTtl, ran.PrimaryModel,
-                CacheGuard.ModeScope(agent.Capabilities, request.PermissionMode));
+            && (result.LastRequestUtc is not null || result.Compaction is not null))
+            cacheUntil = store.RecordCache(cached, result.LastRequestUtc, result.CacheTtl,
+                result.Usage?.PrimaryModel ?? modelLabel, CacheGuard.ModeScope(agent.Capabilities, request.PermissionMode));
 
         // Вопрос сессию не создавал и не продолжал — трогать активную нечего.
         var note = question ? "" : SettleSession(prompt.Chat, project, session, runSessionId, result);

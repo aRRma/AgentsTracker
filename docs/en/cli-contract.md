@@ -242,7 +242,7 @@ Checked on CLI 2.1.261.
     extends it for free. The stream gives a turn only when it is complete, so the backend takes the time
     of the last main-branch input (a `user` event without `parent_tool_use_id`, or the process start)
     as the request start: a little early, so «кэш до» errs on the safe side.
-    `RunUsage.LastRequestUtc` + `CacheTtl` → `SessionRecord.CacheUntilUtc`.
+    `AgentRunResult.LastRequestUtc` + `CacheTtl` → `SessionRecord.CacheUntilUtc`.
   - The cache is a prefix match: tools → system prompt → history. A new process with `--resume`
     keeps it. Commits, edited files, `--add-dir` appearing, `--effort` and the modes
     `default`/`acceptEdits`/`auto` keep it too. **Lost:** a model switch (caches are per model, and the other

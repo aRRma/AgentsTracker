@@ -110,6 +110,20 @@ public sealed record AgentRunResult
     /// <summary>Итог сжатия контекста. null — сжатия в запуске не было.</summary>
     public ContextCompaction? Compaction { get; init; }
 
+    /// <summary>
+    /// Начало последнего запроса основной ветки к модели: от него, а не от конца ответа,
+    /// отсчитывается жизнь кэша — длинный ответ съедает часть срока. Не в <see cref="Usage"/>:
+    /// прерванный запуск расхода не сообщает, а кэш его запросы продлили. null — модель не
+    /// вызывалась или контекст сжат после последнего запроса, и старый кэш к сессии не относится.
+    /// </summary>
+    public DateTimeOffset? LastRequestUtc { get; init; }
+
+    /// <summary>
+    /// Сколько модель держит кэш после запроса: час на подписке, пять минут при оплате сверх
+    /// неё или по ключу API. null — запуск ничего не записал в кэш, срок не узнать.
+    /// </summary>
+    public TimeSpan? CacheTtl { get; init; }
+
     public static AgentRunResult Failure(string text, TimeSpan duration) =>
         new() { Ok = false, Text = text, Duration = duration };
 }

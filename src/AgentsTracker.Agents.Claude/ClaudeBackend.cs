@@ -127,6 +127,10 @@ public sealed class ClaudeBackend(
                 Text = persistent ? reason + Resumable(request.Kind, output.Subagents) : reason,
                 SessionId = persistent ? sessionId : null,
                 Duration = started.Elapsed,
+                // Расхода прерванный запуск не сообщает, а кэш его запросы продлили: без срока
+                // «Статус» писал бы «остыл» про живой кэш, и его зря сжимали бы.
+                LastRequestUtc = output.LastRequestUtc,
+                CacheTtl = output.CacheTtl,
             };
         }
 
@@ -140,12 +144,12 @@ public sealed class ClaudeBackend(
                 ? usage with
                 {
                     ContextTokens = output.Compaction?.After ?? output.ContextTokens ?? 0,
-                    LastRequestUtc = output.LastRequestUtc,
-                    CacheTtl = output.CacheTtl,
                     FirstCacheRead = output.FirstCacheRead,
                 }
                 : null,
             Compaction = output.Compaction,
+            LastRequestUtc = output.LastRequestUtc,
+            CacheTtl = output.CacheTtl,
         };
     }
 
