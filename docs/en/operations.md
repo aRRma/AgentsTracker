@@ -106,9 +106,11 @@ What to set for the scratch instance:
   interfere with the working gateway and does not depend on the shape of its config. Without
   this, `state.json` is shared — do not start the scratch instance while a task is in progress.
 
-With a **fake** token the scratch instance lives about a minute: `getUpdates` gets an
-`Unauthorized`, and after `ConnectAttempts` (6, ten seconds apart) the host writes «Не удалось
-подключиться» and shuts itself down. That is enough for startup, the config and the monitor, and
+With a **fake** token the scratch instance lives about a minute: `getMe` gets an
+`Unauthorized` (`ChannelFailure.Unauthorized`), and after `UnauthorizedAttempts` (6, ten seconds
+apart) the host writes «не принимает токен бота» and exits with code 1. A network failure is a
+different story: the host never gives up and waits 10 s, 20 s… up to 5 min between attempts — so a
+scratch instance with an unreachable `Proxy` lives until it is stopped. That is enough for startup, the config and the monitor, and
 the working bot notices nothing. Anything longer — or a chat scenario at all — needs a **separate
 test bot** from @BotFather: the working bot's token gives the second process a 409 on
 `getUpdates`, and the release loses its polling. The MCP config does not conflict either way —

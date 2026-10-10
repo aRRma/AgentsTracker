@@ -36,7 +36,7 @@ src/AgentsTracker.Channels.Abstractions/ контракты канала, без
                         IncomingAttachment/AttachmentKind, ButtonPress, ChatCommand
   IChatInbound          куда канал отдаёт входящее; реализует хост (ChatDispatcher)
   ChatHtml              канонический формат текста (b, i, s, code, pre, a, blockquote) и экранирование
-  ChannelRequestException  единственное исключение канала наружу: RateLimited (retry_after), MarkupRejected, CannotReach
+  ChannelRequestException  единственное исключение канала наружу: RateLimited (retry_after), MarkupRejected, CannotReach, Unauthorized
   IChatChannelModule    AddServices + MapEndpoints, SecretKeys; ChannelHost — общий прокси от хоста
 src/AgentsTracker.Channels.Telegram/     Telegram за этими контрактами:
   TelegramChannel       long polling, инлайн-кнопки, HTML; «message is not modified» и retry_after живут здесь
@@ -344,5 +344,11 @@ README — руководство пользователя: меняя защи�
   повторов. Клиент Telegram (`TelegramClientFactory`) — синглтон, DNS обновляет
   `PooledConnectionLifetime`; повтор только на `HttpRequestException`: методы Bot API — POST без
   идемпотентности (повтор после 5xx — дубль в чате), а 429 выжидает вызывающий по `retry_after`.
-  `BaseAddress` не задавать. `RemoveAllLoggers()`: токен — часть пути.
+  `BaseAddress` не задавать. `RemoveAllLoggers()`: токен — часть пути. У опроса своя пауза сверху
+  (`TelegramChannel.PollingBackoff`, 1 с с удвоением до минуты или `retry_after` канала):
+  Telegram.Bot повторяет `getUpdates` сразу после ошибки, а *ответ* с ошибкой (409 от второго
+  экземпляра с тем же токеном, 5xx, 401) — не сетевой сбой, и обработчик устойчивости его не
+  тормозит: без паузы это десятки запросов в секунду и стек в логе на каждый. При старте
+  `ChatGatewayService` повторяет сетевой сбой без предела (10 с с удвоением до 5 мин) и сдаётся
+  только на `ChannelFailure.Unauthorized`.
 - Аргументы CLI идут через `ProcessStartInfo.ArgumentList`, строку не склеивать.

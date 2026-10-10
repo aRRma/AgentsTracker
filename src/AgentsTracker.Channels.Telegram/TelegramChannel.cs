@@ -117,15 +117,52 @@ public sealed class TelegramChannel(
             DropPendingUpdates = true,
         };
 
+        var backoff = new PollingBackoff();
+
         return Bot.ReceiveAsync(
             (_, update, token) => HandleUpdateAsync(sink, update, token),
-            (_, exception, _) =>
+            (_, exception, token) =>
             {
-                logger.LogError(exception, "Ошибка Telegram polling");
-                return Task.CompletedTask;
+                // Библиотека повторяет getUpdates сразу после ошибки. Сетевой сбой гасит пауза
+                // HTTP-клиента, а ответ с ошибкой (409 — второй экземпляр с тем же токеном,
+                // 5xx — сбой Telegram, 401 — отозванный токен) приходит мгновенно: без своей
+                // паузы это десятки запросов в секунду и стек в логе на каждый.
+                var delay = backoff.Next(exception is ApiRequestException { Parameters.RetryAfter: { } seconds }
+                    ? TimeSpan.FromSeconds(seconds)
+                    : null);
+
+                if (backoff.Streak == 1) logger.LogError(exception, "Ошибка Telegram polling");
+                else logger.LogWarning("Ошибка Telegram polling подряд: {Streak}, пауза {Delay} с — {Message}",
+                    backoff.Streak, delay.TotalSeconds, exception.Message);
+
+                return Task.Delay(delay, token);
             },
             receiverOptions,
             ct);
+    }
+
+    /// <summary>
+    /// Пауза перед следующим опросом после ошибки: 1, 2, 4… до минуты, а если канал назвал срок —
+    /// его. Серия сбрасывается, когда ошибок не было дольше минуты: опрос снова работает.
+    /// </summary>
+    private sealed class PollingBackoff
+    {
+        private static readonly TimeSpan Ceiling = TimeSpan.FromMinutes(1);
+        private static readonly TimeSpan QuietReset = TimeSpan.FromMinutes(1);
+
+        private DateTimeOffset _last;
+
+        public int Streak { get; private set; }
+
+        public TimeSpan Next(TimeSpan? requested)
+        {
+            var now = DateTimeOffset.UtcNow;
+            Streak = now - _last > QuietReset + Ceiling ? 1 : Streak + 1;
+            _last = now;
+
+            var exponential = TimeSpan.FromSeconds(1 << Math.Min(Streak - 1, 6));
+            return requested ?? (exponential < Ceiling ? exponential : Ceiling);
+        }
     }
 
     private async Task HandleUpdateAsync(IChatInbound sink, Update update, CancellationToken ct)
@@ -517,6 +554,10 @@ public sealed class TelegramChannel(
         // 403 — бот заблокирован или не может писать первым; «chat not found» о том же.
         if (IsUnreachable(api))
             return new ChannelRequestException(api.Message, ChannelFailure.CannotReach, inner: api);
+
+        // 401 — токен отозван или неверен; 404 на любой метод — токен не той формы.
+        if (api.ErrorCode is 401 or 404)
+            return new ChannelRequestException(api.Message, ChannelFailure.Unauthorized, inner: api);
 
         return new ChannelRequestException(api.Message, ChannelFailure.Unknown, inner: api);
     }

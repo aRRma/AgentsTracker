@@ -36,7 +36,7 @@ src/AgentsTracker.Channels.Abstractions/ channel contracts, no specific messenge
                         IncomingAttachment/AttachmentKind, ButtonPress, ChatCommand
   IChatInbound          where the channel hands incoming traffic; implemented by the host (ChatDispatcher)
   ChatHtml              the canonical text format (b, i, s, code, pre, a, blockquote) and escaping
-  ChannelRequestException  the channel's only outward exception: RateLimited (retry_after), MarkupRejected, CannotReach
+  ChannelRequestException  the channel's only outward exception: RateLimited (retry_after), MarkupRejected, CannotReach, Unauthorized
   IChatChannelModule    AddServices + MapEndpoints, SecretKeys; ChannelHost — the shared proxy from the host
 src/AgentsTracker.Channels.Telegram/     Telegram behind those contracts:
   TelegramChannel       long polling, inline buttons, HTML; "message is not modified" and retry_after live here
@@ -351,5 +351,10 @@ than displayed, is derived from `Ticks` (`RunStatusMessage`) or from `long`.
   `PooledConnectionLifetime`; retry only on `HttpRequestException`: Bot API methods are POSTs
   without idempotency (a retry after a 5xx is a duplicate in the chat), and a 429 is waited out by
   the caller per `retry_after`. Do not set `BaseAddress`. `RemoveAllLoggers()`: the token is part
-  of the path.
+  of the path. Polling has its own pause on top (`TelegramChannel.PollingBackoff`, 1 s doubling to
+  a minute, or the channel's `retry_after`): Telegram.Bot repeats `getUpdates` right after an error,
+  and an error *answer* (409 from a second instance on the same token, a 5xx, a 401) is not a
+  network failure, so the resilience handler doesn't slow it down — without the pause it is dozens
+  of requests a second and a stack trace each. On startup `ChatGatewayService` retries a network
+  failure forever (10 s doubling to 5 min) and gives up only on `ChannelFailure.Unauthorized`.
 - CLI arguments go through `ProcessStartInfo.ArgumentList`, do not concatenate a string.

@@ -16,11 +16,18 @@ public sealed class ChatGatewayService(
     ILogger<ChatGatewayService> logger) : BackgroundService
 {
     /// <summary>
-    /// Сколько раз пробовать достучаться до канала при старте: при автозапуске на вход
-    /// в систему сеть часто поднимается позже шлюза.
+    /// Сколько раз пробовать, если канал не принимает токен: это не проходит само, но пробный
+    /// экземпляр с выдуманным токеном как раз и живёт эти попытки, а потом выходит.
     /// </summary>
-    private const int ConnectAttempts = 6;
+    private const int UnauthorizedAttempts = 6;
+
+    /// <summary>
+    /// Пауза между попытками растёт от первой до потолка. Сеть, которой нет, ждём без предела:
+    /// компьютер включается раньше роутера, а шлюз, который сдался через пару минут, молчал
+    /// до следующего входа в Windows — Планировщик по коду выхода его не поднимал.
+    /// </summary>
     private static readonly TimeSpan ConnectRetryDelay = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan ConnectRetryCeiling = TimeSpan.FromMinutes(5);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -48,8 +55,12 @@ public sealed class ChatGatewayService(
 
     private async Task<bool> ConnectAsync(CancellationToken stoppingToken)
     {
+        var unauthorized = 0;
+        var delay = ConnectRetryDelay;
+
         for (var attempt = 1; ; attempt++)
         {
+            var refused = false;
             try
             {
                 var bot = await channel.ConnectAsync(stoppingToken);
@@ -61,22 +72,32 @@ public sealed class ChatGatewayService(
             {
                 return false;
             }
-            catch (Exception ex)
+            catch (ChannelRequestException ex) when (ex.Kind == ChannelFailure.Unauthorized)
             {
-                if (attempt >= ConnectAttempts)
+                refused = true;
+                if (++unauthorized >= UnauthorizedAttempts)
                 {
                     logger.LogCritical(ex,
-                        "Не удалось подключиться к {Channel} за {Attempts} попыток. " +
-                        "Проверьте токен и доступность сети (Gateway:Proxy).", channel.DisplayName, attempt);
+                        "{Channel} не принимает токен бота ({Attempts} попыток). Проверьте токен в настройках канала.",
+                        channel.DisplayName, unauthorized);
                     return false;
                 }
 
-                logger.LogWarning("{Channel} недоступен ({Message}), попытка {Attempt} из {Attempts} через {Delay} с",
-                    channel.DisplayName, ex.Message, attempt, ConnectAttempts, ConnectRetryDelay.TotalSeconds);
+                logger.LogWarning("{Channel} не принял токен ({Message}), попытка {Attempt} из {Attempts}",
+                    channel.DisplayName, ex.Message, unauthorized, UnauthorizedAttempts);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning("{Channel} недоступен ({Message}), попытка {Attempt}, следующая через {Delay} с. " +
+                                  "Проверьте сеть и прокси (Gateway:Proxy)",
+                    channel.DisplayName, ex.Message, attempt, delay.TotalSeconds);
             }
 
-            try { await Task.Delay(ConnectRetryDelay, stoppingToken); }
+            // Отказ в токене ждёт ровно паузу: растущая растянула бы минуту попыток на полчаса.
+            try { await Task.Delay(refused ? ConnectRetryDelay : delay, stoppingToken); }
             catch (OperationCanceledException) { return false; }
+
+            if (!refused) delay = delay * 2 < ConnectRetryCeiling ? delay * 2 : ConnectRetryCeiling;
         }
     }
 }
