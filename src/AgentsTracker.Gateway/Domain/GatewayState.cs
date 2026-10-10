@@ -147,6 +147,15 @@ public sealed class SessionRecord
 
     /// <summary>Когда замерен <see cref="ContextTokens"/>: цифра верна только на этот момент.</summary>
     public DateTimeOffset? ContextUtc { get; set; }
+
+    /// <summary>
+    /// До какого момента модель держит кэш сессии. Позже следующий запуск запишет весь контекст
+    /// заново. null — неизвестно: сессия старше поля, модель не вызывалась или контекст сжат.
+    /// </summary>
+    public DateTimeOffset? CacheUntilUtc { get; set; }
+
+    /// <summary>Последний известный срок кэша: запуск, который только читал кэш, срок не сообщает.</summary>
+    public TimeSpan? CacheTtl { get; set; }
 }
 
 /// <summary>Накопленная статистика запусков: всего, по дням и по моделям.</summary>

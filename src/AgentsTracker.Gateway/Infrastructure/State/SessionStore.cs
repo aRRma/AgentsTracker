@@ -250,6 +250,28 @@ public sealed class SessionStore
     }
 
     /// <summary>
+    /// Срок кэша сессии после запуска. Возвращает «кэш до» — его показывает подпись ответа, и
+    /// считать его второй раз в другом месте значило бы рискнуть разойтись с «Статусом».
+    /// Запуск без записи в кэш срок не сообщает — берём прошлый: он не меняется от запуска к запуску.
+    /// </summary>
+    public DateTimeOffset? RecordCache(string sessionId, DateTimeOffset? lastRequestUtc, TimeSpan? ttl)
+    {
+        DateTimeOffset? until = null;
+
+        Mutate(s =>
+        {
+            var record = s.Sessions.FirstOrDefault(r => string.Equals(r.Id, sessionId, StringComparison.Ordinal));
+            if (record is null) return;
+
+            if (ttl is not null) record.CacheTtl = ttl;
+            record.CacheUntilUtc = lastRequestUtc is { } start && record.CacheTtl is { } known ? start + known : null;
+            until = record.CacheUntilUtc;
+        });
+
+        return until;
+    }
+
+    /// <summary>
     /// Итог запуска для монитора. Отдельно от <see cref="RecordRun"/>: расход приходит
     /// от агента, а исход, превью промпта и число вызовов знает ChatWorker.
     /// </summary>
@@ -551,6 +573,8 @@ public sealed class SessionStore
         ContextTokens = record.ContextTokens,
         ContextWindow = record.ContextWindow,
         ContextUtc = record.ContextUtc,
+        CacheUntilUtc = record.CacheUntilUtc,
+        CacheTtl = record.CacheTtl,
     };
 
     private static RunRecord Clone(RunRecord record) => new()

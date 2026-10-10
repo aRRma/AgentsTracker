@@ -63,6 +63,9 @@ public static class DisplayFormat
                 return local.ToString("d MMM, HH:mm");
             }
         }
+
+        /// <summary>Местное время «15:42» — для сроков в пределах ближайшего часа.</summary>
+        public string Clock => moment.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture);
     }
 
     extension(string sessionId)

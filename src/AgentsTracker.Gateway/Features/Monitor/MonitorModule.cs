@@ -150,7 +150,7 @@ public sealed class MonitorModule : IFeatureModule
             Skills = state.SkillUsage.OrderByDescending(p => p.Value).Select(p => new { Command = p.Key, Count = p.Value }),
             Sessions = state.Sessions.OrderByDescending(s => s.LastActivityUtc).Select(s => new
             {
-                s.Id, s.ProjectPath, s.Title, s.CreatedUtc, s.LastActivityUtc, s.Turns,
+                s.Id, s.ProjectPath, s.Title, s.CreatedUtc, s.LastActivityUtc, s.Turns, s.CacheUntilUtc,
                 Active = string.Equals(state.ActiveSessions.GetValueOrDefault(s.ProjectPath), s.Id, StringComparison.Ordinal),
             }),
             Rules = state.AlwaysAllowByProject.Select(p => new { Project = p.Key, Rules = p.Value }),

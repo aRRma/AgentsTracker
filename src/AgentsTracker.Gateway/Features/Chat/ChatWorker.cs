@@ -272,6 +272,11 @@ public sealed class ChatWorker(
         if (result.SessionId is { Length: > 0 } reported && result.Usage is { ContextTokens: > 0 } context)
             store.RecordContext(reported, context.ContextTokens, context.ContextWindow);
 
+        // Разбивка контекста модель не звала и кэш не трогала: прошлый срок остаётся верным.
+        DateTimeOffset? cacheUntil = null;
+        if (kind != AgentRunKind.ContextReport && result.SessionId is { Length: > 0 } cached && result.Usage is { } ran)
+            cacheUntil = store.RecordCache(cached, ran.LastRequestUtc, ran.CacheTtl);
+
         // Вопрос сессию не создавал и не продолжал — трогать активную нечего.
         var note = question ? "" : SettleSession(prompt.Chat, project, session, runSessionId, result);
 
@@ -302,7 +307,7 @@ public sealed class ChatWorker(
         });
 
         await SendRenderedAsync(
-            prompt.Chat, Answer(kind, result) + note + Footer(kind, result, modelLabel, effort), prompt.ReplyTo, stoppingToken);
+            prompt.Chat, Answer(kind, result) + note + Footer(kind, result, modelLabel, effort, cacheUntil), prompt.ReplyTo, stoppingToken);
 
         // Упёрлись в лимит — следующие задачи упрутся в него же; очередь чистим,
         // чтобы не жечь её на отказах.
@@ -400,9 +405,10 @@ public sealed class ChatWorker(
     /// в <c>/sessions</c> и <c>/status</c>, и по нему же сессию можно продолжить
     /// из терминала в той же папке. Модель и effort — чтобы по ответу было видно, кто
     /// и с каким усилием его дал: модель фактическая, со слов агента, а effort — переданный,
-    /// агент его не сообщает.
+    /// агент его не сообщает. «Кэш до» — время, а не обратный отсчёт: сообщение не обновляется,
+    /// и «ещё 50 мин» через полчаса читалось бы как неправда.
     /// </summary>
-    private static string Footer(AgentRunKind kind, AgentRunResult result, string? model, string? effort)
+    private static string Footer(AgentRunKind kind, AgentRunResult result, string? model, string? effort, DateTimeOffset? cacheUntil)
     {
         var parts = new List<string>();
 
@@ -422,6 +428,9 @@ public sealed class ChatWorker(
 
         if (result.Usage is { Turns: > 0 } usage) parts.Add($"{usage.Turns} х");
         parts.Add(result.Duration.Elapsed);
+
+        if (cacheUntil is { } until)
+            parts.Add(until > DateTimeOffset.UtcNow ? $"🧊 кэш до {until.Clock}" : "🧊 кэш остыл");
 
         return "\n\n" + string.Join(" · ", parts);
     }

@@ -13,9 +13,14 @@ public static class ClaudeStreamEvent
     /// <param name="ContextTokens">Размер контекста на этом ходе основной ветки; null — ход не основной или без usage.</param>
     /// <param name="Compaction">Событие сжатия контекста: сколько было и сколько стало.</param>
     /// <param name="MainModel">Модель хода основной ветки; null — ход сабагента или локальной команды.</param>
+    /// <param name="CacheTtl">Срок записи в кэш на этом ходе основной ветки; null — записи не было.</param>
+    /// <param name="MainInput">
+    /// Ввод основной ветки (результаты инструментов): следующий запрос к модели начнётся после него.
+    /// </param>
     public sealed record Line(
         bool IsJson, bool IsResult, IReadOnlyList<RunActivity> ToolCalls,
-        long? ContextTokens = null, ContextCompaction? Compaction = null, string? MainModel = null)
+        long? ContextTokens = null, ContextCompaction? Compaction = null, string? MainModel = null,
+        TimeSpan? CacheTtl = null, bool MainInput = false)
     {
         public static readonly Line Text = new(false, false, []);
         public static readonly Line Other = new(true, false, []);
@@ -33,11 +38,38 @@ public static class ClaudeStreamEvent
         return String(root, "type") switch
         {
             "result" => Line.Result,
-            "assistant" => new Line(true, false, ToolCalls(root), ContextTokens(root), MainModel: MainModel(root)),
+            "assistant" => new Line(true, false, ToolCalls(root), ContextTokens(root), MainModel: MainModel(root),
+                CacheTtl: CacheTtl(root)),
             "system" when String(root, "subtype") == "compact_boundary" => new Line(true, false, [], Compaction: Compaction(root)),
+            "user" when !Nested(root) => new Line(true, false, [], MainInput: true),
             _ => Line.Other,
         };
     }
+
+    /// <summary>
+    /// Срок записи в кэш по разбивке usage.cache_creation (проверено на CLI 2.1.292): у основной
+    /// ветки на подписке — ephemeral_1h, при оплате сверх подписки — ephemeral_5m. Чтение без
+    /// записи срок не сообщает — тогда null, и шлюз берёт прошлый.
+    /// </summary>
+    private static TimeSpan? CacheTtl(JsonElement root)
+    {
+        if (!TryMainTurn(root, out var message, out _)
+            || !message.TryGetProperty("usage", out var usage)
+            || !usage.TryGetProperty("cache_creation", out var creation)
+            || creation.ValueKind != JsonValueKind.Object)
+            return null;
+
+        if (Number(creation, "ephemeral_1h_input_tokens") > 0) return TimeSpan.FromHours(1);
+        if (Number(creation, "ephemeral_5m_input_tokens") > 0) return TimeSpan.FromMinutes(5);
+        return null;
+    }
+
+    /// <summary>
+    /// parent_tool_use_id лежит в корне события (проверено на CLI 2.1.261): у шага сабагента
+    /// там id вызова Agent, у основного хода — null.
+    /// </summary>
+    private static bool Nested(JsonElement root) =>
+        root.TryGetProperty("parent_tool_use_id", out var parent) && parent.ValueKind == JsonValueKind.String;
 
     /// <summary>
     /// Сообщение хода основной ветки. Ходы сабагентов — мимо: у них своё окно и своя модель.
@@ -47,7 +79,7 @@ public static class ClaudeStreamEvent
     private static bool TryMainTurn(JsonElement root, out JsonElement message, out string model)
     {
         model = "";
-        if (root.TryGetProperty("parent_tool_use_id", out var parent) && parent.ValueKind == JsonValueKind.String
+        if (Nested(root)
             || !root.TryGetProperty("message", out message)
             || String(message, "model") is not { Length: > 0 } name || name == "<synthetic>")
         {
@@ -107,10 +139,7 @@ public static class ClaudeStreamEvent
             || content.ValueKind != JsonValueKind.Array)
             return [];
 
-        // parent_tool_use_id лежит в корне события (проверено на CLI 2.1.261): у шага
-        // сабагента там id вызова Agent, у основного хода — null.
-        var nested = root.TryGetProperty("parent_tool_use_id", out var parent)
-                     && parent.ValueKind == JsonValueKind.String;
+        var nested = Nested(root);
 
         var calls = new List<RunActivity>();
         foreach (var block in content.EnumerateArray())

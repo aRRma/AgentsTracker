@@ -27,6 +27,19 @@ public sealed record RunUsage
 
     /// <summary>Размер окна контекста основной модели. 0 — неизвестно.</summary>
     public long ContextWindow { get; init; }
+
+    /// <summary>
+    /// Начало последнего запроса основной ветки к модели: от него, а не от конца ответа,
+    /// отсчитывается жизнь кэша — длинный ответ съедает часть срока. null — модель не вызывалась
+    /// или контекст сжат после последнего запроса, и старый кэш к сессии уже не относится.
+    /// </summary>
+    public DateTimeOffset? LastRequestUtc { get; init; }
+
+    /// <summary>
+    /// Сколько модель держит кэш после запроса: час на подписке, пять минут при оплате сверх
+    /// неё или по ключу API. null — запуск ничего не записал в кэш, срок не узнать.
+    /// </summary>
+    public TimeSpan? CacheTtl { get; init; }
 }
 
 public sealed record ModelRunUsage(

@@ -113,6 +113,7 @@ public sealed class ContextScreen(
 
             🧵 Сессия: <b>{E(name)}</b>
             {Fill(session)}
+            🧊 Кэш: {Cache(session)}
 
             <i>«Подробно» — из чего состоит контекст. «Сжать» — агент перескажет разговор кратко, сессия останется та же. «Новая сессия» — начать с чистого листа.</i>
             """;
@@ -138,6 +139,25 @@ public sealed class ContextScreen(
 
         var measured = session.ContextUtc is { } at ? $"\n<i>Замер после запуска {E(at.Ago)}.</i>" : "";
         return $"<code>{LimitBars.Bar(used)}</code> {line}{measured}";
+    }
+
+    /// <summary>
+    /// Сколько ещё живёт кэш сессии. Единственное место, где срок превращается в текст: «Статус»
+    /// и «Контекст» должны говорить одно и то же. Остывший кэш — повод сжать контекст или начать
+    /// новую сессию: следующий запуск всё равно запишет весь контекст заново.
+    /// </summary>
+    internal static string Cache(SessionRecord? session)
+    {
+        if (session?.CacheUntilUtc is not { } until) return "—";
+
+        var left = until - DateTimeOffset.UtcNow;
+        if (left > TimeSpan.Zero)
+            return left.TotalMinutes >= 1
+                ? $"ещё {(int)left.TotalMinutes} мин (до {until.Clock})"
+                : $"меньше минуты (до {until.Clock})";
+
+        var ago = -left;
+        return ago.TotalHours < 1 ? $"остыл {(int)ago.TotalMinutes} мин назад" : $"остыл {E(until.Ago)}";
     }
 
     /// <summary>Лампа и процент для строки списка; пусто, пока замера не было.</summary>

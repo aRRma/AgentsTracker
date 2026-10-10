@@ -96,7 +96,7 @@ public sealed class ClaudeBackend(
         process.StandardInput.Close();
 
         // Оба потока читаем одновременно — иначе заполненный пайп заблокирует процесс.
-        var stdoutTask = ReadStreamAsync(process.StandardOutput, observer);
+        var stdoutTask = ReadStreamAsync(process.StandardOutput, observer, DateTimeOffset.UtcNow);
         var stderrTask = process.StandardError.ReadToEndAsync(CancellationToken.None);
 
         var cancelled = false;
@@ -137,7 +137,12 @@ public sealed class ClaudeBackend(
             SessionId = persistent ? result.SessionId : null,
             Text = request.Kind == AgentRunKind.ContextReport && result.Ok ? ContextSummary(result.Text) : result.Text,
             Usage = result.Usage is { } usage
-                ? usage with { ContextTokens = output.Compaction?.After ?? output.ContextTokens ?? 0 }
+                ? usage with
+                {
+                    ContextTokens = output.Compaction?.After ?? output.ContextTokens ?? 0,
+                    LastRequestUtc = output.LastRequestUtc,
+                    CacheTtl = output.CacheTtl,
+                }
                 : null,
             Compaction = output.Compaction,
         };
@@ -178,14 +183,18 @@ public sealed class ClaudeBackend(
     /// <param name="ContextTokens">Контекст последнего хода основной ветки; null — ходов не было.</param>
     /// <param name="Compaction">Сжатие, если оно случилось в запуске: после него контекст — это его итог.</param>
     /// <param name="MainModel">Модель последнего хода основной ветки; null — ходов не было.</param>
+    /// <param name="LastRequestUtc">Начало последнего запроса основной ветки; null — после него было сжатие или ходов не было.</param>
+    /// <param name="CacheTtl">Срок последней записи основной ветки в кэш; null — записей не было.</param>
     private sealed record StreamOutput(
-        string? ResultLine, string Noise, long? ContextTokens, ContextCompaction? Compaction, string? MainModel);
+        string? ResultLine, string Noise, long? ContextTokens, ContextCompaction? Compaction, string? MainModel,
+        DateTimeOffset? LastRequestUtc, TimeSpan? CacheTtl);
 
     /// <summary>
     /// Читает stdout построчно: вызовы инструментов отдаёт наблюдателю, остальные события
     /// не копит — в долгом запуске их мегабайты, а ответу они не нужны.
     /// </summary>
-    private async Task<StreamOutput> ReadStreamAsync(StreamReader stdout, IAgentRunObserver observer)
+    /// <param name="started">Старт процесса — до него первый запрос к модели начаться не мог.</param>
+    private async Task<StreamOutput> ReadStreamAsync(StreamReader stdout, IAgentRunObserver observer, DateTimeOffset started)
     {
         var noise = new StringBuilder();
         string? resultLine = null;
@@ -193,6 +202,14 @@ public sealed class ClaudeBackend(
         long? context = null;
         ContextCompaction? compaction = null;
         string? mainModel = null;
+
+        // Поток отдаёт ход целиком, когда ответ уже готов, а начало запроса не сообщает. Запрос
+        // начинается после последнего ввода основной ветки — время этого ввода и берём. Оно раньше
+        // настоящего начала, и «кэш до» выходит раньше настоящего: лучше ответить с запасом, чем
+        // поверить в живой кэш, который уже остыл.
+        var requestStart = started;
+        DateTimeOffset? lastRequest = null;
+        TimeSpan? cacheTtl = null;
 
         while (await stdout.ReadLineAsync(CancellationToken.None) is { } line)
         {
@@ -222,8 +239,22 @@ public sealed class ClaudeBackend(
                 compaction = null;
             }
 
-            if (parsed.Compaction is { } compacted) compaction = compacted;
-            if (parsed.MainModel is { } model) mainModel = model;
+            if (parsed.MainInput) requestStart = DateTimeOffset.UtcNow;
+
+            // Сжатие заменяет начало сессии пересказом: кэш прежнего начала к ней больше не
+            // относится. Если после сжатия был ход, он запишет новое — и срок снова известен.
+            if (parsed.Compaction is { } compacted)
+            {
+                compaction = compacted;
+                lastRequest = null;
+            }
+
+            if (parsed.MainModel is { } model)
+            {
+                mainModel = model;
+                lastRequest = requestStart;
+                if (parsed.CacheTtl is { } ttl) cacheTtl = ttl;
+            }
 
             foreach (var activity in parsed.ToolCalls)
             {
@@ -236,7 +267,7 @@ public sealed class ClaudeBackend(
 
         if (resultLine is null && lastEvent is not null) noise.AppendLine(lastEvent);
 
-        return new StreamOutput(resultLine, noise.ToString().TrimEnd(), context, compaction, mainModel);
+        return new StreamOutput(resultLine, noise.ToString().TrimEnd(), context, compaction, mainModel, lastRequest, cacheTtl);
     }
 
     private IEnumerable<string> BuildArguments(
