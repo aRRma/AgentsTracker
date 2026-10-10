@@ -141,6 +141,28 @@ with "delete nothing" — putting things back is always easier than restoring th
 - **The conversation keeps context** within a folder: you can refine and follow up without
   repeating the setup.
 
+## How to Make the Plan Last
+
+Every step of the agent reads the whole session context again. While you keep answering, the model
+keeps the session ready — that is the cache, and reading it is cheap. The cache lives an hour after
+the last request, then goes cold, and the next run writes the whole context anew — noticeably more
+expensive than a normal step. The deadline is under every answer ("🧊 кэш до 15:42") and in
+`/status`.
+
+- **One task — one session.** A new topic — `/new`. The bigger the context, the dearer every step.
+- **Pick the model at the start.** A model switch resets the cache, and so does the `plan` mode. With
+  a big context the bot asks first.
+- **Answer while the cache is alive.** A pause of up to half an hour or an hour costs nothing. Leaving
+  for long with a big context — compress it before you go («Контекст» → «Сжать»), or ask the agent to
+  write the plan into a file and come back with a new session.
+- **Heavy reading — to sub-agents.** "Sort the folder with a sub-agent and send me the summary"
+  leaves a short summary in the context, not the contents of every file. Give a sub-agent half an
+  hour of work at most and ask it to write its interim result into a file: if the run breaks off, the
+  sub-agent's report is lost, the file is not.
+- **A run broke off** on the timeout or `/stop` — the edits are already on disk. Write «продолжи».
+
+How much is read from the cache and how many misses there were — `/usage`.
+
 ## What Else People Use It For
 
 These are the first five, not all of them: sorting out the Downloads folder, batch-compressing
