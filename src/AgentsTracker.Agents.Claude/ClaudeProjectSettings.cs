@@ -135,7 +135,7 @@ internal static class ClaudeProjectSettings
         // от версии к версии, и «ничего опасного» по сегодняшнему списку завтра может стать неправдой.
         if (items.Count == 0) items.AddRange(found.Select(f => $"{f.Relative}: опасных ключей не найдено"));
 
-        return new ProjectSettings(Convert.ToHexStringLower(hash.GetHashAndReset())[..16], [.. items.Select(i => Text.Clip(i, ItemLength))]);
+        return new ProjectSettings(Convert.ToHexStringLower(hash.GetHashAndReset())[..16], [.. items.Select(i => Text.ClipRedacted(i, ItemLength))]);
     }
 
     private static string Relative(string projectPath, string full) =>
@@ -158,9 +158,10 @@ internal static class ClaudeProjectSettings
                 return Encoding.UTF8.GetBytes(root.ToJsonString());
             }
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or ArgumentException)
         {
-            // Не разобран — в отпечаток как есть.
+            // Не разобран (или два ключа с одним именем — JsonNode такое не берёт): в отпечаток как
+            // есть. Исключение отсюда нарушило бы контракт InspectProject «не бросает».
         }
 
         return content;
