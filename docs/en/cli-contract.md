@@ -28,14 +28,19 @@ own (only inside `--permission-prompts`), yet the flag works. Re-check both afte
 
 Two cases:
 
-- The CLI sent `permission_suggestions` with `destination: localSettings` — the rule is
-  written by the **CLI itself** into the project's `.claude/settings.local.json` (usually a
-  prefix rule). The card shows exactly that, it reaches the host as `PersistentRule.Raw` and is
-  returned unchanged in `updatedPermissions`.
+- The CLI sent `permission_suggestions` with `destination: localSettings`, `type: addRules`,
+  `behavior: allow` — the rule is written by the **CLI itself** into the project's
+  `.claude/settings.local.json` (usually a prefix rule). The card shows exactly that, it reaches
+  the host as `PersistentRule.Raw` and is returned unchanged in `updatedPermissions`. Only the
+  rules the card showed go back (`ApprovalCardRenderer.ShownRules`, at most 4): a compound command
+  gets a suggestion per part, and the rest would have been written unseen. Other suggestion types
+  (`setMode`, `addDirectories`) are dropped — the card has no way to show them.
 - Otherwise the gateway remembers the exact signature in `state.json`
   (`AlwaysAllowByProject`, key — normalized project path), visible in `/rules`. Gateway rules
   apply only within their own project: `git push --force` from one project must not
-  silently pass in the others.
+  silently pass in the others. The project is the **run's** (`RunScope.ProjectPath`), not the
+  chat's current one: `/project` switched in the middle of a task would otherwise lend it the other
+  project's rules and take its «Всегда» there.
 
 ### Truncated tail
 

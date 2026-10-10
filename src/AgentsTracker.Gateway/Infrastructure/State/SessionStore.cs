@@ -397,12 +397,14 @@ public sealed class SessionStore
 
     public void ResetUsage() => Mutate(s => s.Usage = new UsageStats { SinceUtc = DateTimeOffset.Now });
 
-    // Правила «всегда» живут в проекте: проверяются и правятся только для текущего.
+    // Правила «всегда» живут в проекте. Запуск проверяет и пишет их в своём проекте, а не в
+    // текущем проекте чата: /project можно сменить посреди задачи. /rules — в текущем.
 
-    public bool IsAlwaysAllowed(string signature)
+    public bool IsAlwaysAllowed(string projectPath, string signature)
     {
         lock (_gate)
-            return _state.AlwaysAllowByProject.GetValueOrDefault(ProjectPathLocked())?.Contains(signature, StringComparer.Ordinal) == true;
+            return _state.AlwaysAllowByProject.GetValueOrDefault(ProjectCatalog.Normalize(projectPath))
+                ?.Contains(signature, StringComparer.Ordinal) == true;
     }
 
     /// <summary>Правила «всегда» текущего проекта: копия, чтобы читать без замка.</summary>
@@ -412,11 +414,11 @@ public sealed class SessionStore
             return [.. _state.AlwaysAllowByProject.GetValueOrDefault(ProjectPathLocked()) ?? []];
     }
 
-    public void AddAlwaysAllow(string signature)
+    public void AddAlwaysAllow(string projectPath, string signature)
     {
         Mutate(s =>
         {
-            var rules = RulesOf(s, ProjectPathLocked());
+            var rules = RulesOf(s, ProjectCatalog.Normalize(projectPath));
             if (!rules.Contains(signature, StringComparer.Ordinal)) rules.Add(signature);
         });
     }

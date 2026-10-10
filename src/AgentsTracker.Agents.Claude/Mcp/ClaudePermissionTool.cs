@@ -55,7 +55,7 @@ public sealed class ClaudePermissionTool(
             var decision = await console.ApproveAsync(new ApprovalRequest(runId, toolName, toolInput, rules), cancellationToken);
 
             return decision.Allowed
-                ? Allow(toolInput, decision.PersistRules ? rules : null)
+                ? Allow(toolInput, decision.PersistRules)
                 : Deny(decision.Reason ?? "Пользователь отклонил это действие.");
         }
         catch (Exception ex)
@@ -70,7 +70,9 @@ public sealed class ClaudePermissionTool(
     /// <summary>
     /// Правила, которые CLI может записать в .claude/settings.local.json проекта. Форма
     /// элемента: {type:"addRules", rules:[{toolName, ruleContent}], behavior, destination}.
-    /// Берём только localSettings — остальные CLI сам не применит.
+    /// Берём только localSettings — остальные CLI сам не применит. И только разрешающие
+    /// правила: карточка показывает список правил, а смену режима или новую папку доступа
+    /// («setMode», «addDirectories») она не показала бы — «Всегда» записало бы их вслепую.
     /// </summary>
     private static IReadOnlyList<PersistentRule>? PersistableRules(JsonElement? suggestions)
     {
@@ -81,8 +83,8 @@ public sealed class ClaudePermissionTool(
         foreach (var item in array.EnumerateArray())
         {
             if (item.ValueKind != JsonValueKind.Object) continue;
-            if (!item.TryGetProperty("destination", out var destination)) continue;
-            if (destination.GetString() != "localSettings") continue;
+            if (Str(item, "destination") != "localSettings") continue;
+            if (Str(item, "type") != "addRules" || Str(item, "behavior") != "allow") continue;
 
             result.Add(new PersistentRule(DescribeRules(item), item.Clone()));
         }

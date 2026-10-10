@@ -26,14 +26,16 @@ public sealed record ApprovalRequest(
 
 /// <summary>Решение оператора. При отказе <see cref="Reason"/> — текст для агента.</summary>
 /// <param name="PersistRules">
-/// Разрешено «всегда» и агент должен сам записать <see cref="ApprovalRequest.SuggestedRules"/>.
-/// false при «Всегда» без предложенных правил: тогда сигнатуру запомнил хост.
+/// Разрешено «всегда»: правила из <see cref="ApprovalRequest.SuggestedRules"/>, которые агент
+/// должен записать у себя. Не все предложенные, а те, что человек видел на карточке, — иначе
+/// «Всегда» записало бы больше, чем показано. null при «Всегда» без предложенных правил: тогда
+/// сигнатуру запомнил хост.
 /// </param>
-public sealed record ApprovalDecision(bool Allowed, string? Reason, bool PersistRules)
+public sealed record ApprovalDecision(bool Allowed, string? Reason, IReadOnlyList<PersistentRule>? PersistRules)
 {
-    public static ApprovalDecision Allow(bool persistRules = false) => new(true, null, persistRules);
+    public static ApprovalDecision Allow(IReadOnlyList<PersistentRule>? persistRules = null) => new(true, null, persistRules);
 
-    public static ApprovalDecision Deny(string reason) => new(false, reason, false);
+    public static ApprovalDecision Deny(string reason) => new(false, reason, null);
 }
 
 /// <summary>Вариант ответа на вопрос агента.</summary>

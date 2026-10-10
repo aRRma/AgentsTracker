@@ -111,7 +111,7 @@ public static class ApprovalCardRenderer
         var attachment = truncated.Render($"{SafeFileName(toolName)}-input.txt");
         if (attachment is not null)
             card.Append("\n⚠️ <b>Показано не всё</b> — полный текст в файле выше. Не разрешайте, не прочитав его.\n");
-        var rules = suggested?.Take(MaxSuggestedRules).Select(rule => rule.Display).ToList() ?? [];
+        var rules = ShownRules(suggested)?.Select(rule => rule.Display).ToList() ?? [];
         if (rules.Count > 0)
         {
             card.Append("\n<i>Кнопка «Всегда» запишет в настройки проекта у агента:</i>\n");
@@ -127,6 +127,13 @@ public static class ApprovalCardRenderer
 
         return new ApprovalCard(card.ToString(), attachment);
     }
+
+    /// <summary>
+    /// Правила агента, которые видны на карточке. «Всегда» возвращает агенту ровно их: иначе
+    /// составная команда с пятью и больше частями записала бы правило, которого человек не видел.
+    /// </summary>
+    public static IReadOnlyList<PersistentRule>? ShownRules(IReadOnlyList<PersistentRule>? suggested) =>
+        suggested is { Count: > 0 } ? [.. suggested.Take(MaxSuggestedRules)] : null;
 
     /// <summary>Сколько правил от агента показывать: больше он и не присылает, и не влезет.</summary>
     private const int MaxSuggestedRules = 4;

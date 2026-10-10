@@ -51,7 +51,9 @@ public sealed class OperatorConsole(
         // Монитору та же строка, что и логу: в полном вводе Edit/Write лежит содержимое файлов.
         using var pending = monitor.Approval(toolName, brief);
 
-        if (store.IsAlwaysAllowed(signature))
+        // Проект запуска, а не чата: /project, сменённый посреди задачи, иначе подставил бы ей
+        // правила другого проекта, а «Всегда» записало бы правило туда.
+        if (store.IsAlwaysAllowed(run.ProjectPath, signature))
         {
             logger.LogInformation("Автоматически разрешено по правилу «всегда»: {Tool} {Key}", toolName, brief);
             Audit(run, AuditKinds.Approval, signature, "rule");
@@ -103,9 +105,9 @@ public sealed class OperatorConsole(
 
             case "always":
                 // Правило агента шире и живёт у него; своё пишем, только если он не предложил.
-                if (suggested is null) store.AddAlwaysAllow(signature);
+                if (suggested is null) store.AddAlwaysAllow(run.ProjectPath, signature);
                 Audit(run, AuditKinds.Rules, $"add {signature}", suggested is null ? "gateway" : "agent", user);
-                return ApprovalDecision.Allow(persistRules: suggested is not null);
+                return ApprovalDecision.Allow(ApprovalCardRenderer.ShownRules(suggested));
 
             case "reason":
                 var reason = await broker.AskTextAsync(
