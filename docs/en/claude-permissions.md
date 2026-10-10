@@ -52,8 +52,9 @@ Below is the principle and representative examples, not a full list: that's in
   is an exfiltration channel: whatever the agent read, it could send out. It can still reach
   the internet through its own tools (`WebFetch`), which are visible in the card;
 - irreversible git actions: `push --force`, `reset --hard`, `rebase`, deleting `.git` — as
-  `git*push*--force*`, `git*reset*--hard*`, `git*rebase*` patterns: they catch any argument
-  order, `git -C`, `--no-pager` and `git.exe`;
+  `git*push*--force*`, `git*reset*--h*`, `git*rebase*` patterns: they catch any argument
+  order, `git -C`, `--no-pager` and `git.exe`. `--h*`, not `--hard*`: git accepts the `--ha`
+  abbreviation;
 - deleting a repository through the GitHub plugin (`delete_repository`);
 - anything that runs someone else's code or changes the system: `docker run`/`exec`, `sudo`,
   `dotnet nuget add source`, `dotnet nuget push`.
@@ -98,6 +99,10 @@ permission lets an action through silently.
   through `git -C`.
 - Wrappers (`wsl git`, `bash -c "git …"`, `pwsh -c`) match no `allow` and go to a card or the
   `auto` mode classifier. They need no rules of their own.
+- A git `allow` names a subcommand, not a global option: `git --no-pager*` would silently admit
+  `git --no-pager push` and `git --no-pager checkout -- file` — an `ask` on `git push*` matching
+  from the start does not recognise them. For the same reason branch deletion in `ask` is written
+  as `git*branch*-D*`, `-df`, `-fd`, `-d -f`, `--force`: it has many forms.
 - An `allow` on a broad prefix lets the destructive variant through too: `git switch*` admits
   `git switch -f`, `git branch*` admits `git branch -D`. `ask` and `deny` beat `allow`, so the
   dangerous variants are listed there separately.
