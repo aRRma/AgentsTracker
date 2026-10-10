@@ -180,6 +180,27 @@ Call review skills with the branch name (`code-review medium --fix <branch>`): w
 argument they take the uncommitted diff of the main folder, not your branch, and fix someone
 else's work.
 
+Traps that have already cost time or work:
+
+- **Forward slashes only in Bash.** Git Bash turns `..\AgentsTracker-x` into `..AgentsTracker-x`,
+  and the worktree ends up inside the repository.
+- **Git commands through `git -C <worktree>`.** The shells and the LSP sit in the main folder:
+  without `-C` the commit lands in `master`. Before a commit — `git -C <worktree> branch --show-current`.
+- **Commit your own files by name**, not `git add -A`: the folder holds other people's notes and plans.
+- **Stash, branches, tags and `config` are shared by all worktrees.** `git stash pop` in one
+  worktree brings out the changes from another.
+- **Never delete someone else's `*.lock`.** «Unable to create '…lock'» means git is running in
+  another folder — repeat the command later.
+- **In a detached worktree** (the scratch instance's `AgentsTracker-run`) do not commit: the commit
+  goes away with the folder.
+- **Removal in order:** merge → stop the scratch instance by PID → `dotnet build-server shutdown` →
+  `git worktree remove` → `git branch -d`. A file in `bin\` held by a process breaks the removal
+  halfway. If the removal failed — not `rm -rf`, but `git worktree list` and `git status` in that folder.
+- **A release tag only in the main folder after the merge:** a tag in a worktree releases an
+  unmerged branch.
+- **Switch `/project` in the chat back before removing a worktree.** Otherwise the next task goes
+  into a folder that no longer exists.
+
 ## Documentation in two languages
 
 `docs/en/*.md` is the English original: the agent reads it and `CLAUDE.md` links only to it. The

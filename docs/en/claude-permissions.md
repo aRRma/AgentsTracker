@@ -59,6 +59,8 @@ Below is the principle and representative examples, not a full list: that's in
 
 - `git push`, `git checkout`/`restore`, `git clean`, `git branch -D`, `git stash drop` —
   reversible, but easy to lose work over;
+- what throws changes away silently: `git switch -f`/`--discard-changes`/`-C`, `git stash pop`
+  (the stash is shared by all worktrees), `git worktree remove`/`prune`;
 - editing `~/.claude/settings.json` and hooks: the agent shouldn't be able to expand its own
   permissions;
 - deleting files from PowerShell (`Remove-Item`), stopping processes and scheduled tasks.
@@ -82,6 +84,12 @@ permission lets an action through silently.
   `curl.exe` — that needs its own rule.
 - `git push --force*` doesn't catch `git push -f` — two separate rules. On the other hand `*`
   works anywhere in the string: `Bash(mongosh*drop*)`.
+- A rule matches the start of the string: `git -C <folder> push --force` does not match
+  `git push --force*`. In a worktree almost every command goes through `git -C`, so every git deny
+  and ask has a `git -C * …` twin.
+- An `allow` on a broad prefix lets the destructive variant through too: `git switch*` admits
+  `git switch -f`, `git branch*` admits `git branch -D`. `ask` and `deny` beat `allow`, so the
+  dangerous variants are listed there separately.
 - A space before `*` is part of the pattern: `Bash(tail *)` won't let `tailwind` through,
   `Bash(tail*)` will. `Bash(git status)` without an asterisk matches only that exact command
   with no arguments.
