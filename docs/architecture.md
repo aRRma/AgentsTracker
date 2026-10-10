@@ -21,6 +21,7 @@ src/AgentsTracker.Agents.Claude/         Claude Code за этими контр�
   ClaudeCapabilities    какие модели, усилия и режимы принимает CLI; Selectable — что предлагается из чата
   ClaudeLimits, ClaudeSkillCatalog, ClaudePluginRegistry, ClaudeCliLocator, ClaudeStreamEvent
   ClaudeProjectSettings хуки, allow, MCP-серверы и скиллы из .claude/ и .mcp.json проекта, их отпечаток
+  ClaudeProcessJob      Windows Job Object на время жизни шлюза: каждый claude и его потомки умирают вместе со шлюзом
   Mcp/                  McpConfigFile — mcp-gateway-<pid>-<запуск>.json на запуск: токен и id запуска; ClaudePermissionTool — полезная нагрузка CLI ↔ IOperatorConsole;
                         ClaudeSendFileTool — файл от агента в чат, политика остаётся на стороне хоста
 src/AgentsTracker.Channels.Abstractions/ контракты канала, без конкретного мессенджера:

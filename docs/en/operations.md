@@ -60,6 +60,9 @@ cmd //c start "" "src/AgentsTracker.Gateway/bin/Debug/net10.0/AgentsTracker.Gate
 - Do not restart from a session launched by the gateway itself (from Telegram): `Stop-Process`
   would kill the current `claude -p` too, and a deferred `schtasks /SC ONCE` did not work. Give
   the user the commands above and ask them to run them by hand.
+- Stopping the gateway kills all its `claude` processes and everything they started (the Job
+  Object, `cli-contract.md`): a dev server or an emulator the agent brought up has to be started
+  again after a gateway restart.
 - The console outputs Russian text in cp866 — view the log in PowerShell (`iconv` is not
   available in Git Bash).
 - After startup the bot posts «🔌 Шлюз запущен» ("Gateway started") with the build version

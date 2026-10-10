@@ -169,13 +169,28 @@ through, but an artificial one in a test may not.
 ## Startup and event stream
 
 The CLI is started with `--output-format stream-json --verbose` (without `--verbose` the
-stream is not written in `-p`). `ClaudeBackend.ReadStreamAsync` parses stdout line by line
+stream is not written in `-p`). `ClaudeBackend.StreamCollector` parses stdout line by line
 (`ClaudeStreamEvent.Classify`): tool calls → `IAgentRunObserver.Activity`, everything else is
 discarded — in a long run that's megabytes. The result is the last line, `"type":"result"`, in
 the same shape as `--output-format json`; non-JSON lines (an update banner) go into the error
 text. The CLI often leaves the error text in stderr and sends `result` empty (as with «No
 conversation found» on a broken `--resume`) — the session-reset and limit checks also look at
 stderr.
+
+After the process exits, stdout and stderr get `DrainGrace` (5 s) to end, then the result is
+built from what was read. A background process the agent started (a dev server, `watch`,
+`start /b`) inherits the CLI's output pipe, and its end only comes with that process: before
+this, the task lane hung on `await stdout` forever — the run timeout and `/stop` don't reach
+past the process exit (reproduced with a fake CLI: 24 s for a 25-second background `ping`, 5 s
+now). The pipe is left open and read idly: closing it would break the background process on its
+next write.
+
+Every `claude` is put into `ClaudeProcessJob` — one Windows Job Object for the gateway's lifetime
+with `KILL_ON_JOB_CLOSE`. The gateway exiting, a `Stop-Process` included, kills every `claude` and
+everything they started, background dev servers too; before this a restart left `claude.exe`
+finishing the task with nobody listening and writing into the session the new instance resumes.
+A failed `AssignProcessToJobObject` is logged once and the run goes on. Outside Windows it does
+nothing — a container gives the same.
 
 A run in progress is recorded in `state.json` (`GatewayState.ActiveRun`, a вопрос — in
 `ActiveQuestion`, since it runs in parallel): `ChatWorker` sets

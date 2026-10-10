@@ -14,6 +14,7 @@ namespace AgentsTracker.Agents.Claude;
 public sealed class ClaudeBackend(
     ClaudeCliLocator locator,
     McpConfigFile mcpConfig,
+    ClaudeProcessJob job,
     ILogger<ClaudeBackend> logger) : IAgentBackend
 {
     public const string BackendId = "claude";
@@ -86,6 +87,8 @@ public sealed class ClaudeBackend(
             return AgentRunResult.Failure($"Не удалось запустить claude: {ex.Message}", started.Elapsed);
         }
 
+        job.Assign(process);
+
         // Процесс поднялся — хост запоминает сессию сразу, не дожидаясь ответа: с этого
         // момента её можно продолжить, даже если запуск оборвут.
         if (persistent && resumedSessionId is null)
@@ -98,8 +101,15 @@ public sealed class ClaudeBackend(
         process.StandardInput.Close();
 
         // Оба потока читаем одновременно — иначе заполненный пайп заблокирует процесс.
-        var stdoutTask = ReadStreamAsync(process.StandardOutput, observer, DateTimeOffset.UtcNow);
-        var stderrTask = process.StandardError.ReadToEndAsync(CancellationToken.None);
+        var stream = new StreamCollector(observer, logger, DateTimeOffset.UtcNow);
+        var errors = new StringBuilder();
+        var errorsClosed = false;
+        var stdoutTask = PumpAsync(process.StandardOutput, stream.Feed);
+        var stderrTask = PumpAsync(process.StandardError, line =>
+        {
+            lock (errors)
+                if (!errorsClosed) errors.AppendLine(line);
+        });
 
         var cancelled = false;
         try
@@ -113,8 +123,25 @@ public sealed class ClaudeBackend(
             try { await process.WaitForExitAsync(CancellationToken.None); } catch { /* уже мёртв */ }
         }
 
-        var output = await stdoutTask;
-        var stderr = await stderrTask;
+        if (!await DrainedAsync(stdoutTask, stderrTask))
+        {
+            // Канал вывода держит фоновый процесс, которому агент его передал: конец потока
+            // придёт только с ним, а ни /stop, ни таймаут запуска сюда уже не дотягиваются.
+            // Канал не закрываем: фоновый процесс (чей-то dev-сервер) упал бы на первой же
+            // записи. Чтение идёт дальше вхолостую и кончится вместе с ним.
+            logger.LogWarning(
+                "claude завершился, а его вывод не закрылся за {Grace} с — канал держит фоновый процесс агента; беру прочитанное",
+                DrainGrace.TotalSeconds);
+            stream.Close();
+        }
+
+        var output = stream.Result();
+        string stderr;
+        lock (errors)
+        {
+            errorsClosed = true;
+            stderr = errors.ToString();
+        }
 
         if (cancelled)
         {
@@ -216,79 +243,125 @@ public sealed class ClaudeBackend(
         DateTimeOffset? LastRequestUtc, TimeSpan? CacheTtl, long? FirstCacheRead, bool Subagents);
 
     /// <summary>
-    /// Читает stdout построчно: вызовы инструментов отдаёт наблюдателю, остальные события
-    /// не копит — в долгом запуске их мегабайты, а ответу они не нужны.
+    /// Сколько ждать конца stdout и stderr после выхода процесса. Фоновый процесс агента
+    /// (dev-сервер, watch) наследует его каналы вывода, и конец потока приходит только с ним.
+    /// </summary>
+    private static readonly TimeSpan DrainGrace = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Построчно до конца потока. Может пережить сам запуск — если канал держит фоновый процесс
+    /// агента, — поэтому ошибка чтения глушится здесь, а не всплывает необработанной в пустоту.
+    /// </summary>
+    private async Task PumpAsync(StreamReader reader, Action<string> onLine)
+    {
+        try
+        {
+            while (await reader.ReadLineAsync(CancellationToken.None) is { } line) onLine(line);
+        }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+        {
+            logger.LogDebug(ex, "Чтение вывода claude оборвалось");
+        }
+    }
+
+    /// <summary>true — оба потока дочитаны; false — не закрылись за <see cref="DrainGrace"/>.</summary>
+    private static async Task<bool> DrainedAsync(Task stdout, Task stderr)
+    {
+        try
+        {
+            await Task.WhenAll(stdout, stderr).WaitAsync(DrainGrace);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Разбирает stdout построчно: вызовы инструментов отдаёт наблюдателю, остальные события
+    /// не копит — в долгом запуске их мегабайты, а ответу они не нужны. Накопитель, а не
+    /// результат чтения: если канал не закрылся после выхода процесса, итог собирается из
+    /// уже прочитанного, а чтение бросается.
     /// </summary>
     /// <param name="started">Старт процесса — до него первый запрос к модели начаться не мог.</param>
-    private async Task<StreamOutput> ReadStreamAsync(StreamReader stdout, IAgentRunObserver observer, DateTimeOffset started)
+    private sealed class StreamCollector(IAgentRunObserver observer, ILogger logger, DateTimeOffset started)
     {
-        var noise = new StringBuilder();
-        string? resultLine = null;
-        string? lastEvent = null;
-        long? context = null;
-        ContextCompaction? compaction = null;
-        string? mainModel = null;
+        private readonly Lock _gate = new();
+        private readonly StringBuilder _noise = new();
+        private string? _resultLine;
+        private string? _lastEvent;
+        private long? _context;
+        private ContextCompaction? _compaction;
+        private string? _mainModel;
 
         // Поток отдаёт ход целиком, когда ответ уже готов, а начало запроса не сообщает. Запрос
         // начинается после последнего ввода основной ветки — время этого ввода и берём. Оно раньше
         // настоящего начала, и «кэш до» выходит раньше настоящего: лучше ответить с запасом, чем
         // поверить в живой кэш, который уже остыл.
-        var requestStart = started;
-        DateTimeOffset? lastRequest = null;
-        TimeSpan? cacheTtl = null;
-        long? firstCacheRead = null;
-        var subagents = false;
+        private DateTimeOffset _requestStart = started;
+        private DateTimeOffset? _lastRequest;
+        private TimeSpan? _cacheTtl;
+        private long? _firstCacheRead;
+        private bool _subagents;
+        private bool _closed;
 
-        while (await stdout.ReadLineAsync(CancellationToken.None) is { } line)
+        public void Feed(string line)
         {
-            if (line.Length == 0) continue;
+            if (line.Length == 0) return;
 
             var parsed = ClaudeStreamEvent.Classify(line);
 
-            if (parsed.IsResult)
+            lock (_gate)
             {
-                resultLine = line;
-                continue;
-            }
+                // Итог уже собран — опоздавшая строка ничего не меняет и наблюдателю не нужна.
+                if (_closed) return;
 
-            if (!parsed.IsJson)
-            {
-                noise.AppendLine(line);
-                continue;
-            }
+                if (parsed.IsResult)
+                {
+                    _resultLine = line;
+                    return;
+                }
 
-            lastEvent = line;
+                if (!parsed.IsJson)
+                {
+                    _noise.AppendLine(line);
+                    return;
+                }
 
-            // Ход после сжатия снова даёт размер контекста — он и есть последний, сжатие
-            // остаётся в силе только до него.
-            if (parsed.ContextTokens is { } tokens)
-            {
-                context = tokens;
-                compaction = null;
-            }
+                _lastEvent = line;
 
-            if (parsed.MainInput) requestStart = DateTimeOffset.UtcNow;
+                // Ход после сжатия снова даёт размер контекста — он и есть последний, сжатие
+                // остаётся в силе только до него.
+                if (parsed.ContextTokens is { } tokens)
+                {
+                    _context = tokens;
+                    _compaction = null;
+                }
 
-            // Сжатие заменяет начало сессии пересказом: кэш прежнего начала к ней больше не
-            // относится. Если после сжатия был ход, он запишет новое — и срок снова известен.
-            if (parsed.Compaction is { } compacted)
-            {
-                compaction = compacted;
-                lastRequest = null;
-            }
+                if (parsed.MainInput) _requestStart = DateTimeOffset.UtcNow;
 
-            if (parsed.MainModel is { } model)
-            {
-                mainModel = model;
-                lastRequest = requestStart;
-                if (parsed.CacheTtl is { } ttl) cacheTtl = ttl;
-                firstCacheRead ??= parsed.CacheRead;
+                // Сжатие заменяет начало сессии пересказом: кэш прежнего начала к ней больше не
+                // относится. Если после сжатия был ход, он запишет новое — и срок снова известен.
+                if (parsed.Compaction is { } compacted)
+                {
+                    _compaction = compacted;
+                    _lastRequest = null;
+                }
+
+                if (parsed.MainModel is { } model)
+                {
+                    _mainModel = model;
+                    _lastRequest = _requestStart;
+                    if (parsed.CacheTtl is { } ttl) _cacheTtl = ttl;
+                    _firstCacheRead ??= parsed.CacheRead;
+                }
+
+                foreach (var activity in parsed.ToolCalls) _subagents |= activity.Nested;
             }
 
             foreach (var activity in parsed.ToolCalls)
             {
-                subagents |= activity.Nested;
-
                 // Наблюдатель — чужой код (статус в чате). Его исключение уронило бы чтение
                 // stdout, пайп заполнился бы и процесс завис до таймаута.
                 try { observer.Activity(activity); }
@@ -296,9 +369,23 @@ public sealed class ClaudeBackend(
             }
         }
 
-        if (resultLine is null && lastEvent is not null) noise.AppendLine(lastEvent);
+        /// <summary>Дальше строки не принимаются: итог берётся из того, что успело прийти.</summary>
+        public void Close()
+        {
+            lock (_gate) _closed = true;
+        }
 
-        return new StreamOutput(resultLine, noise.ToString().TrimEnd(), context, compaction, mainModel, lastRequest, cacheTtl, firstCacheRead, subagents);
+        public StreamOutput Result()
+        {
+            lock (_gate)
+            {
+                var noise = new StringBuilder().Append(_noise);
+                if (_resultLine is null && _lastEvent is not null) noise.AppendLine(_lastEvent);
+
+                return new StreamOutput(_resultLine, noise.ToString().TrimEnd(), _context, _compaction, _mainModel,
+                    _lastRequest, _cacheTtl, _firstCacheRead, _subagents);
+            }
+        }
     }
 
     private IEnumerable<string> BuildArguments(

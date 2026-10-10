@@ -24,6 +24,7 @@ public sealed class ClaudeAgentModule : IAgentBackendModule
 
         services.AddSingleton<ClaudeCliLocator>();
         services.AddSingleton<McpConfigFile>();
+        services.AddSingleton<ClaudeProcessJob>();
         services.AddSingleton<IAgentBackend, ClaudeBackend>();
         services.AddSingleton<IAgentLimits, ClaudeLimits>();
         services.AddSingleton<IAgentSkillCatalog, ClaudeSkillCatalog>();

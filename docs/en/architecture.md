@@ -21,6 +21,7 @@ src/AgentsTracker.Agents.Claude/         Claude Code behind those contracts:
   ClaudeCapabilities    which models, efforts and modes the CLI accepts; Selectable — what is offered from the chat
   ClaudeLimits, ClaudeSkillCatalog, ClaudePluginRegistry, ClaudeCliLocator, ClaudeStreamEvent
   ClaudeProjectSettings hooks, allow, MCP servers and skills from the project's .claude/ and .mcp.json, their fingerprint
+  ClaudeProcessJob      a Windows Job Object for the gateway's lifetime: every claude and its children die with the gateway
   Mcp/                  McpConfigFile — mcp-gateway-<pid>-<run>.json per run: the token plus the run id; ClaudePermissionTool — the CLI ↔ IOperatorConsole payload;
                         ClaudeSendFileTool — a file from the agent into the chat, the policy stays on the host side
 src/AgentsTracker.Channels.Abstractions/ channel contracts, no specific messenger:
