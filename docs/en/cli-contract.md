@@ -196,11 +196,12 @@ conversation found» on a broken `--resume`) — the session-reset and limit che
 stderr.
 
 After the process exits, stdout and stderr get `DrainGrace` (5 s) to end, then the result is
-built from what was read. A background process the agent started (a dev server, `watch`,
-`start /b`) inherits the CLI's output pipe, and its end only comes with that process: before
-this, the task lane hung on `await stdout` forever — the run timeout and `/stop` don't reach
-past the process exit (reproduced with a fake CLI: 24 s for a 25-second background `ping`, 5 s
-now). The pipe is left open and read idly: closing it would break the background process on its
+built from what was read. A background process that inherits the CLI's output pipe holds its end
+until it exits itself, and a bare `await stdout` would hang the task lane forever — the run timeout
+and `/stop` don't reach past the process exit (shown with a fake CLI: 24 s for a 25-second
+background `ping`, 5 s now). CLI 2.1.292 kills what its Bash tool started with `&` when it exits,
+so a live run did not reproduce the hang; the grace is a guard for what escapes that (a detached
+`Start-Process`, `start /b` from a script, another CLI version). The pipe is left open and read idly: closing it would break the background process on its
 next write.
 
 Every `claude` is put into `ClaudeProcessJob` — one Windows Job Object for the gateway's lifetime
