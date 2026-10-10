@@ -1,6 +1,7 @@
 using System.Net;
 using AgentsTracker.Gateway.Infrastructure.Audit;
 using AgentsTracker.Gateway.Infrastructure.Chat;
+using AgentsTracker.Gateway.Infrastructure.Git;
 using AgentsTracker.Gateway.Infrastructure.Modules;
 using AgentsTracker.Gateway.Infrastructure.Monitoring;
 using AgentsTracker.Gateway.Infrastructure.Security;
@@ -35,6 +36,7 @@ public static class GatewayInfrastructure
             services.AddSingleton<IAuditLog, JsonlAuditLog>();
             services.AddSingleton<SessionStore>();
             services.AddSingleton<ProjectCatalog>();
+            services.AddSingleton<GitRepository>();
 
             services.AddSingleton<RunMonitor>();
             services.AddSingleton<RingBufferLog>();
