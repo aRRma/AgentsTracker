@@ -11,6 +11,13 @@ public sealed class GatewayState
 
     public DateTimeOffset? LastActivityUtc { get; set; }
 
+    /// <summary>
+    /// Последний известный срок кэша основной ветки. Общий, а не у сессии: он зависит от
+    /// подписки (час, сверх неё — пять минут), а не от разговора. Запуск, который только читал
+    /// кэш, срок не сообщает — даже первый в новой сессии, если её начало уже было в кэше.
+    /// </summary>
+    public TimeSpan? CacheTtl { get; set; }
+
     /// <summary>Рабочая папка, выбранная из чата. null = Gateway:ProjectPath из конфига.</summary>
     public string? ProjectPath { get; set; }
 
@@ -153,9 +160,6 @@ public sealed class SessionRecord
     /// заново. null — неизвестно: сессия старше поля, модель не вызывалась или контекст сжат.
     /// </summary>
     public DateTimeOffset? CacheUntilUtc { get; set; }
-
-    /// <summary>Последний известный срок кэша: запуск, который только читал кэш, срок не сообщает.</summary>
-    public TimeSpan? CacheTtl { get; set; }
 
     /// <summary>
     /// Модель, на которой записан кэш («opus-5-5»): у каждой модели свой кэш, и смена модели

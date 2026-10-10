@@ -286,8 +286,8 @@ public sealed class SessionStore
             var record = s.Sessions.FirstOrDefault(r => string.Equals(r.Id, sessionId, StringComparison.Ordinal));
             if (record is null) return;
 
-            if (ttl is not null) record.CacheTtl = ttl;
-            record.CacheUntilUtc = lastRequestUtc is { } start && record.CacheTtl is { } known ? start + known : null;
+            if (ttl is not null) s.CacheTtl = ttl;
+            record.CacheUntilUtc = lastRequestUtc is { } start && s.CacheTtl is { } known ? start + known : null;
             record.CacheModel = model;
             record.CacheMode = mode;
             until = record.CacheUntilUtc;
@@ -599,7 +599,6 @@ public sealed class SessionStore
         ContextWindow = record.ContextWindow,
         ContextUtc = record.ContextUtc,
         CacheUntilUtc = record.CacheUntilUtc,
-        CacheTtl = record.CacheTtl,
         CacheModel = record.CacheModel,
         CacheMode = record.CacheMode,
     };
