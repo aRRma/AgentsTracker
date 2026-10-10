@@ -269,7 +269,7 @@ Checked on CLI 2.1.261.
   needs CLI 2.1.280+. A model released after the CLI (`claude-sonnet-5-5` on 2.1.283) is let
   through with an `unrecognized_model` warning on stderr and a 200 000 window; the alias is moved onto
   it by `ANTHROPIC_DEFAULT_SONNET_MODEL` — see `claude-permissions.md`, "Hooks".
-- **Which model answered.** `modelUsage` mixes the main branch with subagents and haiku's chores, and
+- **Which model answered.** `modelUsage` mixes the main thread with subagents and haiku's chores, and
   a sonnet subagent often writes more output tokens than the session itself — so the answering model
   is `message.model` of the last `assistant` event with `parent_tool_use_id: null`, and its window is
   looked up in `modelUsage` by that name. The names differ: with `--model claude-opus-5-5[1m]` the
@@ -286,12 +286,12 @@ Checked on CLI 2.1.261.
   the `result` text is empty, `num_turns: 0`, but `modelUsage` is not — compaction is a model call
   and spends the plan. After it the context size is `post_tokens` until the next real turn.
 - **Cache.** Checked on CLI 2.1.292 with `claude -p --resume`, the way the gateway runs:
-  - The main branch writes the cache with a **one-hour** lifetime (`usage.cache_creation.ephemeral_1h_input_tokens`),
+  - The main thread writes the cache with a **one-hour** lifetime (`usage.cache_creation.ephemeral_1h_input_tokens`),
     sub-agents with a **five-minute** one (`ephemeral_5m`). Billing past the subscription is said to
-    drop the main branch to 5 minutes too, so the lifetime is read from the event, not assumed.
+    drop the main thread to 5 minutes too, so the lifetime is read from the event, not assumed.
   - The lifetime runs from the **start** of the request that read or wrote the entry; every read
     extends it for free. The stream gives a turn only when it is complete, so the backend takes the time
-    of the last main-branch input (a `user` event without `parent_tool_use_id`, or the process start)
+    of the last main-thread input (a `user` event without `parent_tool_use_id`, or the process start)
     as the request start: a little early, so «кэш до» errs on the safe side.
     `AgentRunResult.LastRequestUtc` + `CacheTtl` → `SessionRecord.CacheUntilUtc`.
   - The cache is a prefix match: tools → system prompt → history. A new process with `--resume`

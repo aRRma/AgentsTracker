@@ -15,6 +15,8 @@ English (`IAgentLimits`, `ProjectPath`, `audit\`) — this glossary is about tex
 | The CLI backend | **агент** (by name — Claude Code) | ассистент, бот, модель |
 | The agent's working folder | **проект** | репозиторий, рабочая папка, каталог |
 | Grouping level in the project list | **папка** | группа, каталог |
+| The git branch a project is on | **ветка** | branch, бранч |
+| Another folder of the same repository on its own branch (`git worktree`) | **worktree** | рабочее дерево, копия, клон |
 | What the user wrote and what waits in the queue | **задача** | запрос, промпт, сообщение |
 | One execution of the agent | **запуск** | прогон, run, задача |
 | A step inside a run | **ход** (short form `х`) | turn, итерация |
@@ -65,10 +67,19 @@ buttons. A режим is `--permission-mode`, the overall setting of how often t
 all. Both used to be called «разрешение», which made the word mean two things at once; the buttons
 stay «✅ Разрешить» / «❌ Отклонить», because those are actions, not terms.
 
-**сессия / контекст.** A сессия is the conversation branch itself: it is picked, continued, started
-anew. The контекст is how much room that branch takes in the model right now: it is looked at and
-compressed. «Сжать» keeps the same сессия with a smaller контекст; «Новая сессия» starts another
-branch with an empty one.
+**сессия / контекст.** A сессия is the conversation itself: it is picked, continued, started
+anew. The контекст is how much room that conversation takes in the model right now: it is looked at
+and compressed. «Сжать» keeps the same сессия with a smaller контекст; «Новая сессия» starts another
+conversation with an empty one.
+
+**сессия / ветка.** A ветка is only the git branch a project is on (`🌿 master`). The conversation
+with the agent is a сессия and is never called a ветка: «🧵 Сессия» and «🌿 ветка» sit on the same
+screen. The main agent's turns, as opposed to a сабагент's, are the «основной поток» (main thread),
+not the «основная ветка».
+
+**проект / worktree.** A worktree is a separate folder of the same repository on its own branch. To
+the gateway it is an ordinary проект: its own сессия, its own «всегда» rules, its own доверие к
+проекту. The 🌳 mark shows which project it was made from.
 
 **контекст / кэш.** The контекст is how much of the model's window a session takes. The кэш is how
 much longer the model keeps that session ready: an hour after the start of the last request, five

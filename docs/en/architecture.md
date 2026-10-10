@@ -211,7 +211,7 @@ is most useful exactly when the plan is exhausted), and refuses both context kin
 was dropped while they waited in the queue — a run without a session would create one for nothing.
 
 How full the context is comes from the run itself, not from a separate call: `RunUsage.ContextTokens`
-is the input of the **last** main-branch turn (sub-agents have their own window), after a
+is the input of the **last** main-thread turn (sub-agents have their own window), after a
 `/compact` — its `post_tokens`; `ContextWindow` is the window of the primary model.
 `SessionStore.RecordContext` keeps them on the `SessionRecord` with the measurement time, and the
 «Контекст» screen shows them without starting the agent. Percent — `LimitMath.Percent`, as everywhere.
@@ -233,7 +233,7 @@ a typed `/model` or `/mode` is a decision already, so it runs at once (`AgentScr
 warning is appended to the reply. `CacheGuard.Mismatch` adds «следующий запуск запишет кэш заново»
 to the cache line when the menu selection already differs from the cache.
 
-Misses are counted, not guessed: `RunUsage.FirstCacheRead` is what the first main-branch request of a
+Misses are counted, not guessed: `RunUsage.FirstCacheRead` is what the first main-thread request of a
 run read from the cache, and `CacheGuard.Miss` calls a continued task a miss when that is under half of
 the session's previous context (from 20k up — below that only the shared tools and system prompt are
 at stake). `UsageTotals.CacheMisses` goes to `/usage` next to the share read from the cache, and to
@@ -312,7 +312,7 @@ the agent's file in `ApprovalBroker` — both through `RateLimitRetry.OnceAsync`
 (`Channels.Abstractions`), one shared ceiling. Sums, tokens and time — `DisplayFormat`.
 
 The footer under an answer (`ChatWorker.Footer`): the session id (or «💬 вопрос»), the model that
-**actually** answered — the `message.model` of the last main-branch turn in the stream (not the one
+**actually** answered — the `message.model` of the last main-thread turn in the stream (not the one
 with the most output tokens in `modelUsage`: a sonnet subagent easily outwrites the session itself;
 that is only the fallback when the stream named no model), shortened to
 `opus-5-5`/`haiku-4-5` (`RunUsage.PrimaryModel`); the chosen model's `ModelLabel` only if the CLI said nothing —
