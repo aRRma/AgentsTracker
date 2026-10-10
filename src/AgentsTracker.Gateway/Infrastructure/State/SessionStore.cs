@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -576,22 +577,68 @@ public sealed class SessionStore
         }
     }
 
+    /// <summary>
+    /// Что случилось с state.json при старте, текстом для чата; null — прочитан как есть.
+    /// Молча начать с чистого нельзя: пропали бы сессии, доверие к проектам и правила «всегда»,
+    /// а человек узнал бы об этом, только не найдя их.
+    /// </summary>
+    public string? LoadProblem { get; private set; }
+
+    private string BackupPath => _path + ".bak";
+
     private GatewayState Load()
+    {
+        if (!File.Exists(_path)) return new GatewayState();
+
+        if (TryRead(_path, out var state, out var error)) return state;
+
+        _logger.LogError(error, "state.json не прочитан");
+
+        // Битый файл не затираем первой же записью: он может понадобиться, чтобы достать
+        // из него сессии руками.
+        var kept = Path.GetFileName(_path) + ".corrupt-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+        try
+        {
+            File.Move(_path, Path.Combine(Path.GetDirectoryName(_path)!, kept), overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogError(ex, "Повреждённый state.json не отложен в {Kept}", kept);
+            kept = "(не удалось сохранить)";
+        }
+
+        if (File.Exists(BackupPath) && TryRead(BackupPath, out var backup, out _))
+        {
+            LoadProblem = $"⚠️ state.json был повреждён — состояние восстановлено из резервной копии, она на одно сохранение старше. Повреждённый файл: {kept}.";
+            _logger.LogWarning("Состояние восстановлено из {Backup}", BackupPath);
+            return backup;
+        }
+
+        LoadProblem = "⚠️ state.json был повреждён, а резервной копии нет — шлюз начал с чистого состояния: "
+                      + $"сессии, доверие к проектам и правила «всегда» сброшены. Повреждённый файл: {kept}.";
+        return new GatewayState();
+    }
+
+    private static bool TryRead(string path, out GatewayState state, out Exception? error)
     {
         try
         {
-            if (File.Exists(_path))
+            if (JsonSerializer.Deserialize<GatewayState>(File.ReadAllText(path), JsonOptions) is { } loaded)
             {
-                var loaded = JsonSerializer.Deserialize<GatewayState>(File.ReadAllText(_path), JsonOptions);
-                if (loaded is not null) return Rehydrate(loaded);
+                state = Rehydrate(loaded);
+                error = null;
+                return true;
             }
+
+            error = new JsonException("state.json пуст");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            _logger.LogWarning(ex, "Не удалось прочитать {Path}, начинаем с чистого состояния", _path);
+            error = ex;
         }
 
-        return new GatewayState();
+        state = new GatewayState();
+        return false;
     }
 
     private static GatewayState Clone(GatewayState state) =>
@@ -649,13 +696,38 @@ public sealed class SessionStore
 
     private static bool IsBareToolName(string signature) => !signature.Contains('(') && !signature.Contains('{');
 
+    /// <summary>
+    /// Временный файл, сброс на диск, подмена с резервной копией. Без сброса NTFS после
+    /// отключения питания оставляет переименованный файл пустым: метаданные журналируются,
+    /// данные — нет. Копия на шаг старше — то, из чего <see cref="Load"/> поднимется после такого.
+    /// </summary>
     private void Save(GatewayState state)
     {
         var temp = _path + ".tmp";
         try
         {
-            File.WriteAllText(temp, JsonSerializer.Serialize(state, JsonOptions));
-            File.Move(temp, _path, overwrite: true);
+            using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                JsonSerializer.Serialize(stream, state, JsonOptions);
+                stream.Flush(flushToDisk: true);
+            }
+
+            if (!File.Exists(_path))
+            {
+                File.Move(temp, _path);
+                return;
+            }
+
+            try
+            {
+                File.Replace(temp, _path, BackupPath, ignoreMetadataErrors: true);
+            }
+            catch (IOException ex)
+            {
+                // ReplaceFile капризен (антивирус, открытый на чтение файл) — запись важнее копии.
+                _logger.LogDebug(ex, "state.json подменён без резервной копии");
+                File.Move(temp, _path, overwrite: true);
+            }
         }
         catch (Exception ex)
         {

@@ -254,6 +254,13 @@ a selection the page resets to the first one — otherwise the `▶` marker coul
 `state.json` (atomic), `mcp-gateway-<pid>-<run>.json` while a run lives, `appsettings.Local.json` with the secrets,
 `audit\audit-ГГГГ-ММ.jsonl`.
 
+`SessionStore.Save` writes `state.json.tmp` with `Flush(true)` and swaps it in with `File.Replace`,
+leaving the previous version in `state.json.bak`: without the flush, NTFS after a power cut keeps
+the rename but not the data, and the file comes back empty. A file that does not parse is moved
+aside as `state.json.corrupt-<time>` (never overwritten by the next save), the state comes from the
+`.bak`, and `SessionStore.LoadProblem` goes into «Шлюз запущен» — losing sessions, trust and rules
+silently is the failure this prevents.
+
 The config comes in layers: `appsettings.json` → `appsettings.Local.json` next to the exe (IDE) →
 the same file in the data directory (production) → environment variables. `dpapi:…` is decrypted on
 load (`ProtectedJsonConfigurationProvider`); `protect-secrets` encrypts `Gateway:Proxy` and the

@@ -27,6 +27,10 @@ public sealed class StartupNotice(
         var started = $"🔌 Шлюз запущен {AppVersion.Current} — {agent.DisplayName}{version}, "
                       + $"проект {Path.GetFileName(store.ProjectPath)}.";
 
+        // Потерю состояния видно сразу, а не когда не найдётся сессия или карточка доверия
+        // придёт к проекту, которому уже доверяли.
+        if (store.LoadProblem is { } problem) started += "\n\n" + problem;
+
         // Задача и вопрос могли оборваться оба, и в одном чате: оба «прервано» — одним сообщением.
         var parsed = interrupted
             .Select(run => (Run: run, Chat: channel.ParseChat(run.ChatKey), Text: Interrupted(run)))

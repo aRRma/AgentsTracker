@@ -249,6 +249,13 @@ README — руководство пользователя: меняя защи�
 (атомарно), `mcp-gateway-<pid>-<запуск>.json`, пока идёт запуск, `appsettings.Local.json` с секретами,
 `audit\audit-ГГГГ-ММ.jsonl`.
 
+`SessionStore.Save` пишет `state.json.tmp` с `Flush(true)` и подменяет файл через `File.Replace`,
+оставляя прежнюю версию в `state.json.bak`: без сброса NTFS после отключения питания сохраняет
+переименование, но не данные, и файл оказывается пустым. Файл, который не читается, откладывается
+как `state.json.corrupt-<время>` (следующая запись его не затирает), состояние берётся из `.bak`,
+а `SessionStore.LoadProblem` попадает в «Шлюз запущен» — так сессии, доверие и правила не теряются
+молча.
+
 Конфиг собирается слоями: `appsettings.json` → `appsettings.Local.json` рядом с exe (IDE) → он же в
 папке данных (production) → переменные окружения. `dpapi:…` расшифровывается при загрузке
 (`ProtectedJsonConfigurationProvider`); `protect-secrets` шифрует `Gateway:Proxy` и ключи
