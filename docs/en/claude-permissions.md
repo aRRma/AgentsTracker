@@ -83,7 +83,7 @@ The groups and the reasoning; the full list (most rules written for both `Bash(.
 - diagnostics (`tasklist`, `netstat`, `Get-Process`, `docker ps`/`logs`, `tail`, `head`…) and the
   Playwright tools, `npx playwright`, `npm run test`.
 
-A mistake in `allow` is cheaper than one in `deny`: an extra question is annoying, an extra
+A mistake in `ask` is cheaper than one in `allow`: an extra question is annoying, an extra
 permission lets an action through silently.
 
 ## Moving to Another PC
