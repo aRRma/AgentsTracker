@@ -289,7 +289,7 @@ Checked on CLI 2.1.261.
   - The lifetime runs from the **start** of the request that read or wrote the entry; every read
     extends it for free. The stream gives a turn only when it is complete, so the backend takes the
     time of the last main-thread input (a `user` event without `parent_tool_use_id`, or the process
-    start) as the request start: a little early, so the «до …» time on the «Кэш» line errs on the safe side.
+    start) as the request start: a little early, so «🧊 кэш до …» under the answer and on the «Кэш» line errs on the safe side.
     `AgentRunResult.LastRequestUtc` + `CacheTtl` → `SessionRecord.CacheUntilUtc`.
   - The cache is a prefix match: tools → system prompt → history. A new process with `--resume`
     keeps it; so do commits, edited files, `--add-dir` appearing, `--effort` and the modes

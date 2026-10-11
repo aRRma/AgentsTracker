@@ -157,7 +157,8 @@ from `ValidateStartup`, not by `GatewayOptions.Validate` (the agent is not chose
 
 Sessions are keyed by the **normalized project path**. A chat **project** equal to the config is
 stored as `null` (`SessionStore.SetProjectPath`), or a config edit would be silently overridden;
-model, effort and mode are stored as picked until the «из конфига» button resets them. State, secrets and
+model, effort and mode are stored as picked until «по умолчанию»/«из конфига» or `reset` clears them.
+State, secrets and
 the `audit\` journal live in `%LOCALAPPDATA%\AgentsTracker\`; config layers end with the `Gateway__*`
 environment variables. The audit is what a human answers for (who, where, what — no secrets, no full
 texts, addresses as `channel:value`, kinds in `AuditKinds`); the log is for debugging. Secrets are
@@ -171,7 +172,8 @@ Context fill lives on `SessionRecord` (`ContextTokens`/`ContextWindow`), taken f
 main-thread turn of a run — `usage` of the `result` line is a sum over turns, not the context.
 Fill is formatted only by `ContextScreen.Fill` (full line) and `ContextScreen.Short` (dot + percent
 for list rows); the 🟢/🟡/🔴 thresholds live there too — do not recompute them in another screen.
-The cache term is formatted only by `ContextScreen.Cache`, its rules live only in `CacheGuard`.
+The cache term on screens is formatted only by `ContextScreen.Cache` (the answer footer prints its
+own «🧊 кэш до»); the cache rules live only in `CacheGuard`.
 `/context` and `/compact` are the backend's `ContextReport`/`Compact` kinds, not prompts the host
 types. Irreversible or costly menu actions ask first via `PendingConfirmations`: «Сжать» and «Новая
 сессия» on «Контекст», and a model or mode change that would reset a warm cache.

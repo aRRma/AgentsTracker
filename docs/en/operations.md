@@ -233,8 +233,8 @@ GitHub creates the first page only through the web interface: until it exists, t
 - The PowerShell tool rejects a compound command where `Remove-Item` stands next to a path under
   `C:\Program Files` (7-Zip, for example): the guard reads it as removing `C:\Program`. Split such
   a command into separate calls.
-- `claude` is not on the tool shells' PATH: call it as
-  `& "$env:USERPROFILE\.local\bin\claude.exe" --help` (that path does not run from Git Bash).
+- `claude` is not on the tool shells' PATH: call it by full path — from Git Bash
+  `~/.local/bin/claude.exe --help`, from PowerShell `& "$env:USERPROFILE\.local\bin\claude.exe" --help`.
   Undocumented CLI behaviour is quickest to check with a bare `claude -p … --output-format json`
   and `permission_denials` in the answer — that is how `--add-dir` was verified not to raise an
   approval card.

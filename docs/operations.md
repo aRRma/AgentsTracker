@@ -231,8 +231,8 @@ pwsh -File scripts/sync-wiki.ps1                                # собрать
 - Инструмент PowerShell отклоняет составную команду, где `Remove-Item` соседствует с путём внутри
   `C:\Program Files` (например, 7-Zip): защита читает это как удаление `C:\Program`. Разбивайте
   такую команду на отдельные вызовы.
-- `claude` нет в PATH оболочек инструментов: зовите как
-  `& "$env:USERPROFILE\.local\bin\claude.exe" --help` (из Git Bash этот путь не запускается).
+- `claude` нет в PATH оболочек инструментов: зовите полным путём — из Git Bash
+  `~/.local/bin/claude.exe --help`, из PowerShell `& "$env:USERPROFILE\.local\bin\claude.exe" --help`.
   Недокументированное поведение CLI быстрее всего проверять голым
   `claude -p … --output-format json` и полем `permission_denials` в ответе — так выяснилось, что
   `--add-dir` не поднимает карточку подтверждения.
