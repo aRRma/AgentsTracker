@@ -20,9 +20,8 @@ details are in `docs/en/`:
 - `docs/en/claude-permissions.md` — Claude Code permissions on this machine: `allow`/`ask`/`deny`,
   the `docs/examples/claude-settings.example.json` sample, the project-level `.claude/settings.json`.
 
-Documentation lives in two languages: `docs/en/` is the English original for the agent (linked from
-here), `docs/*.md` is the Russian mirror the GitHub wiki is generated from. `README.md` is always
-Russian. Editing one language and not the other is a bug — see «Как работать» below.
+Documentation is in two languages: `docs/en/` is the original, `docs/*.md` the Russian mirror; both
+are edited together — see «Как работать» below.
 
 ## What this is
 
@@ -50,16 +49,15 @@ There are no tests. Anything touching the CLI contract is checked by hand: start
 watch the log. Host logic that needs no live bot is checked by a file-based C# harness with fakes
 instead of a channel — `docs/en/operations.md`.
 
-**The working gateway on this machine is the published release** (`C:\AgentsTracker-win-x64`; a
-release archive unpacks as `AgentsTracker-<version>-win-x64`, so check the path with
-`Get-Process AgentsTracker.Gateway`). Do not stop it and do not rebuild over it:
-that is the stable service the user chats with, and new code reaches it only through a new release. A
-change is checked live by a **scratch instance built into a separate folder, on its own ports** —
-`Gateway__McpPort`/`Gateway__MonitorPort` other than `5099`/`5100`, a fake bot token and its
-own `Gateway__DataDirectory`; the recipe and the cleanup are in `docs/en/operations.md`. When the
-gateway does run from `bin\Debug` of the main folder (`AgentsTracker`, branch `master`; there is no
-`main` branch), `dotnet build` fails with `MSB3021` while it runs and switching branches swaps the
-sources out from under the process. Who may restart it and when — «Как работать» below.
+**The working gateway on this machine is the published release** (find its folder with
+`Get-Process AgentsTracker.Gateway`). Do not stop it and do not rebuild over it: that is the stable
+service the user chats with, and new code reaches it only through a new release. A change is checked
+live by a **scratch instance built into a separate folder, on its own ports** —
+`Gateway__McpPort`/`Gateway__MonitorPort` other than `5099`/`5100`, a fake bot token and its own
+`Gateway__DataDirectory`; the recipe and the cleanup are in `docs/en/operations.md`. When the gateway
+does run from `bin\Debug` of the main folder (`AgentsTracker`, branch `master`; there is no `main`
+branch), `dotnet build` fails with `MSB3021` while it runs and switching branches swaps the sources
+out from under the process. Who may restart it and when — «Как работать» below.
 
 ## Layout
 
@@ -135,34 +133,36 @@ A card finds its chat by the **run id**, not by a "current chat": each run gets 
   and `--strict-mcp-config` in an empty `%TEMP%\AgentsTracker-question`, recreated before every
   вопрос (a task could plant a hook there, and the trust gate skips вопросы) — never in the project or the
   data directory, and its `SessionId` never reaches `SessionStore`. Its model is `Gateway:Question`,
-  not the chat selection. Its permissions are the same as a task's cards-wise: `--permission-prompt-tool`,
-  the `tg` server and `send_file` (checked against the chat's project) stay — running in parallel
-  changed none of them. `/context` and `/compact` are the backend's `ContextReport`/`Compact` kinds,
-  not prompts the host types. Details — `docs/en/cli-contract.md`, "Context" and "A question".
+  not the chat selection. Cards work as for a task: `--permission-prompt-tool`, the `tg` server and
+  `send_file` (checked against the chat's project) stay. Details — `docs/en/cli-contract.md`,
+  "A question".
 - CLI arguments go through `ProcessStartInfo.ArgumentList`, do not concatenate a string.
 - The CLI's output is read until it ends or `DrainGrace` (5 s) after the exit, never by a bare
   `await` on the reader: a background process that escaped the CLI keeps the pipe open, and the task
-  lane would hang past `/stop` and the run timeout. Every `claude` sits in `ClaudeProcessJob`, so
-  stopping the gateway kills it and everything it started.
+  lane would hang past `/stop` and the run timeout. On Windows every `claude` sits in
+  `ClaudeProcessJob` (a Job Object), so stopping the gateway kills it and everything it started; in a
+  container the container does that.
 
 ### `--permission-mode` is always passed
 
 Without the flag `permissions.defaultMode` from `~/.claude/settings.json` applies — the user has
 `auto` there, and no buttons show up in the chat. Do not remove the argument from
-`ClaudeBackend.BuildArguments`. Only `PermissionMode.Selectable` (`plan`/`default`/`acceptEdits`/
-`auto`) can be switched from the chat; `dontAsk` and `bypassPermissions` are excluded deliberately —
-turning approvals off entirely stays a config edit on the machine. The values are checked by
-`ValidateFor(capabilities)` in `ValidateStartup`, not by `GatewayOptions.Validate` (the agent is not
-chosen yet).
+`ClaudeBackend.BuildArguments`. Only `PermissionModes.Selectable` (`plan`/`default`/`acceptEdits`/
+`auto`, seen by the host as `AgentCapabilities.PermissionMode.Selectable`) can be switched from the
+chat; `dontAsk` and `bypassPermissions` are excluded deliberately — turning approvals off entirely
+stays a config edit on the machine. The values are checked by `GatewayOptions.ValidateFor(capabilities)`
+from `ValidateStartup`, not by `GatewayOptions.Validate` (the agent is not chosen yet).
 
 ### Sessions, state, audit
 
-Sessions are keyed by the **normalized project path**. A chat selection equal to the config is
-stored as `null` (`SessionStore`), or a config edit would be silently overridden. State, secrets and
+Sessions are keyed by the **normalized project path**. A chat **project** equal to the config is
+stored as `null` (`SessionStore.SetProjectPath`), or a config edit would be silently overridden;
+model, effort and mode are stored as picked until the «из конфига» button resets them. State, secrets and
 the `audit\` journal live in `%LOCALAPPDATA%\AgentsTracker\`; config layers end with the `Gateway__*`
 environment variables. The audit is what a human answers for (who, where, what — no secrets, no full
 texts, addresses as `channel:value`, kinds in `AuditKinds`); the log is for debugging. Secrets are
-masked in one place, `Text.Redact` (through `AuditEvent.NowByKeys` and `Text.Preview`): an approval
+masked in one place, `Text.Redact` (via `Text.ClipRedacted`, used by `AuditEvent.NowByKeys` and
+`Text.Preview`): an approval
 writes the whole command, tokens included, so anything new that reaches the journal, the log or the
 monitor goes through it. Details — `docs/en/architecture.md`, the user-facing config —
 `docs/en/deployment.md`.
@@ -171,14 +171,17 @@ Context fill lives on `SessionRecord` (`ContextTokens`/`ContextWindow`), taken f
 main-thread turn of a run — `usage` of the `result` line is a sum over turns, not the context.
 Fill is formatted only by `ContextScreen.Fill` (full line) and `ContextScreen.Short` (dot + percent
 for list rows); the 🟢/🟡/🔴 thresholds live there too — do not recompute them in another screen.
-Irreversible menu buttons («Сжать», «Новая сессия» on «Контекст») ask first via `PendingConfirmations`.
+The cache term is formatted only by `ContextScreen.Cache`, its rules live only in `CacheGuard`.
+`/context` and `/compact` are the backend's `ContextReport`/`Compact` kinds, not prompts the host
+types. Irreversible or costly menu actions ask first via `PendingConfirmations`: «Сжать» and «Новая
+сессия» on «Контекст», and a model or mode change that would reset a warm cache.
 
 ### Limits and money
 
 The only limiter is `IAgentLimits` (the plan windows), checked in `ChatWorker.ProcessAsync` before a
-run; if the poll fails, the run is **skipped**, not blocked. There is no money in the gateway:
-`total_cost_usd` is not read, `--max-budget-usd` is not passed, the statistics show only turns,
-tokens and time. Do not return dollar estimates. Credits ("extra usage") are forbidden to the agent.
+run (not for the `/context` breakdown); if the poll fails, the **check** is skipped and the run goes
+ahead. There is no money in the gateway: no `total_cost_usd`, no `--max-budget-usd`, no dollar
+estimates — only turns, tokens and time. Credits ("extra usage") are forbidden to the agent.
 Details — `docs/en/cli-contract.md`.
 
 A false refusal is diagnosed from the outside: `limit.refused` in `audit\audit-<YYYY-MM>.jsonl` (when
@@ -189,10 +192,12 @@ numbers instead, remembering that usage inside one window never falls until the 
 
 ### Chat output
 
-`MarkdownRenderer` cuts the **source markdown** to `IChatChannel.Limits.MessageLength` (3800 for
-Telegram) before converting it to `ChatHtml` — otherwise tags get torn apart. An oversized code block
-goes as a file. A 400 from the channel retries without markup, a 429 is waited out and the same part
-repeated (`RateLimitRetry.OnceAsync`) — otherwise part of the answer vanishes silently. Tokens and
+`MarkdownRenderer` splits the **source markdown** into pieces of at most
+`IChatChannel.Limits.MessageLength` (3800 for Telegram) before converting each to `ChatHtml` (a piece
+whose HTML is still too long is split again) — otherwise tags get torn apart. An oversized code block
+goes as a file. A 400 from the channel retries without markup; a 429 with a short `retry_after`
+(≤ 30 s) is waited out once and the same part repeated (`RateLimitRetry.OnceAsync`) — otherwise part
+of the answer vanishes silently. Tokens and
 time — `DisplayFormat`; the renderer's quirks — `docs/en/architecture.md`.
 
 ## Keep in mind
@@ -233,7 +238,7 @@ time — `DisplayFormat`; the renderer's quirks — `docs/en/architecture.md`.
   UTF-8 **without a BOM**. The rest about tooling — `docs/en/operations.md`.
 - Comments explain which failure the code prevents, not what it does.
 - From a session over Telegram `AskUserQuestion` and `ExitPlanMode` wait `ApprovalTimeoutMinutes`
-  (15 min): with no answer, take the recommended option.
+  (15 min by default) and a timeout comes back as a refusal: go on with the recommended option.
 - The monitor at `http://127.0.0.1:5100` is unreachable from a session via `curl`/`Invoke-RestMethod`
   — they are in `deny` for any address, do not try to work around it. A snapshot and the other
   `/api/*` — `pwsh -File scripts\monitor-api.ps1 "api/snapshot"` from the **PowerShell** tool, no
@@ -242,16 +247,13 @@ time — `DisplayFormat`; the renderer's quirks — `docs/en/architecture.md`.
 - From a session over Telegram the MCP tool list comes from the **running** gateway: after a change
   to `send_file` (allowed types, description) this session still sees the release's old version —
   check such a change with the harness or a scratch instance, not by calling the tool.
-- Working in a worktree: the PowerShell tool's cwd stays the main folder — give `dotnet build`,
-  `git -C` and scripts the worktree's absolute path, or you build and test `master`.
 - `claude` is not on PATH in a session: call `~/.local/bin/claude.exe` directly.
 - Passing a slash command to `claude -p` from Bash needs `MSYS_NO_PATHCONV=1` — MSYS rewrites a
   leading `/context` into a Windows path.
 
 ## Как работать
 
-Rules from the user. They used to live in memory, here they are safer — the file is read by every
-session.
+Rules from the user; every session reads this file.
 
 - **Answers stay short and simple.** The result first, then only what is needed to act. No retelling
   of the steps or the plan, jargon in plain words. Errors, risks and "what's next" are never cut.
@@ -280,7 +282,9 @@ session.
   `git worktree add ..\AgentsTracker-<task> -b <branch>` and work there; from Telegram switch
   `/project` to the new folder. Something small in one or two commits goes straight into the main
   folder. After the branch is finally merged into `master`, remove the worktree folder
-  (`git worktree remove ..\AgentsTracker-<task>`) and the branch too.
+  (`git worktree remove ..\AgentsTracker-<task>`) and the branch too. The PowerShell tool's cwd stays
+  the main folder — give `dotnet build`, `git -C` and scripts the worktree's absolute path, or you
+  build and test `master`.
 - **A review in a worktree needs the branch name.** `/code-review` without an argument works on the
   main folder: its uncommitted diff, or — when the tree is clean — the commits ahead of
   `origin/master`, never the worktree branch. On 07.09.2026 it reviewed and fixed another session's
@@ -288,11 +292,10 @@ session.
 - **After changes — the documentation.** Check CLAUDE.md, the README and the config comments: new
   flags and commands, changes to the CLI contract, non-obvious decisions and their reasons. Do not
   add what is obvious from the code, or a history of the edits.
-- **Documentation is edited in both languages.** `docs/en/*.md` is the English original the agent
-  reads (and the only thing CLAUDE.md links to), `docs/*.md` is the Russian mirror the GitHub wiki is
-  built from. A change to one file goes into its twin in the same commit — the two must not drift
-  apart. A new document is added in both languages at once, plus a `$pages` line in
-  `scripts\sync-wiki.ps1` for the Russian one. CLAUDE.md is English only, the README is Russian only.
+- **Documentation is edited in both languages.** `docs/en/*.md` is the English original (the only
+  thing CLAUDE.md links to), `docs/*.md` is the Russian mirror the wiki is built from. A change goes
+  into both files in the same commit; a new document needs a `$pages` line in `scripts\sync-wiki.ps1`.
+  CLAUDE.md is English only, the README is Russian only.
 - **After a commit — restart the gateway**, if the working instance runs from `bin\Debug`: otherwise
   the chat keeps the old code. While it is the release, a commit changes nothing in the chat — say so
   and check the change on a scratch instance instead of asking for a restart. The commands and the path
@@ -312,8 +315,8 @@ session.
   «ветка» is only the git branch; «лимит» is the
   subscription and «предел» is anything technical; «журнал» is `/audit` and «лог» is `ILogger`; a
   live check of a scratch instance is a «смоук-тест» and the instance itself is a «пробный
-  экземпляр» — those two are the section titles in `operations.md`, and a third name for either
-  only hides the section from search. A rename that touches the UI also ages the screenshots in
+  экземпляр» — the words `operations.md` uses, and a third name for either only hides them from
+  search. A rename that touches the UI also ages the screenshots in
   `docs/images/*.png` used by the README: they cannot be retaken from a session (the monitor on
   `5100` is the release with the old code, the bot shots need a live chat), so name the stale ones
   to the user instead of leaving them. Already published `docs/release-notes/*` are history and are
