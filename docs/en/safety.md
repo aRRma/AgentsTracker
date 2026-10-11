@@ -17,11 +17,10 @@ photos moved somewhere else, with the original order left to restore by hand.
 
 - ask it to **move**, not to delete: "duplicates into `_sort-later`, delete nothing". A move can be
   undone, a delete cannot;
-- on a new folder, start with "show me what you're about to do, change nothing yet";
-- keep a backup of what you'd miss: OneDrive, Windows File History, an external drive. That's worth
-  having without the bot too;
+- on a new project, start with "show me what you're about to do, change nothing yet";
+- keep a backup of what you'd miss: OneDrive, Windows File History, an external drive;
 - leave deleting files and stopping programs on a question (`ask` in the permission settings) —
-  then every such action arrives as a card with the list.
+  then every such action arrives as a confirmation card with the list.
 
 ## 2. Someone Else Got to the Bot
 
@@ -30,50 +29,54 @@ is the list of allowed users.
 
 **How to close it:**
 
-- fill in `Channel:Settings:AllowedUserIds` — without it the bot shouldn't run at all;
-- group chats are ignored by the bot itself, private chats only;
+- fill in `Channel:Settings:AllowedUserIds`. An empty list — the gateway does not start. A message
+  from anyone not on the list is ignored and recorded in the journal (`/audit`);
+- the gateway answers in private chats only and ignores group chats;
 - the bot token is the key to the bot: don't put it in a chat, a screenshot or a repository. If it
   leaked — `/revoke` at @BotFather and a new token in the settings;
-- lost your phone — end the Telegram session from another device (Settings → Devices). Until
-  someone is inside your Telegram, the bot won't listen to them.
+- lost your phone — end the Telegram session from another device (Settings → Devices).
 
 ## 3. Something Private Ended Up Where It Shouldn't
 
-Two different things. First: the bot **sends a file into the chat** — and Telegram keeps the
-conversation on its side. Second: the task and the pieces of files the agent read go to Anthropic,
+Two different things. First: the agent **sends a file into the chat** — and Telegram keeps the
+conversation on its side. Second: your task and the pieces of files the agent read go to Anthropic,
 otherwise it couldn't answer.
 
 **How to close it:**
 
 - decide in advance what you never send: passwords, codes, photos of documents on someone else's
   request;
-- split the folders: "Documents for the bot" and everything else. The bot works in the chosen
-  folder, and only sends files into the chat from there;
+- split the projects: "Documents for the bot" and everything else. The gateway sends a file into the
+  chat only from the current project, only of the allowed types (`.md .txt .json .cs .js .html .zip
+  .7z`, pictures `.png .jpg .jpeg`) and never from the gateway's data folder;
 - deny reading what must never travel anywhere — `.env`, `~/.ssh`, the password manager, the folder
-  with keys. That's a one-time setting;
-- remember the archive: the type whitelist is checked on the archive itself, and the gateway does
-  not look inside. Read a "pack it and send it" request carefully;
-- a Telegram secret chat doesn't cover the bot: the bot is always in an ordinary one.
+  with keys. That's a one-time setting in the permission rules. A `.env` or a config with secrets
+  inside the project is not protected by the send-file limit — keep them outside the project;
+- remember the archive: the gateway checks the path and type of the archive itself, but not what is
+  packed inside. Read a "pack it and send it" request carefully;
+- a Telegram secret chat does not apply: the bot always lives in an ordinary one.
 
 ## 4. Permissions Piled Up and the Questions Stopped
 
 The «Всегда» ("Always") button is convenient and quietly turns into "do whatever you want with this
-command". Plus the `auto` mode, where no cards arrive at all.
+command". Plus the `auto` mode, where cards almost never arrive.
 
 **How to close it:**
 
-- once a month look at `/rules` — everything you allowed forever in this folder; `/rules del <n>`
-  removes one, `/rules clear` removes all;
-- «Всегда» is bound to the folder: what's allowed in one doesn't apply in another. That works in
-  your favour — don't copy such rules around "just in case";
-- keep the `default` mode (buttons arrive). `auto` is for when you're sitting right there watching
-  the chat;
+- once a month look at `/rules` — the rules the gateway keeps for this project; `/rules del <n>`
+  removes one, `/rules clear` removes all. Usually «Всегда» is written by the agent itself into
+  `.claude/settings.local.json` in the project — `/rules` does not show those, check that file too;
+- «Всегда» is bound to the project: what's allowed in one doesn't apply in another. Don't copy such
+  rules around "just in case";
+- keep the `default` mode (cards arrive). `auto` is for when you're sitting right there watching
+  the chat. Switching off confirmations entirely (`dontAsk`, `bypassPermissions`) is impossible from
+  the chat — only by editing the file on the machine;
 - denials beat any permission: what's in `deny` the «Всегда» button will not get around;
 - `/audit` shows the latest actions — who allowed what, and what was run.
 
-## 5. The Bot Reached Past the Chosen Folder
+## 5. The Agent Reached Past the Chosen Project
 
-Picking a folder in `/project` says where the agent works, not what it can reach: a command run
+Picking a project with `/project` says where the agent works, not what it can reach: a command run
 from that folder can read anything on the disk under your account. The limit on sending files into
 the chat is real; the "it only sees the project" limit is not.
 
@@ -89,7 +92,7 @@ the chat is real; the "it only sees the project" limit is not.
 ## 6. Someone Else's Project Brought Its Own Commands
 
 A project may hold the agent's own settings — the `.claude` folder and the `.mcp.json` file. The
-agent runs them on its own, with no approval card: a command at the start of every task, for
+agent runs them on its own, with no confirmation card: a command at the start of every task, for
 example. In your own project that's convenient; in a downloaded foreign one it's someone else's
 code on your computer.
 
@@ -97,26 +100,27 @@ code on your computer.
 
 - before the first task in such a project the gateway sends a «Доверять проекту?» ("Trust the
   project?") card with the list of what the agent will run on its own. Don't recognize the
-  commands — press «❌ Отклонить»;
+  commands — press «❌ Отклонить»: the task does not start. No answer counts the same way;
 - those files changed — the card comes again, even if you trusted the project before;
-- look at a foreign repository with your own eyes first: open `.claude/settings.json` and
+- look at a foreign project with your own eyes first: open `.claude/settings.json` and
   `.mcp.json`, and only then trust it.
 
-## 7. A Long Task Ate the Plan's Limits
+## 7. A Long Task Ate the Plan's Limit
 
 "Sort out the whole photo archive" can cost a day's worth of the subscription and still hit the
-one-hour-per-task ceiling halfway through.
+one-hour ceiling (`RunTimeoutMinutes`) halfway through.
 
 **How to close it:**
 
-- `/usage` shows what's left in the current window;
+- `/usage` shows what's left in the current window. When the window is used up, the gateway starts
+  no new run and drops the queue;
 - ask for big things in parts: "start with the January folder";
 - `/stop` interrupts a task, `/status` shows what's running.
 
 ## 8. Someone Else Can See the Computer
 
 The web monitor at `127.0.0.1:5100` is open without a password: it changes nothing, but it shows
-the task history to anyone logged into this computer.
+the run history and the journal to anyone logged into this computer.
 
 **How to close it:**
 
@@ -124,22 +128,24 @@ the task history to anyone logged into this computer.
 - in a container, publish the port as `127.0.0.1:5100:5100`, not outward;
 - a site open in your browser can't read the monitor either: the gateway answers only to the
   address `127.0.0.1` or `localhost`, not to another site's name;
-- tokens and passwords in commands land in the journal and the log as `***`;
+- tokens and passwords in commands land in the journal, the log and the monitor as `***` (known
+  token shapes and values of keys like `token`, `password`);
 - the bot token on disk is encrypted (DPAPI) and only your account on this machine can decrypt it;
   a container has no DPAPI — keep the `.env` to yourself there.
 
 ## 9. No Answer, and the Card Just Hangs
 
-Not a risk, but it worries people: if no button is pressed for 15 minutes, the agent treats that as
-a refusal and finishes the task. Silence means "no", and that's right — a forgotten card can't
-grant permission after the fact.
+Not a risk, but it worries people: if no button is pressed for 15 minutes, the action is refused
+and the agent is told not to repeat it. Silence means "no", and that's right — a forgotten card
+can't grant permission after the fact.
 
 ## The Five-Minute Checklist
 
 1. `AllowedUserIds` is filled in, the token isn't lying around in the open.
-2. The mode is `default`, buttons arrive.
-3. There's a separate "for the bot" folder; secrets and keys are outside it and in the denials.
+2. The mode is `default`, cards arrive.
+3. There's a separate "for the bot" project; secrets and keys are outside it and in the denials.
 4. Deleting files and stopping programs raise a question.
-5. `/rules` is empty or makes sense, `/audit` has been looked at at least once.
+5. `/rules` is empty or makes sense, `.claude/settings.local.json` too, `/audit` has been looked at
+   at least once.
 6. You don't trust a foreign project until you've read its `.claude/settings.json`.
 7. A backup of what you'd miss exists and doesn't depend on this machine.
