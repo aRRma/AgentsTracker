@@ -111,8 +111,9 @@ photo "as a file" — Telegram compresses photos.
   waits until morning.
 - **One task at a time.** The rest wait in the queue. `/status` shows what is running, `/stop`
   interrupts it, `/new` starts a new session.
-- **Confirmations.** Anything that changes or deletes files arrives as a card with buttons. Read
-  the card and don't press «Всегда» ("Always") without looking.
+- **Confirmations.** In the `default` mode anything that changes or deletes files and is not
+  already allowed by a rule arrives as a card with buttons. Read the card and don't press
+  «Всегда» ("Always") without looking.
 - **The session remembers the conversation** within a project, so you can follow up without
   repeating the setup.
 
@@ -130,7 +131,7 @@ noticeably more. The deadline is under every answer ("🧊 кэш до 15:42") a
   ask the agent to write the plan into a file and come back with a new session.
 - **Heavy reading — to a subagent.** "Sort the folder with a subagent and send me the summary"
   keeps the context small.
-- **A run broke off** on the timeout or `/stop`: the edits are already on disk. Write «продолжи».
+- **A run broke off** on the timeout or `/stop`: the edits are already on disk. Write «продолжай».
 
 `/usage` shows the plan's windows, how much was read from the cache and how many misses there were.
 

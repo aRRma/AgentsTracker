@@ -45,8 +45,9 @@ your task and the pieces of files the agent read go to Anthropic, otherwise it c
   from the current project, only of the allowed types (`.md .txt .json .cs .js .html .zip .7z`,
   pictures `.png .jpg .jpeg`), and never from its own data folder;
 - deny reading what must never travel anywhere (`.env`, `~/.ssh`, the password manager) with a
-  one-time `deny` rule. «Всегда» cannot get around it. A `.env` inside the project is not covered
-  by the send limit, so keep it outside;
+  one-time `deny` rule. «Всегда» cannot get around it. A secret inside the project is not covered
+  by the send limit: `appsettings.Local.json` is a `.json`, and a copy of `.env` named `.txt` passes
+  too. Keep secrets outside the project;
 - read a "pack it and send it" request carefully. The gateway checks the archive itself, not what
   is packed inside.
 
