@@ -2,10 +2,10 @@
 
 When to read this: you are writing any text a person will see — a button, a menu title, a chat
 message, a monitor caption, a line of documentation, a release note. Pick the term from the table
-and do not invent a synonym: the same thing called two names reads as two different things.
+and do not invent a synonym: one thing under two names reads as two things.
 
 All user-facing text is Russian, so the terms are Russian. Type, folder and config key names stay
-English (`IAgentLimits`, `ProjectPath`, `audit\`) — this glossary is about texts, not identifiers.
+English (`IAgentLimits`, `ProjectPath`, `audit\`) — the glossary is about texts, not identifiers.
 
 ## The table
 
@@ -32,6 +32,7 @@ English (`IAgentLimits`, `ProjectPath`, `audit\`) — this glossary is about tex
 | The agent's own settings stored in a project (hooks, MCP servers, rules in `.claude/`) | **настройки агента в проекте** | конфиг проекта, локальные настройки |
 | The user's consent for the agent to run the agent's settings in a project | **доверие к проекту** («Доверять проекту?») | разрешение, траст, допуск |
 | `--permission-mode` | **режим** | режим разрешений, уровень доступа, политика |
+| `--effort`, how hard the model thinks (the «🎚 Effort» line) | **effort** | усилие, уровень усилий |
 | A subscription ceiling | **лимит тарифа** | лимит плана, квота |
 | A limit period | **окно** («5 часов», «неделя») | период, интервал |
 | Usage figures | **расход** / **осталось** | использование, потрачено |
@@ -51,20 +52,20 @@ English (`IAgentLimits`, `ProjectPath`, `audit\`) — this glossary is about tex
 
 ## The pairs that get confused
 
-**проект / папка.** A project is one working folder of the agent — the thing `/project` switches,
-the thing sessions and «всегда» rules are keyed by. A folder is only the level above it in the
-list: projects are grouped by the folder that holds them (`📂 К папкам`). Never call a project a
-repository, even though they usually are git repositories: the config key is `ProjectPath`, the
-audit, the monitor and every document say «проект», and a second word would split one thing in two.
+**проект / папка.** A project is one working folder of the agent — what `/project` switches, what
+sessions and «всегда» rules are keyed by. A folder is only the level above it in the list: projects
+are grouped by the folder that holds them (`📂 К папкам`). Never call a project a repository, even
+though it usually is a git repository: the config key is `ProjectPath`, the audit, the monitor and
+every document say «проект», and a second word would split one thing in two.
 
-**задача / запуск.** The user writes a задача; the agent performs a запуск of it. In the queue
-there are задачи («Очередь снята, не запущено: 3 задач(и)»), in the statistics and in the monitor
-there are запуски («Запусков: 42»). A settings change applies «со следующего запуска». «Прогон» is
-not a word of this project.
+**задача / запуск.** The user writes a задача; the agent performs a запуск of it. The queue holds
+задачи («Очередь снята, не запущено: 3 задач(и)»), the statistics and the monitor count запуски
+(«Запусков: 42»). A settings change applies «со следующего запуска». «Прогон» is not a word of
+this project.
 
 **подтверждение / режим.** A подтверждение is one question about one action — the card with
 buttons. A режим is `--permission-mode`, the overall setting of how often those questions come at
-all. Neither is called «разрешение»: that word would mean two things at once. The buttons are
+all. Neither is called «разрешение»: that word would mean two things. The buttons are
 «✅ Разрешить» / «❌ Отклонить», because those are actions, not terms.
 
 **сессия / контекст.** A сессия is the conversation itself: it is picked, continued, started
@@ -74,25 +75,24 @@ conversation with an empty one.
 
 **сессия / ветка.** A ветка is only the git branch a project is on (`🌿 master`). The conversation
 with the agent is a сессия and is never called a ветка: «🧵 Сессия» and «🌿 ветка» sit on the same
-screen. The main agent's turns, as opposed to a сабагент's, are the «основной поток» (main thread),
-not the «основная ветка».
+screen. The main agent's turns, as opposed to a сабагент's, are the «основной поток», not the
+«основная ветка».
 
 **проект / worktree.** A worktree is a separate folder of the same repository on its own branch. To
-the gateway it is an ordinary проект: its own сессия, its own «всегда» rules, its own доверие к
-проекту. The 🌳 mark shows which project it was made from.
+the gateway it is an ordinary проект: its own сессия, «всегда» rules and доверие к проекту. The 🌳
+mark shows which project it was made from.
 
 **контекст / кэш.** The контекст is how much of the model's window a session takes. The кэш is how
 much longer the model keeps that session ready: an hour after the start of the last request, five
-minutes for a сабагент. The кэш «остывает»: after that the next run writes the whole context anew
-and spends more of the лимит. A model switch and the `plan` mode reset the кэш too. A подогрев is a
-run that only extends the кэш and leaves no turn in the session.
+minutes for a сабагент. The кэш «остывает»: the next run then writes the whole context anew and
+spends more of the лимит. A model switch and the `plan` mode reset the кэш too. A подогрев is a run
+that only extends the кэш and leaves no turn in the session.
 
 **задача / вопрос.** A задача goes into the project's session and continues it. A вопрос is a
-one-off, outside any session and project, answered by its own model, and leaves nothing behind. A
-вопрос runs in parallel with a задача, without waiting for it, and is answered as a reply to the
-message that asked it. It is not a «режим»: that word belongs to `--permission-mode`. When the
-agent itself asks, that is a
-«вопрос агента» — a card with options, not the user's вопрос.
+one-off, outside any session and project, answered by its own model, and leaves nothing behind. It
+runs in parallel with a задача and is answered as a reply to the message that asked it. It is not a
+«режим»: that word belongs to `--permission-mode`. When the agent itself asks, that is a «вопрос
+агента» — a card with options, not the user's вопрос.
 
 **лимит / предел.** A лимит belongs to the subscription: «Лимит тарифа исчерпан», the windows,
 the bars. A предел is technical and has nothing to do with money: a file size, a message length,
