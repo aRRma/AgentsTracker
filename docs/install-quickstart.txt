@@ -45,9 +45,11 @@ AgentsTracker — мостик между Telegram и Claude Code.
      только ваша учётная запись.
 
   5. Правила для агента (рекомендуется). Они лежат в профиле Windows, а не в шлюзе:
-     %USERPROFILE%\.claude\settings.json. Если этого файла нет — скопируйте пример:
-       PowerShell: Copy-Item ..\claude-settings.example.json $env:USERPROFILE\.claude\settings.json
-       bash:       cp ../claude-settings.example.json ~/.claude/settings.json
+     %USERPROFILE%\.claude\settings.json. Пример лежит рядом с install.txt, в папке, куда вы
+     распаковали архив (не в папке приложения, которую перенесли на шаге 1).
+     Если файла settings.json нет — скопируйте пример, подставив свой путь:
+       PowerShell: Copy-Item <папка распаковки>\claude-settings.example.json $env:USERPROFILE\.claude\settings.json
+       bash:       cp <папка распаковки>/claude-settings.example.json ~/.claude/settings.json
      Если файл уже есть — не затирайте его, а перенесите из примера списки permissions:
      allow, ask, deny. Перезапуск не нужен: правила действуют со следующей задачи.
      Подробно: docs/claude-permissions.md, раздел «Перенос на другой ПК».

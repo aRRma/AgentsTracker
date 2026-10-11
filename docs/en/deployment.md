@@ -139,7 +139,7 @@ Windows `protect-secrets` refuses: there is no DPAPI, keep secrets in environmen
 Config layers, each next one overrides the previous:
 
 1. `appsettings.json` next to the exe — defaults, in the repository, no secrets;
-2. `appsettings.Local.json` next to the exe — for debugging from the IDE only, deleted on install;
+2. `appsettings.Local.json` next to the exe — for debugging from the IDE only, on install it moves to the data directory, or is deleted if one is already there;
 3. `appsettings.Local.json` in the data directory — production;
 4. environment variables `Gateway__Key` (nested — `Gateway__Claude__Executable`).
 

@@ -10,7 +10,7 @@ command in both shells.
 
 `Get-Process AgentsTracker.Gateway` shows the path, and everything else follows from it:
 
-- **a published release** (`C:\AgentsTracker-<version>-win-x64`) — how this machine is set up now:
+- **a published release** (`C:\AgentsTracker-win-x64`) — how this machine is set up now:
   the stable service the user chats with. Do not stop it and do not rebuild over it; a commit
   changes nothing in the chat, new code gets there only with the next release
   (`docs/en/deployment.md`). A change is checked live by a scratch instance, see below;
@@ -211,7 +211,7 @@ pwsh -File scripts/sync-wiki.ps1                                # build and push
 
 The script clears its own pages from the preview folder, so it rejects an `-OutDir` inside the
 repository: `-OutDir docs` would overwrite the sources. The other parameters (`-WikiPath`,
-`-NoPush`, `-Repository`, `-Branch`) are described in the script's header. If the built-in
+`-NoPush`, `-Repository`, `-Branch`) are in the script's `param` block. If the built-in
 `github.token` cannot push to the wiki, the workflow takes the `WIKI_TOKEN` secret, a personal
 access token with write access to repository contents.
 
