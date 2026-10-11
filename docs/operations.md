@@ -20,9 +20,9 @@
 ## Перезапуск шлюза
 
 Относится к случаю, когда exe запущен вручную из `bin\Debug` и задачи Планировщика нет. Пока
-он работает, `dotnet build` падает с `MSB3021` (exe занят). У `Get-Process
-AgentsTracker.Gateway | Stop-Process -Force` фильтра нет: рядом с работающим релизом эта
-команда снимет и боевой сервис — отбирайте по `Path`.
+он работает, `dotnet build` падает с `MSB3021` (exe занят). Обе команды остановки ниже
+(`Stop-Process`, `taskkill`) отбирают процесс только по имени: рядом с работающим релизом они
+снимут и боевой сервис — отбирайте по `Path`.
 
 ```powershell
 git status                                                # чужие незакоммиченные правки могут не собираться
@@ -65,8 +65,9 @@ cmd //c start "" "src/AgentsTracker.Gateway/bin/Debug/net10.0/AgentsTracker.Gate
   поднять заново.
 - Консоль отдаёт русский в cp866 — лог смотрите в PowerShell (`iconv` в Git Bash нет).
 - Бот после старта пишет «🔌 Шлюз запущен» с версией сборки (в сборке из исходников это
-  `0.0.0-dev`) — по ней видно, что поднялся именно новый exe; если перезапуск пришёлся на работающую задачу —
-  в её чат уходит «прерван, напишите „продолжай“».
+  `0.0.0-dev`) — по ней видно, что поднялся именно новый exe. Если перезапуск пришёлся на
+  работающую задачу, в её чат уходит ещё и «⚠️ Предыдущий запуск прерван перезапуском шлюза»
+  с подсказкой написать «продолжай».
 
 ## Пробный экземпляр
 
@@ -78,6 +79,7 @@ cmd //c start "" "src/AgentsTracker.Gateway/bin/Debug/net10.0/AgentsTracker.Gate
 ```powershell
 dotnet build src\AgentsTracker.Gateway -o $env:TEMP\at-build
 $env:Gateway__Channel__Settings__BotToken = '123456789:AAFakeTokenFakeTokenFakeTokenFakeTok'
+$env:Gateway__Channel__Settings__AllowedUserIds__0 = '1'
 $env:Gateway__McpPort = '5198'; $env:Gateway__MonitorPort = '5199'
 $env:Gateway__DataDirectory = "$env:TEMP\at-scratch-data"
 $env:Gateway__ProjectPath = 'C:\Users\aRRma99\source\repos\ME\AgentsTracker'
@@ -94,9 +96,11 @@ $env:Gateway__ProjectPath = 'C:\Users\aRRma99\source\repos\ME\AgentsTracker'
 
 - `Gateway__Channel__Settings__BotToken` — поддельный, но формата `<число>:<строка>`, иначе
   канал не создастся;
+- `Gateway__Channel__Settings__AllowedUserIds__0` — любое число; элемент массива задаётся
+  индексом в конце имени. Проверка на старте не пропускает пустой список;
+- `Gateway__ProjectPath` — существующая папка, её требует проверка, а при своей папке данных
+  боевого конфига, откуда её взять, нет;
 - `Gateway__McpPort` и `Gateway__MonitorPort` — свои, рабочие заняты;
-- `Gateway__ProjectPath` и `Gateway__Channel__Settings__AllowedUserIds__0` — если пробе нужно
-  отвечать в чат; элемент массива задаётся индексом в конце имени;
 - `Gateway__DataDirectory` — папка в scratchpad. Тогда у пробы свой `state.json` и она не
   читает боевой `appsettings.Local.json`: не мешает рабочему шлюзу и не зависит от формы его
   конфига. Без этого `state.json` общий — не запускайте пробу, пока идёт задача.
@@ -111,14 +115,16 @@ $env:Gateway__ProjectPath = 'C:\Users\aRRma99\source\repos\ME\AgentsTracker'
 создаёт в любом случае — он у каждого свой, `mcp-gateway-<pid>-<запуск>.json` на каждый запуск.
 
 Монитор пробы (`http://127.0.0.1:5199`) — единственное место, где видна правка страницы: порт
-`5100` принадлежит релизу и показывает старый код. Скриншоты — `docs/monitor.md`.
+`5100` принадлежит релизу и показывает старый код. Из сессии его читает
+`monitor-api.ps1 "api/snapshot" -Port 5199`. Скриншоты — `docs/monitor.md`.
 
 Смоук-тест после правок инфраструктуры: скрипт в scratchpad, `pwsh -File`; через ~8 с
 проверить:
 
 - `/api/snapshot` — поля `version` (версия шлюза), `agent`, `cliVersion`;
 - `/api/limits`;
-- 404 на `/` порта MCP;
+- 404 на `/` порта MCP (монитор там открываться не должен), 403 на порту монитора с чужим
+  заголовком `Host`;
 - 401 на `POST /mcp` без токена, с заголовками `Content-Type: application/json` и
   `Accept: application/json, text/event-stream` — иначе придёт 415.
 
@@ -135,9 +141,9 @@ $env:Gateway__ProjectPath = 'C:\Users\aRRma99\source\repos\ME\AgentsTracker'
 Сначала `AppPaths.UseDirectory(<папка во временных>)`, затем
 `Options.Create(new GatewayOptions { … })`, `NullLogger<T>.Instance` и свои
 `IChatChannel`/`IAuditLog` (остальные методы канала — `throw new NotSupportedException()`).
-Файл кладётся в scratchpad и запускается `dotnet run check.cs`. Так за один запуск проверена
-работа с присланными файлами: определение типа по сигнатуре, пределы размера, чистка по возрасту,
-отказы и записи аудита — и там же нашёлся `Directory.Delete`, падавший на только что удалённом файле.
+Файл кладётся в scratchpad и запускается `dotnet run check.cs`. За один запуск можно проверить,
+например, работу с присланными файлами: определение типа по сигнатуре, пределы размера, чистку по
+возрасту, отказы и записи журнала.
 
 Junction, оставшийся во временной папке от прошлого запуска, роняет `Directory.Delete(recursive: true)`
 с «Access to the path 'link' is denied» — снимайте саму ссылку перед удалением папки.
@@ -208,7 +214,8 @@ git worktree add ../AgentsTracker-<задача> -b <ветка>   # основ�
 
 Вики — зеркало `README.md` и русских `docs/*.md`, править её руками бессмысленно: страницы каждый раз
 собираются заново и правки затираются. Обновляет их `.github/workflows/wiki.yml` при пуше
-в `master`, тот же скрипт можно запустить вручную:
+в `master`, который затрагивает `README.md`, `docs/` (кроме `docs/en/`) или скрипт, и по ручному
+запуску; тот же скрипт можно запустить и руками:
 
 ```powershell
 pwsh -File scripts\sync-wiki.ps1 -OutDir C:\Temp\wiki-preview   # посмотреть, что получится
@@ -221,7 +228,10 @@ pwsh -File scripts/sync-wiki.ps1                                # собрать
 ```
 
 Папку предпросмотра скрипт чистит от своих страниц, поэтому `-OutDir` внутрь репозитория
-он не пускает: `-OutDir docs` затёр бы исходники.
+он не пускает: `-OutDir docs` затёр бы исходники. Остальные параметры: `-WikiPath` (готовый клон
+вики вместо нового), `-NoPush` (закоммитить, но не пушить), `-Repository`, `-Branch`. Если
+встроенного `github.token` для пуша в вики не хватает, workflow берёт секрет `WIKI_TOKEN` —
+personal access token с правом записи в содержимое репозитория.
 
 Имена страниц — латиницей по имени файла (`docs/monitor.md` → `monitor`), заголовок для
 боковой панели берётся из первого `#` файла. Ссылки на файлы репозитория и картинки скрипт
@@ -261,7 +271,6 @@ pwsh -File scripts/sync-wiki.ps1                                # собрать
   `browser_run_code_unsafe` Playwright.
 - `modern-web-guidance` (`npx.cmd -y modern-web-guidance@latest search "…"`) — из инструмента
   PowerShell: из Git Bash `npx.cmd` молча отдаёт пустой вывод.
-- Промышленная установка и Docker (публикация, порты, секреты, обновление) — `deployment.md`.
-  Автозапуск ставит сам exe: `install` заводит задачу Планировщика от текущего пользователя,
-  не службу (OAuth-логин лежит в `%USERPROFILE%\.claude`, под SYSTEM он не найдётся),
-  `uninstall` снимает её и добивает процессы, запущенные вручную из той же папки.
+- Промышленная установка и Docker (публикация, порты, секреты, обновление, почему задача, а не
+  служба) — `deployment.md`. `uninstall` снимает задачу и добивает процессы, запущенные вручную
+  из того же пути exe.

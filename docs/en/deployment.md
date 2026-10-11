@@ -26,15 +26,15 @@ SDK nor the Runtime is needed on the machine) and the smaller `…-win-x64.zip`,
 **ASP.NET Core Runtime 10** installed: the gateway is built with the Web SDK and asks for two
 frameworks, `Microsoft.NETCore.App` and `Microsoft.AspNetCore.App` — the plain .NET Runtime is
 not enough. Inside is the same result as `dotnet publish`, so everything below applies
-the same way: fill in `appsettings.Local.json` next to the exe and run `install --start`.
+the same way: copy `appsettings.Local.example.json` next to the exe as `appsettings.Local.json`,
+fill it in and run `install --start`.
 
-Archive layout: a folder `AgentsTracker-<tag>-<kind>` with the application and, next to it,
-`install.txt` — a short guide for the user (source — `../install-quickstart.txt`) and
-`claude-settings.example.json` — the agent's permission rules for `~/.claude/settings.json`
-(`claude-permissions.md`, "Moving to Another PC"). The
-application sits in a folder named after the archive so that extracting "here" does not scatter
-a hundred and a half files across the downloads folder, and so the installed folder's name shows
-which version it is.
+Archive layout: a folder `AgentsTracker-<tag>-win-x64` (or `…-win-x64-self-contained`, the same
+name as the archive) with the application and, next to it, `install.txt` — a short guide for the
+user (source — `../install-quickstart.txt`) and `claude-settings.example.json` — the agent's
+permission rules for `~/.claude/settings.json` (`claude-permissions.md`, "Moving to Another PC").
+The application sits in a folder so that extracting "here" does not scatter a hundred and a half
+files across the downloads folder, and so the installed folder's name shows which version it is.
 
 ### From source
 
@@ -56,19 +56,22 @@ application. With the runtime included (no .NET needed on the machine) — add
 
 `install` registers **the exe that ran it**, wherever it is located. So both a publish from this
 machine and a folder brought over from another one work: in the second case neither the source
-nor the SDK is needed. Along the way the command also:
+nor the SDK is needed. It refuses under `dotnet run` and inside a container, and warns when the
+exe sits in a `bin` build folder. Along the way the command also:
 
-- moves `appsettings.Local.json` into the data directory and encrypts the channel secrets
-  (`Channel:Settings:BotToken`) and `Proxy`; a config with the old `Gateway:BotToken` is rejected
-  and autostart is not registered — run `scripts\migrate-channel-settings.ps1` first;
-- deletes the config next to the exe — `dotnet publish` copies there a file with a plain-text
-  token;
+- moves `appsettings.Local.json` from next to the exe into the data directory and encrypts the
+  channel secrets (`Channel:Settings:BotToken`) and `Proxy` (as `protect-secrets` does). If the
+  data directory already has a config, that one stays and the copy next to the exe is deleted
+  unread — `dotnet publish` copies there a file with a plain-text token. A config with the old
+  `Gateway:BotToken` is rejected and autostart is not registered — run
+  `scripts\migrate-channel-settings.ps1` first (`-Path` for a file next to the exe);
 - locks down the data directory permissions: owner and SYSTEM only;
+- overwrites a task of the same name, if there is one;
 - prints a summary — the path, the data directory, the ports, and whether the config is filled
   in.
 
 Keys: `--start` starts it right away, `--name <name>` changes the autostart entry's name
-(default `AgentsTracker Gateway`).
+(default `AgentsTracker Gateway`); `uninstall` takes the same `--name`.
 
 `uninstall` stops the gateway and removes autostart, data is left untouched. It's also what
 frees up the files before publishing a new version, including when the gateway was started by
@@ -108,9 +111,12 @@ dotnet publish src/AgentsTracker.Gateway -c Release -o /c/Apps/AgentsTracker
 ```
 
 `uninstall` goes first: while the exe is running, publishing over it fails with `MSB3021`, and
-the task would be left on the old version. The config, sessions, and audit log in the data
-directory are not touched. If the update lands on a running task, its chat gets
-«прервана, напишите „продолжай“» (interrupted, write "continue").
+the task would be left on the old version. From an archive the steps are the same: `uninstall`,
+put the new folder in place of the old one, `install --start`. The config, sessions, and audit
+log in the data directory are not touched. If the update lands on a running task, its chat gets
+«⚠️ Предыдущий запуск прерван перезапуском шлюза» (the previous run was interrupted by the
+gateway restart) with a hint to write «продолжай» ("continue"); an interrupted вопрос
+is asked again with `/ask`.
 
 ### Checking after the install
 
@@ -129,9 +135,12 @@ curl -s http://127.0.0.1:5100/api/snapshot
 `LastTaskResult` = 0 and a process with a path from the install folder — the task came up, and
 Telegram will get «🔌 Шлюз запущен» (🔌 Gateway started) with the version. The snapshot's
 `version` field and the version in the message are the same string: it shows that a new build is
-running after an update, not the old task. A non-zero exit code is returned by the
-gateway on purpose when it fails to connect to Telegram: the Task Scheduler uses it to restart
-the task (3 attempts, a minute apart).
+running after an update, not the old task.
+
+The gateway exits with code 1 on purpose when it cannot start: the config fails validation, or
+Telegram rejects the token six times in a row (ten seconds apart). The Task Scheduler restarts
+the task after that (3 attempts, a minute apart). A missing network is not a reason to exit: the
+gateway waits 10 s, 20 s… up to 5 min between attempts, as long as it takes.
 
 ## Config and secrets
 
@@ -142,7 +151,12 @@ The production config is a single file, and it lives **outside** the install fol
 ```
 
 That way the install folder can be deleted and recreated without touching the token, sessions,
-or audit log. Re-encrypt after an edit — `AgentsTracker.Gateway.exe protect-secrets`.
+or audit log. Re-encrypt after an edit — `AgentsTracker.Gateway.exe protect-secrets [file]`. It
+encrypts `Proxy` and the channel secrets (`BotToken`, the channel's own `Proxy`) in place. Without
+a file it takes the one in the data directory, else the one next to the exe, and moves the result
+into the data directory. If the data directory already has a config, it refuses to overwrite it.
+It also refuses a config with the old `Gateway:BotToken`/`Gateway:AllowedUserIds` keys
+(`scripts\migrate-channel-settings.ps1`).
 
 About DPAPI, important: only **the same account on the same machine** can decrypt it. A config
 with `dpapi:…` doesn't carry over to another PC and isn't usable by another user — on a new
@@ -161,9 +175,10 @@ Config layers, each next one overrides the previous:
 
 The config is read **once at startup**: change it, restart.
 
-The data directory is relocated by `Gateway:DataDirectory`. It's needed before the rest of the
-config — `appsettings.Local.json` itself lives in it — so it's read only from `appsettings.json`
-next to the exe or from the `Gateway__DataDirectory` variable.
+The data directory is `%LOCALAPPDATA%\AgentsTracker` (on Linux and macOS
+`~/.local/share/AgentsTracker`). `Gateway:DataDirectory` relocates it. It's needed before the
+rest of the config — `appsettings.Local.json` itself lives in it — so it's read only from
+`appsettings.json` next to the exe or from the `Gateway__DataDirectory` variable.
 
 ## Ports
 
@@ -193,7 +208,7 @@ Get-NetTCPConnection -LocalPort 5099,5100 -State Listen -ErrorAction SilentlyCon
 netstat -ano | grep -E ':(5099|5100)\s.*LISTENING'
 ```
 
-No firewall rules are needed: the ports don't face outward.
+No firewall rules are needed: with `MonitorBind: loopback` the ports don't face outward.
 
 ## Docker
 
@@ -225,8 +240,10 @@ What matters:
   in the image), otherwise there'd be nothing to publish the port from. It's exposed outward as
   `127.0.0.1:5100:5100` — the page has no password, and it must not be exposed beyond your own
   machine.
-- **Project paths differ.** Inside it's `/projects/<project>`. Sessions are keyed by the
-  normalized path, so session history from the host won't be picked up in the container.
+- **Project paths differ.** Inside it's `/projects/<project>` (`PROJECT` in `.env` picks the
+  default one; the image sets `Gateway__ProjectsRoot=/projects` for the project menu). Sessions
+  are keyed by the normalized path, so session history from the host won't be picked up in the
+  container.
 - **Tools.** The agent can do exactly what's in the image: git, ripgrep, and the .NET SDK. Need
   other languages — add a layer in the `Dockerfile`.
 - **Autostart** is set by `restart: unless-stopped`; the `install` command inside the container
@@ -239,14 +256,15 @@ Update: `docker compose up -d --build`. Volumes survive a rebuild.
 
 ## Data, logs, backup
 
-The data directory is the gateway's whole state, accessible only to the owner and SYSTEM (in
-the container this is the `data` volume):
+The data directory is the gateway's whole state. On Windows only the owner and SYSTEM can open it
+(in the container it is the `data` volume):
 
 | File | What |
 |---|---|
 | `appsettings.Local.json` | config; on Windows secrets are encrypted |
-| `state.json` | sessions per project, model and mode selection, the versions the model aliases answered with, "Always" rules, run history |
+| `state.json` | sessions per project, project, model, mode and effort selection, the versions the model aliases answered with, "Always" rules and trusted projects per project, statistics, run history |
 | `audit\audit-YYYY-MM.jsonl` | "who did what, when" log, one file per month |
+| `inbox\<chat>\<project>\` | pictures from the chat; swept after `Attachments:RetentionHours` (24 by default) |
 | `mcp-gateway-<pid>-<run>.json` | temporary, one per agent run: created at its start and removed at its end |
 
 It makes sense to include `state.json` and `audit\` in a backup. The config only if you remember
@@ -275,28 +293,28 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The build then publishes both win-x64 archives (with and without the runtime) and creates the
-release. Release notes are taken from `../release-notes/<tag>.md`, so create the file **before**
-pushing the tag; no file — GitHub will collect a list of commits instead.
+The build then publishes both win-x64 archives (`AgentsTracker-<tag>-win-x64-self-contained.zip`
+with the runtime and `AgentsTracker-<tag>-win-x64.zip` without) and creates the release. Release
+notes are taken from `../release-notes/<tag>.md`, so create the file **before** pushing the tag;
+no file — GitHub will collect a list of commits instead.
 
 How to write the notes: **short, in plain human words**, from the side of the person using the bot
 rather than writing it. One or two sentences on what changed overall, then a «Что нового» list —
 one bullet per change, the visible result first. Only what matters: a change the user cannot notice
-does not belong in the notes. No reasoning about why it was done that way, no class names, flags or
-edit history; stay technically accurate, but explain it so that someone who has never seen the code
-understands. The install and update sections are boilerplate — copy them from the previous release
-and change the version.
+does not belong in the notes. No reasoning, class names, flags or edit history. The install and
+update sections are boilerplate — copy them from the previous release and change the version.
 
 The tag number without the `v` goes into `-p:Version`; the version isn't edited separately in
 the csproj — it holds `0.0.0-dev` there, so a build from source is honestly distinguishable from
 a released one. The gateway prints that same number as the first line of the log, puts it in the
 monitor snapshot's `version` field and into the «🔌 Шлюз запущен» message.
 
-Packaging puts the publish output into a folder `AgentsTracker-<tag>-<kind>` inside the archive
-and `install.txt` from `../install-quickstart.txt` next to it (UTF-8 with a BOM: without it
-Cyrillic turns into mojibake in Notepad on older Windows builds).
+Packaging puts the publish output into a folder named after the archive and `install.txt` from
+`../install-quickstart.txt` next to it, plus `claude-settings.example.json` from
+`../examples/` (`install.txt` is UTF-8 with a BOM: without it Cyrillic turns into mojibake in
+Notepad on older Windows builds).
 
 No tokens need to be set up: the workflow uses the built-in `github.token` with `contents:
-write` permission. Before packaging, `appsettings.Local.json` is removed from the publish
-output — in case the build ever runs from a machine where this file exists: a plain-text token
-must not end up in the release archive.
+write` permission. Before packaging, `appsettings.Local.json` and `appsettings.Development.json`
+are removed from the publish output — in case the build ever runs from a machine where these
+files exist: a plain-text token must not end up in the release archive.

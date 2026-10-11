@@ -20,9 +20,9 @@ same in both shells, there is one block.
 ## Restarting the gateway
 
 Applies when the exe was started manually from `bin\Debug` and there is no Task Scheduler task.
-While it is running, `dotnet build` fails with `MSB3021` (the exe is locked). `Get-Process
-AgentsTracker.Gateway | Stop-Process -Force` has no filter: with a release running alongside it
-takes down the working service too — filter by `Path`.
+While it is running, `dotnet build` fails with `MSB3021` (the exe is locked). Both stop commands
+below (`Stop-Process`, `taskkill`) match by name only: with a release running alongside they
+take down the working service too — filter by `Path`.
 
 ```powershell
 git status                                                # someone else's uncommitted changes may not build
@@ -66,10 +66,9 @@ cmd //c start "" "src/AgentsTracker.Gateway/bin/Debug/net10.0/AgentsTracker.Gate
 - The console outputs Russian text in cp866 — view the log in PowerShell (`iconv` is not
   available in Git Bash).
 - After startup the bot posts «🔌 Шлюз запущен» ("Gateway started") with the build version
-  (`0.0.0-dev` for a build from source) — it shows that the new exe is the one that came up;
-  if the restart happened
-  during a running task, its chat receives «прерван, напишите „продолжай“» ("interrupted, type
-  \"continue\"").
+  (`0.0.0-dev` for a build from source) — it shows that the new exe is the one that came up.
+  If the restart happened during a running task, its chat also receives
+  «⚠️ Предыдущий запуск прерван перезапуском шлюза» with a hint to write «продолжай».
 
 ## Scratch instance
 
@@ -81,6 +80,7 @@ neither `bin\Debug` nor the working service.
 ```powershell
 dotnet build src\AgentsTracker.Gateway -o $env:TEMP\at-build
 $env:Gateway__Channel__Settings__BotToken = '123456789:AAFakeTokenFakeTokenFakeTokenFakeTok'
+$env:Gateway__Channel__Settings__AllowedUserIds__0 = '1'
 $env:Gateway__McpPort = '5198'; $env:Gateway__MonitorPort = '5199'
 $env:Gateway__DataDirectory = "$env:TEMP\at-scratch-data"
 $env:Gateway__ProjectPath = 'C:\Users\aRRma99\source\repos\ME\AgentsTracker'
@@ -97,10 +97,12 @@ What to set for the scratch instance:
 
 - `Gateway__Channel__Settings__BotToken` — fake, but in the `<number>:<string>` format, otherwise
   the channel will not be created;
+- `Gateway__Channel__Settings__AllowedUserIds__0` — any number; an array element is set by an
+  index at the end of the name. Startup validation rejects an empty list;
+- `Gateway__ProjectPath` — an existing folder, validation requires it, and with its own data
+  directory there is no production config to take it from;
 - `Gateway__McpPort` and `Gateway__MonitorPort` — use different ones, the working ones are
   taken;
-- `Gateway__ProjectPath` and `Gateway__Channel__Settings__AllowedUserIds__0` — if the scratch
-  instance needs to reply in chat; an array element is set by an index at the end of the name;
 - `Gateway__DataDirectory` — a folder in the scratchpad. Then the scratch instance has its own
   `state.json` and does not read the production `appsettings.Local.json`: it does not
   interfere with the working gateway and does not depend on the shape of its config. Without
@@ -117,15 +119,17 @@ test bot** from @BotFather: the working bot's token gives the second process a 4
 each instance has its own, `mcp-gateway-<pid>-<run>.json` per run.
 
 The monitor of the scratch instance (`http://127.0.0.1:5199`) is the only place where a change
-to the page can be seen: port `5100` belongs to the release and shows the old code. Screenshots
-— `docs/en/monitor.md`.
+to the page can be seen: port `5100` belongs to the release and shows the old code. From a
+session read it with `monitor-api.ps1 "api/snapshot" -Port 5199`. Screenshots —
+`docs/en/monitor.md`.
 
 Smoke test after infrastructure changes: a script in the scratchpad, `pwsh -File`; after ~8 s
 check:
 
 - `/api/snapshot` — the `version` (gateway build), `agent`, `cliVersion` fields;
 - `/api/limits`;
-- 404 on `/` of the MCP port;
+- 404 on `/` of the MCP port (the monitor must not open there), 403 on the monitor port with a
+  foreign `Host` header;
 - 401 on `POST /mcp` without a token, with the headers `Content-Type: application/json` and
   `Accept: application/json, text/event-stream` — otherwise you get 415.
 
@@ -142,9 +146,9 @@ classes with fakes instead of a channel — no token, no ports, no waiting.
 `AppPaths.UseDirectory(<a temp folder>)` before anything else, then
 `Options.Create(new GatewayOptions { … })`, `NullLogger<T>.Instance` and your own
 `IChatChannel`/`IAuditLog` (the rest of the channel's methods — `throw new NotSupportedException()`).
-Put the file in the scratchpad and run `dotnet run check.cs`. That is how the incoming-file
-handling was checked in a single run: signature sniffing, size caps, the retention sweep, refusals
-and the audit records — and it caught a `Directory.Delete` that failed on a just-deleted file.
+Put the file in the scratchpad and run `dotnet run check.cs`. One run covers, for example, the
+incoming-file handling: signature sniffing, size caps, the retention sweep, refusals and the
+audit records.
 
 A junction left inside the temp folder by a previous run makes `Directory.Delete(recursive: true)`
 fail with «Access to the path 'link' is denied» — remove the link itself before the folder.
@@ -216,7 +220,8 @@ reaches it.
 
 The wiki is a mirror of `README.md` and the Russian `docs/*.md`; editing it by hand is pointless: the pages are
 rebuilt from scratch every time and manual edits get overwritten. `.github/workflows/wiki.yml`
-updates them on push to `master`; the same script can also be run manually:
+updates them on a push to `master` that touches `README.md`, `docs/` (not `docs/en/`) or the
+script, and on manual dispatch; the same script can also be run by hand:
 
 ```powershell
 pwsh -File scripts\sync-wiki.ps1 -OutDir C:\Temp\wiki-preview   # see what it would produce
@@ -229,7 +234,10 @@ pwsh -File scripts/sync-wiki.ps1                                # build and push
 ```
 
 The script clears its own pages from the preview folder, so it does not allow `-OutDir` inside
-the repository: `-OutDir docs` would overwrite the sources.
+the repository: `-OutDir docs` would overwrite the sources. Other parameters: `-WikiPath` (a
+ready clone of the wiki instead of a new one), `-NoPush` (commit but do not push), `-Repository`,
+`-Branch`. If the built-in `github.token` cannot push to the wiki, the workflow takes the
+`WIKI_TOKEN` secret — a personal access token with the right to write repository contents.
 
 Page names are in Latin script, taken from the file name (`docs/monitor.md` → `monitor`), and
 the sidebar title is taken from the file's first `#`. The script rewrites links to repository
@@ -271,8 +279,6 @@ found".
   Playwright's `browser_run_code_unsafe`.
 - `modern-web-guidance` (`npx.cmd -y modern-web-guidance@latest search "…"`) — use the
   PowerShell tool: from Git Bash `npx.cmd` silently returns empty output.
-- Production installation and Docker (publishing, ports, secrets, upgrade) — `deployment.md`.
-  Autostart is set up by the exe itself: `install` creates a Task Scheduler task under the
-  current user, not a service (the OAuth login lives in `%USERPROFILE%\.claude`, which is not
-  found under SYSTEM); `uninstall` removes it and also kills processes started manually from
-  the same folder.
+- Production installation and Docker (publishing, ports, secrets, upgrade, why a task and not a
+  service) — `deployment.md`. `uninstall` removes the task and also kills processes started
+  manually from the same exe path.
