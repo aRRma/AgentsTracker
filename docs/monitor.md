@@ -8,7 +8,7 @@
 совпасть с `McpPort`). Kestrel слушает оба порта одним конвейером, поэтому группа эндпоинтов
 фильтрует `Connection.LocalPort` — иначе страница открылась бы и на порту MCP (`/` там отдаёт
 404). Авторизации нет намеренно, только loopback — поэтому эндпоинты **только читают**: `/stop`
-и смена проекта остаются в чате, где есть список разрешённых пользователей канала и аудит.
+и смена проекта остаются в чате, где есть список разрешённых пользователей канала и журнал.
 
 Тот же фильтр отвечает 403 на любой `Host`, кроме `localhost`, `127.0.0.1` и `[::1]`: так
 закрыт DNS rebinding, когда чужой сайт направляет своё имя на `127.0.0.1` и браузер считает
@@ -16,10 +16,22 @@
 опубликованный порт хоста, а не `MonitorPort`. Каждый ответ несёт ещё
 `X-Content-Type-Options: nosniff` и `X-Frame-Options: DENY`.
 
-Эндпоинты: `/`, `/api/snapshot`, `/api/events` (SSE), `/api/limits`,
-`/api/runs?project=&limit=`, `/api/stats`, `/api/stats.csv`, `/api/audit?count=`,
-`/api/log?count=&level=`. Новый — `api.MapGet` в `MonitorModule.MapEndpoints`,
-`Results.Json(..., Json)`, секция в `index.html`.
+Эндпоинты (все `GET`):
+
+| Путь | Ответ |
+| --- | --- |
+| `/` | страница |
+| `/api/snapshot` | `at`, `version`, `gatewayStartedUtc`, `agent`, `cliVersion`, `project`, `session`, `model`, `permissionMode`, `effort`, `isBusy`, `isAnswering`, `run`, `approvals`, `queue` |
+| `/api/events` | SSE: `state` (тот же снимок) и пустой `ping` |
+| `/api/limits` | `error`, `fetchedUtc`, `extraUsageEnabled`, `model`, `windows[]` (`key`, `used`, `percent`, `left`, `resetsAt`) |
+| `/api/runs?project=&limit=` | последние запуски, новые первыми, `limit` 1..200 (по умолчанию 200) |
+| `/api/stats` | `sinceUtc`, `total`, `byDay`, `byModel`, `skills`, `sessions`, `rules` |
+| `/api/stats.csv` | расход по дням файлом |
+| `/api/audit?count=` | хвост журнала, `count` 1..1000 (по умолчанию 100) |
+| `/api/log?count=&level=` | хвост лога, `count` 1..500 (по умолчанию 200), `level` — минимальный (по умолчанию `Information`) |
+
+Новый эндпоинт — `api.MapGet` в `MonitorModule.MapEndpoints`, `Results.Json(..., Json)`, секция в
+`index.html`.
 
 «Что сейчас» — `RunMonitor`: `ChatWorker` сообщает очередь, старт, шаги (тот же callback, что
 у `RunStatusMessage`) и финиш; `OperatorConsole` — ожидание карточки через
@@ -39,8 +51,9 @@
 История — `GatewayState.RecentRuns` (200, `SessionStore.RecordRunOutcome` после запуска;
 исход определяет `ChatWorker`, расход — из `AgentRunResult.Usage`). `/api/stats.csv` — `;`,
 BOM и десятичная запятая: иначе Excel на русской локали читает дробные как текст. Лимиты —
-`IAgentLimits.GetAsync` (у Claude кэш 3 мин, страница опрашивает раз в минуту); лог —
-`RingBufferLog` (500 записей, Information+, зарегистрирован как `ILoggerProvider`).
+`IAgentLimits.GetAsync` (у Claude кэш 3 мин, страница опрашивает раз в минуту, журнал и лог —
+раз в 30 с); лог — `RingBufferLog` (500 записей, Information+, зарегистрирован как
+`ILoggerProvider`).
 
 ## Как смотреть страницу
 
@@ -63,9 +76,10 @@ BOM и десятичная запятая: иначе Excel на русской
 - Проверка состояний, тёмной темы, узкого окна и вычисленных стилей — одним вызовом
   `browser_run_code_unsafe`; он же проверяет живой `http://127.0.0.1:5100/`. Сами `/api/*`
   без браузера — `pwsh -File scripts\monitor-api.ps1 "api/snapshot"` (`curl` и
-  `Invoke-WebRequest` в `deny`, loopback не исключение). Звать — из инструмента **PowerShell** и
-  без ведущего `/`: из Bash MSYS превращает `/api/snapshot` в `C:/Program Files/Git/api/snapshot`,
-  и скрипт такой аргумент отклоняет.
+  `Invoke-WebRequest` в `deny`, loopback не исключение); `-Port` — для пробного экземпляра (по
+  умолчанию 5100). Звать — из инструмента **PowerShell** и без ведущего `/`: из Bash MSYS
+  превращает `/api/snapshot` в `C:/Program Files/Git/api/snapshot`, и скрипт такой аргумент
+  отклоняет.
 - Порт `5100` — **рабочий** шлюз, на этой машине релиз: он отдаёт страницу из своей сборки, и
   вашей правки там нет. Свою правку смотрите на пробном экземпляре (`docs/operations.md`),
   скриншот снимайте с его порта.
@@ -77,9 +91,10 @@ BOM и десятичная запятая: иначе Excel на русской
 ## Стиль
 
 Fluent 2 «Mica» с приёмами Grafana/Elastic: подложка `--canvas`, содержимое в карточках
-`.card`, акцент `--brand` только на графике, ссылках и метках инструментов; сигналы —
-`--run`/`--wait`/`--fail`; шрифты Segoe UI Variable и Cascadia. Слева рейка (статус, лимиты
-шкалами, навигация по разделам), справа панели: «Статус», расход по дням, таблицы, журнал, лог.
+`.card`, акцент `--brand` на графике, ссылках, метках инструментов, текущем разделе и шкалах
+лимитов; сигналы — `--run`/`--wait`/`--fail`; шрифты Segoe UI Variable и Cascadia. Слева рейка
+(статус, лимиты тарифа шкалами, факты блока «Шлюз», навигация по разделам), справа панели:
+«Статус», «Расход по дням», «Запуски», рядом «Модели» и «Скиллы», «Сессии», «Журнал», «Лог».
 
 Что стоит знать, правя разметку:
 
@@ -87,7 +102,7 @@ Fluent 2 «Mica» с приёмами Grafana/Elastic: подложка `--canva
   подпись под ней; проценты приходят готовыми в `/api/limits` (`percent`, `left` — их считает
   `LimitMath` на стороне шлюза), своей формулы округления в JS быть не должно: в JavaScript нет
   `decimal`, и цифры на странице разошлись бы с чатом;
-- спарклайны рисуются только там, где есть дневной ряд `stats.byDay` (14 дней);
+- спарклайны рисуются только там, где есть дневной ряд `stats.byDay` (14 дней, график берёт 30);
 - селекты и ссылки — в `.band-head` рядом с `<h2>`, не внутри заголовка;
 - лента `.tape`: время · инструмент · аргумент. Имя инструмента `splitStep` берёт как первое
   слово описания, поэтому `ClaudeStreamEvent.Describe` обязан начинать строку именем.
@@ -102,8 +117,8 @@ Fluent 2 «Mica» с приёмами Grafana/Elastic: подложка `--canva
 Доступность проверена по modern-web-guidance: заголовки и `aria-label` у навигации, подписи
 у селектов, `caption`/`scope` у таблиц, график — `role="img"` плюс таблица в `<details>`,
 размеры в `rem`, тёмная тема через `color-scheme`, `prefers-reduced-motion` глушит анимацию
-лампы и плавную прокрутку, в `forced-colors` рамки получают шкалы, карточки, пилюля состояния
-и точки `.mark`.
+лампы и плавную прокрутку, в `forced-colors` шкалы получают рамку и заливку `Highlight`, а лампа,
+карточки подтверждения, карточки, пилюля состояния и точки `.mark` — рамки.
 
 Добавляя блок, повторите три правила, о которых забывают: прокручиваемой области нужен
 `tabindex="0"`, декоративной картинке вроде спарклайна — `aria-hidden`, а `role="status"`

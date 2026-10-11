@@ -8,35 +8,39 @@
 ## Команда чата
 
 Класс с `IChatCommandHandler` в папке фичи, `AddSingleton` в её `*Module`, запись в
-`ChatCommandCatalog` (подсказки команд в канале) и в тексте `HelpCommandHandler`.
+`ChatCommandCatalog` (`Infrastructure/Chat/`, подсказки команд в канале) и в тексте
+`HelpCommandHandler`.
 
 Заняты: `/start /help` (Help), `/new /stop` (Chat), `/ask` (Question), `/rules` (Approvals),
 `/audit` (Audit), `/menu /settings /status /sessions /agent /model /effort /mode /skills /project
-/usage` (Settings). **Дубль в двух фичах роняет запуск.**
+/usage` (Settings). **Дубль в двух фичах роняет запуск** (`ChatDispatcher` собирает словарь команд).
 
-В списке «Меню» экраны и `/ask` — `/new /stop /model /effort /mode` работают текстом, но в списке
-их нет: то же самое есть кнопками на экранах «Сессии» и «Агент», а длинный список хуже короткого.
-`/ask` в списке, потому что вопрос набирают сразу после команды. Список команд и справка идут одним
-порядком: статус и сессии, вопрос, агент и скиллы, проект, расход, правила, журналы. `RootScreen`
-повторяет его до расхода включительно, «Контекст» — рядом с «Вопросом»; кнопок для `/rules` и
-`/audit` в меню нет.
+В списке «Меню» — `/menu`, экраны, `/ask`, `/rules`, `/audit` и `/help`; `/new /stop /model /effort
+/mode` работают текстом, но в списке их нет: то же самое есть кнопками на экранах «Сессии» и
+«Агент», а длинный список хуже короткого. `/ask` в списке, потому что вопрос набирают сразу после
+команды. Порядок — по частоте: сначала то, что нужно в каждой сессии, затем настройки, в конце
+правила и журналы. В `RootScreen` кнопки только у экранов (для `/rules` и `/audit` их нет),
+«Контекст» стоит рядом с «Вопросом».
 
 Все прочие слэш-команды уходят в CLI как есть: незнакомая команда — это команда самого Claude Code.
 Поэтому у экрана «Контекст» нет своей команды `/context`: она заслонила бы команду Claude Code.
 
 ## Экран настроек
 
-Класс с `ISettingsScreen` в `Features/Settings/Screens/`, регистрация в `SettingsModule`, кнопка в
-`RootScreen`.
+Класс с `ISettingsScreen` в `Features/Settings/Screens/`, `AddSingleton<ISettingsScreen, …>` в
+`SettingsModule`, кнопка в `RootScreen`.
 
+- `Key` — префикс экрана в данных кнопки: кнопка несёт `cfg:<Key>:<аргумент>`. Ключ уникален, а
+  неизвестный молча открывает `root`: несовпавший ключ выглядит как кнопка, которая ничего не делает.
 - `RenderAsync` асинхронный из-за лимитов; `RenderFramesAsync` отдаёт необязательные кадры. Ими
   `StatusScreen` «наполняет» шкалы `LimitBars`: три кадра с паузой 350 мс, чаще — 429 от Telegram.
   Кадр, совпавший с предыдущим, пропускается вместе с паузой перед ним: шкала почти не
   израсходованного окна не двигается, и правка после ожидания принесла бы только «message is not
   modified».
-- Модель, усилие и режим — один `AgentScreen` с аргументами `model:…`/`effort:…`/`mode:…`.
+- Модель, Effort и режим — один `AgentScreen` с аргументами `model:…`/`effort:…`/`mode:…`.
 - В `Apply` приходит `ChatId`: экран может поставить работу в очередь `ChatWorker`
-  (`SkillsScreen`), и ответ уйдёт тому, кто нажал кнопку.
+  (`SkillsScreen`), и ответ уйдёт тому, кто нажал кнопку. Смена настройки пишется в журнал через
+  `IAuditLog.Changed` (`SettingsAudit`).
 - Позиция в списке живёт в `ScreenNavigation` по пользователям: экраны — синглтоны, пользователей
   может быть несколько.
 - Необратимая кнопка (потерять контекст, забыть список) сначала спрашивает: `PendingConfirmations`
@@ -49,21 +53,35 @@
 
 ## Фича
 
-Папка в `Features/` с `*Module : IFeatureModule` (`Infrastructure/Modules/`) и строка в списке
-модулей в `Program.cs`; `ChatModule` остаётся последним — его текстовый обработчик всегда
-возвращает `true`.
+Папка в `Features/` с `*Module : IFeatureModule` (`Infrastructure/Modules/`: `AddServices` и
+`MapEndpoints`, второй пустой, если монтировать нечего) и строка в списке модулей в `Program.cs`.
+Текстовые обработчики (`IChatTextHandler`) опрашиваются в этом порядке, поэтому `ChatModule`
+остаётся последним: его обработчик всегда возвращает `true`. Нажатия кнопок — `IChatButtonHandler`,
+свои он узнаёт по префиксу данных кнопки (`cfg:` — меню).
+
+## Проект
+
+Новому проекту в `src/` кроме кода нужны: строка `<Project>` в `AgentsTracker.slnx`,
+`ProjectReference` в `Gateway.csproj` и строка `COPY …/*.csproj` в `Dockerfile` (без неё restore
+молча пропускает проект, а `publish --no-restore` падает).
+
+`Directory.Build.props` и `.editorconfig` в репозитории нет: каждый csproj сам повторяет
+`TargetFramework`, `Nullable`, `ImplicitUsings`, `TreatWarningsAsErrors` и `RootNamespace`.
+Скопируйте этот блок у соседнего проекта — `dotnet new` заводит проект без
+предупреждений-как-ошибок и со своим корневым пространством имён, а всплывает это позже, никем не
+замеченным предупреждением.
 
 ## Агент (Codex, Cursor)
 
-Проект `src/AgentsTracker.Agents.<Name>` со ссылкой на `Agents.Abstractions`: `IAgentBackendModule`
-регистрирует `IAgentBackend`, `IAgentLimits` (или `NoAgentLimits`), `IAgentSkillCatalog` (или
-`NoAgentSkills`) и свой канал подтверждений через `IOperatorConsole`. Строка в списке `agents` в
-`Program.cs`, ссылка в `Gateway.csproj` и строка `COPY` в `Dockerfile`.
+Проект `src/AgentsTracker.Agents.<Name>` со ссылкой на `Agents.Abstractions` (и три шага из
+раздела «Проект»): `IAgentBackendModule` регистрирует `IAgentBackend`, `IAgentLimits` (или
+`NoAgentLimits`), `IAgentSkillCatalog` (или `NoAgentSkills`) и свой канал подтверждений через
+`IOperatorConsole`. Строка в списке `agents` в `Program.cs`.
 
 Каждое обращение к `IOperatorConsole` несёт обратно `AgentRunRequest.RunId`: задача и вопрос идут
 параллельно, и чат хост находит по этому id — обращение без него получает отказ. Донести id от
-запроса до своего канала подтверждений бэкенд должен сам (Claude кладёт его в заголовок своего у
-каждого запуска MCP-конфига).
+запроса до своего канала подтверждений бэкенд должен сам (Claude кладёт его в заголовок MCP-конфига,
+свой у каждого запуска).
 
 `IAgentBackend.InspectProject` перечисляет всё, что агент сам выполнит из папки проекта, — хуки,
 MCP-серверы, заранее разрешённые правила, файлы, которые их несут, — с отпечатком, который
@@ -76,40 +94,32 @@ MCP-серверы, заранее разрешённые правила, фай
 
 ## Канал чата (Slack, Discord)
 
-Проект `src/AgentsTracker.Channels.<Name>` со ссылкой на `Channels.Abstractions`:
-`IChatChannelModule` регистрирует `IChatChannel` и всё своё, читает настройки из
+Проект `src/AgentsTracker.Channels.<Name>` со ссылкой на `Channels.Abstractions` (и три шага из
+раздела «Проект»): `IChatChannelModule` регистрирует `IChatChannel` и всё своё, читает настройки из
 `Gateway:Channel:Settings` и объявляет в `SecretKeys`, что шифрует `protect-secrets`. Свои типы
 `ChatId`/`UserId` (`Key` — «канал:значение»), свои `ChannelLimits`, сбои транспорта — только
 `ChannelRequestException`; отказ в ключе бота обязан выйти как `ChannelFailure.Unauthorized`, иначе
 хост примет его за сбой сети и будет повторять `ConnectAsync` без конца вместо выхода. Строка в
-списке `channels` в `Program.cs` (выбор по
-`Gateway:Channel:Type`), ссылка в `Gateway.csproj` и строка `COPY` в `Dockerfile`.
+списке `channels` в `Program.cs` (выбор по `Gateway:Channel:Type`).
 
 Ответы на сообщения: заполнять `IncomingMessage.Message` и `InReplyTo` (сообщение, на которое
-ответил пользователь, — так свободный текст находит свою карточку, когда ждут несколько) и выполнять `OutgoingMessage.ReplyTo` и
-`replyTo` файловых методов — ответ на вопрос приходит ответом (reply), иначе он теряется среди
-сообщений задачи. Ответ на сообщение, которого уже нет, всё равно должен дойти (в Telegram —
-`AllowSendingWithoutReply`). Мессенджер без ответов на сообщения может `ReplyTo` не выполнять.
+ответил пользователь, — так свободный текст находит свою карточку, когда ждут несколько) и
+выполнять `OutgoingMessage.ReplyTo` и `replyTo` файловых методов — ответ на вопрос приходит ответом
+(reply), иначе он теряется среди сообщений задачи. Ответ на сообщение, которого уже нет, всё равно
+должен дойти (в Telegram — `AllowSendingWithoutReply`). Мессенджер без ответов на сообщения может
+`ReplyTo` не выполнять.
 
-`grep -rn Telegram src/AgentsTracker.Gateway --include=*.cs` должен находить только `Program.cs` и
-комментарии.
+`grep -rn Telegram src/AgentsTracker.Gateway --include=*.cs` должен находить только `Program.cs`,
+комментарии и несколько текстов сообщений (справка, `install`).
 
 Клиент транспорта канал заводит **лениво**: хост создаёт канал раньше, чем печатает ошибки
 конфигурации, и конструктор, падающий на пустом токене, подменил бы понятную ошибку стектрейсом.
-
-## Проект
-
-`Directory.Build.props` и `.editorconfig` в репозитории нет: каждый csproj сам повторяет
-`TargetFramework`, `Nullable`, `ImplicitUsings`, `TreatWarningsAsErrors` и `RootNamespace`.
-Скопируйте этот блок у соседнего проекта — `dotnet new` заводит проект без
-предупреждений-как-ошибок и со своим корневым пространством имён, а всплывает это позже, никем не
-замеченным предупреждением.
 
 ## MCP-инструмент
 
 Класс с `[McpServerToolType]` в `Agents.Claude/Mcp/`, имя константой в `McpConfigFile`,
 `.WithTools<…>()` в `ClaudeAgentModule`, нужный хосту метод — в `IOperatorConsole` (реализация в
-`OperatorConsole`).
+`OperatorConsole`, `Features/Approvals/`).
 
 Если инструмент должен работать без карточки — в `--allowedTools` в
 `ClaudeBackend.BuildArguments`, но тогда вся его политика ложится на шлюз. Так сделано для
@@ -129,8 +139,8 @@ MCP-серверы, заранее разрешённые правила, фай
 
 Класс в `Infrastructure/Cli/` (`protect-secrets` живёт в `Security/`, рядом с `SecretsProtector`) с
 `public const string Name` и `Run(string[] args, TextWriter output)` — плюс
-`IReadOnlyList<IChatChannelModule> channels`, если команде нужны ключи канала (как `install` и
-`protect-secrets`). Строка в `switch` у `ConsoleCommands` и в её справке.
+`IReadOnlyList<IChatChannelModule> channels` перед `output`, если команде нужны ключи канала (как
+`install` и `protect-secrets`). Строка в `switch` у `ConsoleCommands.TryRun` и в её `PrintUsage`.
 
 Команды отрабатывают до сборки хоста: DI и канал им недоступны, ответ идёт только в `output`, код
 возврата — 0 или 1. Заняты: `protect-secrets`, `install`, `uninstall`, `help`. Всё, что начинается
@@ -139,7 +149,8 @@ MCP-серверы, заранее разрешённые правила, фай
 ## Механизм автозапуска (launchd, systemd)
 
 Реализация `IAutostartInstaller` в `Infrastructure/Autostart/` и строка в
-`AutostartInstaller.ForCurrentOs`. Подход везде один: положить файл-описание и позвать утилиту
+`AutostartInstaller.ForCurrentOs` (сегодня там только Windows, на любой другой ОС —
+`UnsupportedAutostartInstaller`). Подход везде один: положить файл-описание и позвать утилиту
 системы через `ProcessAutostartInstaller.Run` — решать по коду возврата, их вывод локализован. XML
 для `schtasks` пишется в UTF-16: в UTF-8 кириллица в описании задачи превращается в кракозябры.
 

@@ -58,14 +58,14 @@ repository, even though they usually are git repositories: the config key is `Pr
 audit, the monitor and every document say «проект», and a second word would split one thing in two.
 
 **задача / запуск.** The user writes a задача; the agent performs a запуск of it. In the queue
-there are задачи («Очередь снята: 3 задачи не запущены»), in the statistics and in the monitor
+there are задачи («Очередь снята, не запущено: 3 задач(и)»), in the statistics and in the monitor
 there are запуски («Запусков: 42»). A settings change applies «со следующего запуска». «Прогон» is
 not a word of this project.
 
 **подтверждение / режим.** A подтверждение is one question about one action — the card with
 buttons. A режим is `--permission-mode`, the overall setting of how often those questions come at
-all. Both used to be called «разрешение», which made the word mean two things at once; the buttons
-stay «✅ Разрешить» / «❌ Отклонить», because those are actions, not terms.
+all. Neither is called «разрешение»: that word would mean two things at once. The buttons are
+«✅ Разрешить» / «❌ Отклонить», because those are actions, not terms.
 
 **сессия / контекст.** A сессия is the conversation itself: it is picked, continued, started
 anew. The контекст is how much room that conversation takes in the model right now: it is looked at
@@ -90,8 +90,8 @@ run that only extends the кэш and leaves no turn in the session.
 **задача / вопрос.** A задача goes into the project's session and continues it. A вопрос is a
 one-off, outside any session and project, answered by its own model, and leaves nothing behind. A
 вопрос runs in parallel with a задача, without waiting for it, and is answered as a reply to the
-message that asked it. It
-is not a «режим»: that word belongs to `--permission-mode`. When the agent itself asks, that is a
+message that asked it. It is not a «режим»: that word belongs to `--permission-mode`. When the
+agent itself asks, that is a
 «вопрос агента» — a card with options, not the user's вопрос.
 
 **лимит / предел.** A лимит belongs to the subscription: «Лимит тарифа исчерпан», the windows,

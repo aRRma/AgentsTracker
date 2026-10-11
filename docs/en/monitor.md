@@ -17,10 +17,22 @@ treats the monitor's answers as that site's own. The port in `Host` is not check
 container it is the host's published port, not `MonitorPort`. Every answer also carries
 `X-Content-Type-Options: nosniff` and `X-Frame-Options: DENY`.
 
-Endpoints: `/`, `/api/snapshot`, `/api/events` (SSE), `/api/limits`,
-`/api/runs?project=&limit=`, `/api/stats`, `/api/stats.csv`, `/api/audit?count=`,
-`/api/log?count=&level=`. A new one is `api.MapGet` in `MonitorModule.MapEndpoints`,
-`Results.Json(..., Json)`, a section in `index.html`.
+Endpoints (all `GET`):
+
+| Path | Answer |
+| --- | --- |
+| `/` | the page |
+| `/api/snapshot` | `at`, `version`, `gatewayStartedUtc`, `agent`, `cliVersion`, `project`, `session`, `model`, `permissionMode`, `effort`, `isBusy`, `isAnswering`, `run`, `approvals`, `queue` |
+| `/api/events` | SSE: `state` (the same snapshot) and an empty `ping` |
+| `/api/limits` | `error`, `fetchedUtc`, `extraUsageEnabled`, `model`, `windows[]` (`key`, `used`, `percent`, `left`, `resetsAt`) |
+| `/api/runs?project=&limit=` | recent runs, newest first, `limit` 1..200 (default 200) |
+| `/api/stats` | `sinceUtc`, `total`, `byDay`, `byModel`, `skills`, `sessions`, `rules` |
+| `/api/stats.csv` | usage by day as a file |
+| `/api/audit?count=` | the journal tail, `count` 1..1000 (default 100) |
+| `/api/log?count=&level=` | the log tail, `count` 1..500 (default 200), `level` is the minimum (default `Information`) |
+
+A new endpoint is `api.MapGet` in `MonitorModule.MapEndpoints`, `Results.Json(..., Json)`, a
+section in `index.html`.
 
 "What's happening now" is `RunMonitor`: `ChatWorker` reports the queue, start, steps (the same
 callback as `RunStatusMessage`) and finish; `OperatorConsole` reports waiting for an approval
@@ -43,8 +55,8 @@ History is `GatewayState.RecentRuns` (200 entries, `SessionStore.RecordRunOutcom
 the outcome is decided by `ChatWorker`, usage comes from `AgentRunResult.Usage`).
 `/api/stats.csv` uses `;`, a BOM, and a decimal comma: otherwise Excel under the Russian locale
 reads fractions as text. Limits come from `IAgentLimits.GetAsync` (for Claude, cached for
-3 min; the page polls once a minute); the log is `RingBufferLog` (500 entries, Information+,
-registered as an `ILoggerProvider`).
+3 min; the page polls once a minute, the journal and the log every 30 s); the log is
+`RingBufferLog` (500 entries, Information+, registered as an `ILoggerProvider`).
 
 ## How to look at the page
 
@@ -69,9 +81,10 @@ it to `routes`), `python -m http.server <port> --bind 127.0.0.1` from the scratc
 - Checking states, dark theme, a narrow window, and computed styles — in one call to
   `browser_run_code_unsafe`; the same call checks the live `http://127.0.0.1:5100/`. `/api/*`
   itself without a browser — `pwsh -File scripts\monitor-api.ps1 "api/snapshot"` (`curl` and
-  `Invoke-WebRequest` are in `deny`, loopback is not an exception). Call it from the **PowerShell**
-  tool and without a leading `/`: from Bash, MSYS rewrites `/api/snapshot` into
-  `C:/Program Files/Git/api/snapshot`, and the script refuses an argument like that.
+  `Invoke-WebRequest` are in `deny`, loopback is not an exception); `-Port` for a scratch instance
+  (default 5100). Call it from the **PowerShell** tool and without a leading `/`: from Bash, MSYS
+  rewrites `/api/snapshot` into `C:/Program Files/Git/api/snapshot`, and the script refuses an
+  argument like that.
 - Port `5100` is the **working** gateway, on this machine the release: it serves the page from
   its own build, so your edit is not there. Look at your own change on a scratch instance
   (`docs/en/operations.md`) — and take the screenshot from its port too.
@@ -83,10 +96,11 @@ it to `routes`), `python -m http.server <port> --bind 127.0.0.1` from the scratc
 ## Style
 
 Fluent 2 "Mica" with Grafana/Elastic techniques: `--canvas` as the backdrop, content in `.card`
-cards, the `--brand` accent only on the chart, links, and tool labels; signals are
-`--run`/`--wait`/`--fail`; fonts are Segoe UI Variable and Cascadia. A rail on the left
-(status, subscription limits as bars, section navigation), panels on the right: «Статус» (Status),
-«Расход по дням» (usage per day), tables, «Журнал» (the audit trail), «Лог».
+cards, the `--brand` accent on the chart, links, tool labels, the current section and the limit
+bars; signals are `--run`/`--wait`/`--fail`; fonts are Segoe UI Variable and Cascadia. A rail on the
+left (status, subscription limits as bars, the «Шлюз» facts, section navigation), panels on the
+right: «Статус», «Расход по дням», «Запуски», «Модели» and «Скиллы» side by side, «Сессии»,
+«Журнал», «Лог».
 
 Worth knowing when editing the markup:
 
@@ -95,7 +109,7 @@ Worth knowing when editing the markup:
   (`percent`, `left`, computed by `LimitMath` on the gateway side) — do not put a rounding
   formula of your own in JS: JavaScript has no `decimal`, and the page's numbers would diverge
   from the chat's;
-- sparklines are drawn only where there's a daily series `stats.byDay` (14 days);
+- sparklines are drawn only where there's a daily series `stats.byDay` (14 days; the chart takes 30);
 - selects and links go in `.band-head` next to `<h2>`, not inside the heading;
 - the `.tape` feed: time · tool · argument. `splitStep` takes the tool name as the first word
   of the description, so `ClaudeStreamEvent.Describe` must start the string with the name.
@@ -111,8 +125,9 @@ return — `loadAll()`.
 Accessibility was checked against modern-web-guidance: headings and `aria-label` on
 navigation, labels on selects, `caption`/`scope` on tables, the chart is `role="img"` plus a
 table in `<details>`, sizes in `rem`, dark theme via `color-scheme`, `prefers-reduced-motion`
-mutes the lamp animation and smooth scrolling, in `forced-colors` borders are added to the
-bars, cards, the status pill, and the `.mark` dots.
+mutes the lamp animation and smooth scrolling, in `forced-colors` the bars get a border and a
+`Highlight` fill, and the lamp, approval cards, cards, the status pill and the `.mark` dots get
+borders.
 
 When adding a block, repeat three rules people forget: a scrollable area needs
 `tabindex="0"`, a decorative image like a sparkline needs `aria-hidden`, and `role="status"`
