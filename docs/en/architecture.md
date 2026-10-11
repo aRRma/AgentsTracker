@@ -22,7 +22,7 @@ src/AgentsTracker.Agents.Claude/         Claude Code behind those contracts
   Mcp/                  McpConfigFile (per-run config: token + run id), ClaudePermissionTool (CLI ↔ IOperatorConsole), ClaudeSendFileTool
 src/AgentsTracker.Channels.Abstractions/ channel contracts, no specific messenger
   IChatChannel          ConnectAsync/ListenAsync, Send/Edit/Delete/Acknowledge, SendDocumentAsync/SendPhotoAsync, DownloadAttachmentAsync;
-                        ChannelLimits — message, caption, document, photo and download sizes
+                        ChannelLimits — message, caption, button label and data, document, photo and download limits
   RateLimitRetry        one retry after a 429 with a short retry_after, shared by every send
   ChatId, UserId        Key is "channel:value" for state.json, the journal and the log
   Messages.cs           OutgoingMessage (ReplyTo), Keyboard, MessageRef, IncomingMessage, IncomingAttachment, ButtonPress, ChatCommand
@@ -40,9 +40,9 @@ src/AgentsTracker.Gateway/
                         Configuration (GatewayOptions, ProjectCatalog), State (SessionStore, CacheGuard), Git, Audit, Monitoring (RunMonitor, RingBufferLog),
                         Chat (ChatGatewayService, ChatDispatcher, DisplayFormat, MarkdownRenderer,
                         StartupNotice — «запущен»/«прерван» after a restart, Dispatch/ — handler contracts),
-                        Security (DPAPI secrets, protect-secrets, DataDirectoryAcl), Cli/ (install, uninstall, protect-secrets),
+                        Security (DPAPI secrets, ProtectSecretsCommand, DataDirectoryAcl), Cli/ (ConsoleCommands routes install, uninstall, protect-secrets),
                         Autostart/ (a Task Scheduler task via schtasks),
-                        Container.Detected (in a container: no autostart, the monitor listens on any address)
+                        Container.Detected (in a container `install` refuses, and startup warns if `MonitorBind` does not fit: there it must be `any`)
   Features/             vertical slices, each with its own *Module
     Approvals/          ApprovalBroker, ApprovalCardRenderer, OperatorConsole, /rules
     Chat/               ChatWorker (two lanes), RunStatusMessage, /new /stop, AttachmentInbox (pictures from the chat),
@@ -68,7 +68,7 @@ is a rejection too). Text is processed in order:
    go to a waiting free-form answer and nothing could interrupt a stuck run;
 2. the `IChatTextHandler` chain in module order: an answer to a card (`ApprovalTextHandler`) →
    skill arguments (`SkillArgumentsTextHandler`) → the text of a вопрос after a bare `/ask` or the
-   «Вопрос» button (`QuestionTextHandler`) → the agent's queue (`ChatEnqueueTextHandler`, always
+   «Задать вопрос» button (`QuestionTextHandler`) → the agent's queue (`ChatEnqueueTextHandler`, always
    `true`). That is why `ChatModule` is last. Unknown slash commands are Claude Code's own and go to
    the CLI.
 
@@ -170,9 +170,11 @@ issues the id of a new one (`--session-id`) and resets it only on `SessionLost` 
 (`cli-contract.md`).
 
 The chat-side selection (`SessionStore`) sits on top of the config: `EffectiveModel`,
-`EffectivePermissionMode`, `EffectiveEffort`, `ProjectPath`. A value equal to the config is stored as
-`null`: otherwise a config edit would be silently overridden by an old selection. The model is stored
-as the alias that goes to the agent (`opus`), but a person always sees it through
+`EffectivePermissionMode`, `EffectiveEffort`, `ProjectPath`. A project equal to the config is stored as
+`null` (`SetProjectPath`): otherwise a config edit would be silently overridden by an old selection.
+The model, effort and mode are stored as picked, and the «по умолчанию» / «из конфига» buttons (or
+`reset`) put `null` back. The model is stored as the alias that goes to the agent (`opus`), but a
+person always sees it through
 `SessionStore.ModelLabel` — with the version the alias last answered with (`ModelVersions` in
 `state.json`), else the agent's `Describe`.
 
@@ -193,7 +195,7 @@ main-thread turn (sub-agents have their own window), after a `/compact` — its 
 
 The cache lifetime comes from the run too, a cancelled one included (`AgentRunResult.LastRequestUtc`
 and `CacheTtl`, `cli-contract.md`, "Context"). `SessionStore.RecordCache` turns them into
-`SessionRecord.CacheUntilUtc` (keeping the last known value when a run only read the cache). The
+`SessionRecord.CacheUntilUtc` (a run that wrote nothing to the cache reports no lifetime, so the last known one is used). The
 footer prints it as «🧊 кэш до 15:42» — a time, not a countdown, because the message never changes.
 `ContextScreen.Cache` is the only place that turns it into text for «Статус» and «Контекст»;
 `/api/stats` sends it raw in `sessions[].cacheUntilUtc`.
@@ -256,7 +258,8 @@ The config comes in layers: `appsettings.json` → `appsettings.Local.json` next
 same file in the data directory (production) → environment variables. `dpapi:…` is decrypted on load
 (`ProtectedJsonConfigurationProvider`); `protect-secrets` encrypts `Gateway:Proxy` and the
 `IChatChannelModule.SecretKeys` keys in `Gateway:Channel:Settings` (for Telegram — `BotToken`,
-`Proxy`). `publish\` contains no secrets. `Gateway__*` variables are invisible to the child `claude`
+`Proxy`). `dotnet publish` copies a plain-text `appsettings.Local.json` from the project folder next to the exe;
+`install` moves it to the data directory and encrypts it. `Gateway__*` variables are invisible to the child `claude`
 — the host strips them from the environment in `ValidateStartup`. The user-facing side — `deployment.md`.
 
 Moved channel keys live in one list, `ChannelOptions.MovedKeys`: the startup check and
@@ -293,8 +296,9 @@ than the limit goes as a file. Lists use `•`/`◦`, a table is an aligned `<pr
 parsed (`snake_case`). Cards and `/audit` rows escape within a budget through `ChatHtml.EscapeCapped`
 (text that fits whole does not spend a character on the ellipsis).
 
-Any 400 from the channel (an unsupported tag, "too long" after escaping — not only "can't parse")
-repeats the send without markup (`ChatHtml.StripTags`), or part of the answer would vanish silently.
+Any 400 from the channel except «chat not found» (an unsupported tag, "too long" after escaping — not
+only "can't parse") repeats the send without markup (`ChatHtml.StripTags`), or part of the answer
+would vanish silently.
 A 429 in the middle of a multi-part answer is waited out (`RetryAfter`, ≤30 s) and the same part is
 repeated — `ChatWorker.SendPartAsync` and, for the agent's file, `ApprovalBroker`, both through
 `RateLimitRetry.OnceAsync`. Sums, tokens and time — `DisplayFormat`.
@@ -317,7 +321,7 @@ A context breakdown has no model in its footer: the model was not called.
 
 Anything fractional is `decimal`, never `double`/`float` (`LimitWindow.Used`, `LimitGauge.Used`, the
 gauge frames, the divisors in `DisplayFormat`): `double` rounds where nobody expects it
-(`0.67 * 100` is `67.00000000000001`), and the limit share is compared against the edge of a window
+(`0.57 * 100` is `56.99999999999999`), and the limit share is compared against the edge of a window
 that stops a run. `double` stays only where the BCL itself counts that way (`TimeSpan.TotalSeconds`
 and its kin) and the result is immediately truncated to whole units for a caption; anything counted,
 rather than displayed, comes from `Ticks` (`RunStatusMessage`) or from `long`. The gateway holds no
@@ -327,8 +331,8 @@ Rounding a share into percent happens in **exactly one** place — `LimitMath.Pe
 (`Agents.Abstractions`): consumption up to a whole number, clamped to 0..100, the remainder as
 `100 - Percent`. Everything that shows percentages calls it: the `/status` gauges, the menu summary,
 `/api/limits` (the monitor page gets `percent` and `left` ready-made — JS has no `decimal`). A second
-formula is a bug even when it agrees on your numbers: independent rounding diverged on 14 values out
-of 1001, and one message showed «67% · осталось 32%».
+formula is a bug even when it agrees on your numbers: independent rounding of consumption and
+remainder once put «67% · осталось 32%» in one message.
 
 ## Details worth knowing before touching the host
 

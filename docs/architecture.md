@@ -23,7 +23,7 @@ src/AgentsTracker.Agents.Claude/         Claude Code за этими контр�
   Mcp/                  McpConfigFile (конфиг на запуск: токен и id запуска), ClaudePermissionTool (CLI ↔ IOperatorConsole), ClaudeSendFileTool
 src/AgentsTracker.Channels.Abstractions/ контракты канала, без конкретного мессенджера
   IChatChannel          ConnectAsync/ListenAsync, Send/Edit/Delete/Acknowledge, SendDocumentAsync/SendPhotoAsync, DownloadAttachmentAsync;
-                        ChannelLimits — размеры сообщения, подписи, документа, фото и скачивания
+                        ChannelLimits — пределы сообщения, подписи к файлу, надписи и данных кнопки, документа, фото и скачивания
   RateLimitRetry        одна повторная попытка после 429 с коротким retry_after, общая для всех отправок
   ChatId, UserId        Key — «канал:значение» для state.json, журнала и лога
   Messages.cs           OutgoingMessage (ReplyTo), Keyboard, MessageRef, IncomingMessage, IncomingAttachment, ButtonPress, ChatCommand
@@ -41,9 +41,9 @@ src/AgentsTracker.Gateway/
                         Configuration (GatewayOptions, ProjectCatalog), State (SessionStore, CacheGuard), Git, Audit, Monitoring (RunMonitor, RingBufferLog),
                         Chat (ChatGatewayService, ChatDispatcher, DisplayFormat, MarkdownRenderer,
                         StartupNotice — «запущен»/«прерван» после перезапуска, Dispatch/ — контракты обработчиков),
-                        Security (секреты DPAPI, protect-secrets, DataDirectoryAcl), Cli/ (install, uninstall, protect-secrets),
+                        Security (секреты DPAPI, ProtectSecretsCommand, DataDirectoryAcl), Cli/ (ConsoleCommands направляет install, uninstall, protect-secrets),
                         Autostart/ (задача Планировщика через schtasks),
-                        Container.Detected (в контейнере: автозапуск не ставится, монитор слушает любой адрес)
+                        Container.Detected (в контейнере `install` отказывает, а старт предупреждает, если `MonitorBind` не подходит: там нужен `any`)
   Features/             вертикальные срезы, у каждого свой *Module
     Approvals/          ApprovalBroker, ApprovalCardRenderer, OperatorConsole, /rules
     Chat/               ChatWorker (две полосы), RunStatusMessage, /new /stop, AttachmentInbox (картинки из чата),
@@ -69,7 +69,7 @@ src/AgentsTracker.Gateway/
    ожидающий свободный ответ, и прервать зависший запуск было бы нечем;
 2. цепочка `IChatTextHandler` в порядке модулей: ответ на карточку (`ApprovalTextHandler`) →
    аргументы скилла (`SkillArgumentsTextHandler`) → текст вопроса после голого `/ask` или кнопки
-   «Вопрос» (`QuestionTextHandler`) → очередь агента (`ChatEnqueueTextHandler`, всегда `true`).
+   «Задать вопрос» (`QuestionTextHandler`) → очередь агента (`ChatEnqueueTextHandler`, всегда `true`).
    Поэтому `ChatModule` последний. Незнакомые слэш-команды — команды самого Claude Code, они уходят
    в CLI.
 
@@ -90,7 +90,7 @@ src/AgentsTracker.Gateway/
 Перед запуском задачи `ChatWorker` спрашивает `ProjectTrustGate`: если `IAgentBackend.InspectProject`
 находит в проекте настройки агента и их отпечатку ещё не доверились, карточка «Доверять проекту?»
 уходит через `ApprovalBroker` под своим коротким `RunScope` (поэтому `/stop` её снимает).
-«❌ Отклонить», молчание и `/stop` — это запуска нет, а первые два ещё и снимают очередь задач. После
+«❌ Отклонить», молчание и `/stop` значат одно: запуска не будет. Первые два ещё и снимают очередь задач. После
 карточки проект читается заново: если `/project` сменился, проверяется и новый. Почему —
 [cli-contract.md](cli-contract.md), «Настройки проекта и диалог доверия».
 
@@ -171,9 +171,10 @@ src/AgentsTracker.Gateway/
 (`--session-id`) и сбрасывает только по `SessionLost` от CLI ([cli-contract.md](cli-contract.md)).
 
 Выбор из чата (`SessionStore`) лежит поверх конфига: `EffectiveModel`, `EffectivePermissionMode`,
-`EffectiveEffort`, `ProjectPath`. Значение, равное конфигу, хранится как `null`: иначе правка конфига
-молча перебивалась бы старым выбором. Модель хранится алиасом, который уходит агенту (`opus`), но
-человек видит её только через `SessionStore.ModelLabel` — с версией, которой алиас ответил в последний
+`EffectiveEffort`, `ProjectPath`. Проект, равный конфигу, хранится как `null` (`SetProjectPath`): иначе
+правка конфига молча перебивалась бы старым выбором. Модель, effort и режим хранятся как выбраны, а
+кнопки «по умолчанию» / «из конфига» (или `reset`) возвращают `null`. Модель хранится алиасом, который
+уходит агенту (`opus`), но человек видит её только через `SessionStore.ModelLabel` — с версией, которой алиас ответил в последний
 раз (`ModelVersions` в `state.json`), иначе по `Describe` агента.
 
 ### Контекст и виды запуска
@@ -193,7 +194,7 @@ src/AgentsTracker.Gateway/
 
 Срок кэша тоже берётся из запуска, в том числе прерванного (`AgentRunResult.LastRequestUtc` и
 `CacheTtl`, [cli-contract.md](cli-contract.md), «Контекст»). `SessionStore.RecordCache` превращает их в
-`SessionRecord.CacheUntilUtc` (если запуск только читал кэш, остаётся прошлое известное значение).
+`SessionRecord.CacheUntilUtc` (запуск, ничего не записавший в кэш, срока не сообщает, и берётся последний известный).
 Подпись печатает его как «🧊 кэш до 15:42» — время, а не обратный отсчёт: сообщение больше не меняется.
 `ContextScreen.Cache` — единственное место, где срок становится текстом для «Статуса» и «Контекста»;
 `/api/stats` отдаёт его как есть в `sessions[].cacheUntilUtc`.
@@ -256,7 +257,8 @@ src/AgentsTracker.Gateway/
 папке данных (production) → переменные окружения. `dpapi:…` расшифровывается при загрузке
 (`ProtectedJsonConfigurationProvider`); `protect-secrets` шифрует `Gateway:Proxy` и ключи
 `IChatChannelModule.SecretKeys` в `Gateway:Channel:Settings` (у Telegram — `BotToken`, `Proxy`). В
-`publish\` секретов нет. Переменные `Gateway__*` невидимы дочернему `claude` — хост вычищает их из
+`dotnet publish` копирует рядом с exe открытый `appsettings.Local.json` из папки проекта, а `install`
+переносит его в папку данных и шифрует. Переменные `Gateway__*` невидимы дочернему `claude` — хост вычищает их из
 окружения в `ValidateStartup`. Пользовательская сторона — в [deployment.md](deployment.md).
 
 Переехавшие ключи канала перечислены в одном списке, `ChannelOptions.MovedKeys`: его читают и стартовая
@@ -293,8 +295,9 @@ Telegram 3800). Обычный текст режется как **исходны
 рамках бюджета через `ChatHtml.EscapeCapped` (текст, влезающий целиком, не тратит символ на
 многоточие).
 
-Любой 400 от канала (неподдерживаемый тег, «too long» после экранирования — не только «can't parse»)
-повторяет отправку без разметки (`ChatHtml.StripTags`), иначе часть ответа молча пропала бы. На 429
+Любой 400 от канала, кроме «chat not found» (неподдерживаемый тег, «too long» после экранирования —
+не только «can't parse»), повторяет отправку без разметки (`ChatHtml.StripTags`), иначе часть ответа
+молча пропала бы. На 429
 посреди многочастного ответа выжидают `RetryAfter` (≤30 с) и повторяют ту же часть —
 `ChatWorker.SendPartAsync` и, для файла от агента, `ApprovalBroker`, оба через
 `RateLimitRetry.OnceAsync`. Суммы, токены и время — `DisplayFormat`.
@@ -317,8 +320,8 @@ Telegram 3800). Обычный текст режется как **исходны
 ### Числа
 
 Всё дробное — `decimal`, а не `double`/`float` (`LimitWindow.Used`, `LimitGauge.Used`, кадры шкал,
-делители в `DisplayFormat`): `double` округляет там, где этого никто не ждёт (`0.67 * 100` — это
-`67.00000000000001`), а доля лимита сравнивается с границей окна, которое останавливает запуск.
+делители в `DisplayFormat`): `double` округляет там, где этого никто не ждёт (`0.57 * 100` — это
+`56.99999999999999`), а доля лимита сравнивается с границей окна, которое останавливает запуск.
 `double` остаётся только там, где так считает сам BCL (`TimeSpan.TotalSeconds` и родня) и результат
 тут же обрезается до целых единиц для подписи; то, что считается, а не показывается, берётся из
 `Ticks` (`RunStatusMessage`) или из `long`. Денег в шлюзе нет: `total_cost_usd` не читается
@@ -328,8 +331,8 @@ Telegram 3800). Обычный текст режется как **исходны
 (`Agents.Abstractions`): расход вверх до целого с обрезкой в 0..100, остаток — `100 - Percent`. Зовут
 его все, кто показывает проценты: шкалы `/status`, сводка меню, `/api/limits` (страница монитора
 получает `percent` и `left` готовыми — в JS нет `decimal`). Вторая формула — ошибка, даже если на ваших
-числах она совпадает: независимые округления разошлись на 14 значениях из 1001, и в одном сообщении
-вышло «67% · осталось 32%».
+числах она совпадает: независимые округления расхода и остатка однажды дали в одном сообщении
+«67% · осталось 32%».
 
 ## Мелочи, о которых стоит знать до правки хоста
 
