@@ -2,8 +2,8 @@ namespace AgentsTracker.Gateway.Infrastructure;
 
 /// <summary>
 /// Папка данных шлюза: <c>%LOCALAPPDATA%\AgentsTracker</c> на Windows, <c>~/.local/share</c>
-/// на Linux и macOS. Здесь лежат state.json, mcp-gateway-&lt;pid&gt;.json, локальный конфиг
-/// с секретами и журнал аудита.
+/// на Linux и macOS. Здесь лежат state.json, mcp-gateway-&lt;pid&gt;-&lt;запуск&gt;.json,
+/// локальный конфиг с секретами и журнал.
 /// </summary>
 public static class AppPaths
 {
