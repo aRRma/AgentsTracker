@@ -3,7 +3,7 @@ using AgentsTracker.Gateway.Infrastructure.Chat.Dispatch;
 namespace AgentsTracker.Gateway.Features.Question;
 
 /// <summary>
-/// Текст после «/ask» без аргумента или кнопки «Вопрос» — это вопрос, а не задача в сессию.
+/// Текст после «/ask» без аргумента или кнопок «Задать вопрос» и «Вопрос вне сессии» — это вопрос, а не задача в сессию.
 /// Регистрируется раньше постановки в очередь, иначе текст ушёл бы в сессию проекта.
 /// </summary>
 public sealed class QuestionTextHandler(IChatChannel channel, QuestionLauncher launcher) : IChatTextHandler

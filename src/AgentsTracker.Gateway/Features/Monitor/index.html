@@ -526,7 +526,7 @@
     $('limits-body').innerHTML = live.map(w => {
       // Шкала показывает расход, а не остаток: полная полоса — окно исчерпано. Проценты считает
       // шлюз (LimitMath) и присылает готовыми: своя формула здесь расходилась с чатом на
-      // погрешности double (0.67*100 === 67.00000000000001), а decimal в JS нет.
+      // погрешности double (0.57*100 === 56.99999999999999), а decimal в JS нет.
       const used = w.percent, left = w.left;
       const cls = left < 15 ? 'bad' : left < 40 ? 'warn' : '';
       return `<div class="gauge"><span class="name">${esc(windowName(w.key))}</span><span class="val ${cls}">${used}%</span>
