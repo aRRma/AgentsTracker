@@ -24,7 +24,7 @@ public sealed class TelegramOptions
             errors.Add($"{section}:BotToken не задан. Создайте бота у @BotFather и впишите токен в appsettings.Local.json.");
 
         if (AllowedUserIds.Length == 0)
-            errors.Add($"{section}:AllowedUserIds пуст. Запустите шлюз, напишите боту — id появится в логе — и впишите его сюда.");
+            errors.Add($"{section}:AllowedUserIds пуст. Впишите [ 0 ], запустите шлюз, напишите боту — id появится в логе — и замените 0 на него.");
 
         // Значение в текст ошибки не подставляем: в URI прокси бывает user:pass, а ошибка идёт в лог.
         if (Proxy is { Length: > 0 } && !Uri.TryCreate(Proxy, UriKind.Absolute, out _))

@@ -26,7 +26,7 @@ AgentsTracker — мостик между Telegram и Claude Code.
      и заполните три значения:
        Gateway:Channel:Settings:BotToken — токен от @BotFather
        Gateway:ProjectPath              — папка проекта, в которой будет работать агент
-       Gateway:Channel:Settings:AllowedUserIds — ваш числовой id, его узнаем на шаге 3
+       Gateway:Channel:Settings:AllowedUserIds — пока оставьте [ 0 ], свой id впишете на шаге 3
 
   3. Узнайте свой id. Запустите exe в консоли и напишите боту что угодно:
        PowerShell: .\AgentsTracker.Gateway.exe
