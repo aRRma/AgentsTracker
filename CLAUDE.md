@@ -296,28 +296,21 @@ Rules from the user; every session reads this file.
   thing CLAUDE.md links to), `docs/*.md` is the Russian mirror the wiki is built from. A change goes
   into both files in the same commit; a new document needs a `$pages` line in `scripts\sync-wiki.ps1`.
   CLAUDE.md is English only, the README is Russian only.
-- **After a commit — restart the gateway**, if the working instance runs from `bin\Debug`: otherwise
-  the chat keeps the old code. While it is the release, a commit changes nothing in the chat — say so
-  and check the change on a scratch instance instead of asking for a restart. The commands and the path
-  through a clean worktree — `docs/en/operations.md`, "Restarting the gateway". From a session over
-  Telegram you must not restart it yourself: give the user the commands and ask them to run them by
-  hand; a scratch instance on its own ports is fine, it does not touch the working one. From VS Code you
-  may, but **before** Stop-Process check `git status`: someone else's uncommitted changes have broken
-  the build right after the process was stopped.
+- **After a commit — restart the gateway**, if the working instance runs from `bin\Debug`. While it is
+  the release, a commit changes nothing in the chat — say so and check on a scratch instance instead.
+  From a session over Telegram never restart it yourself: give the user the commands
+  (`docs/en/operations.md`, "Restarting the gateway") and ask them to run them; a scratch instance on
+  its own ports is fine. From VS Code you may, but **before** Stop-Process check `git status`: someone
+  else's uncommitted changes have broken the build right after the process was stopped.
 - **Terminology comes from the glossary.** Every text a person sees — a button, a screen title, a
-  chat message, a monitor caption, a line of documentation, a release note — takes its words from
-  `docs/en/glossary.md`: one Russian word per concept, and the table's right column lists the
-  synonyms that are not used. A new concept goes into the glossary (both languages) before the code
-  that uses it. The traps that cost the most: a working folder is «проект» and never «репозиторий»;
-  the user writes a «задача», the agent performs a «запуск» (never «прогон»); the card is a
-  «карточка подтверждения», while «режим» means only `--permission-mode`; a one-off `/ask` is a
-«вопрос», never a «режим»; «сессия» is the conversation, «контекст» is how much of the window it takes, and
-  «ветка» is only the git branch; «лимит» is the
-  subscription and «предел» is anything technical; «журнал» is `/audit` and «лог» is `ILogger`; a
-  live check of a scratch instance is a «смоук-тест» and the instance itself is a «пробный
-  экземпляр» — the words `operations.md` uses, and a third name for either only hides them from
-  search. A rename that touches the UI also ages the screenshots in
-  `docs/images/*.png` used by the README: they cannot be retaken from a session (the monitor on
-  `5100` is the release with the old code, the bot shots need a live chat), so name the stale ones
-  to the user instead of leaving them. Already published `docs/release-notes/*` are history and are
-  never re-worded — exclude them from a glossary sweep.
+  chat message, a monitor caption, documentation, a release note — takes its words from
+  `docs/en/glossary.md` (one Russian word per concept; the right column lists the synonyms not used).
+  A new concept goes into the glossary (both languages) before the code that uses it. The traps that
+  cost the most: «проект», never «репозиторий»; the user writes a «задача», the agent performs a
+  «запуск» (never «прогон»); «карточка подтверждения», while «режим» is only `--permission-mode`;
+  `/ask` is a «вопрос»; «сессия» is the conversation, «контекст» how much of the window it takes,
+  «ветка» only the git branch; «лимит» is the subscription, «предел» anything technical; «журнал» is
+  `/audit`, «лог» is `ILogger`; «смоук-тест» and «пробный экземпляр» — a third name hides them from
+  search. A UI rename ages the screenshots in `docs/images/*.png`: they cannot be retaken from a
+  session, so name the stale ones to the user. Published `docs/release-notes/*` are history — never
+  re-worded.
