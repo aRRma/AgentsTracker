@@ -12,8 +12,8 @@ against CLI 2.1.x.
 | File | Who sees it | What it's for |
 |---|---|---|
 | `~/.claude/settings.json` | all of this user's projects | personal denials and permissions, proxy, default mode |
-| `.claude/settings.json` in the repository | everyone who cloned it | rules dictated by the project itself; committed |
-| `.claude/settings.local.json` in the repository | only you | personal settings for this project; in `.gitignore` |
+| `.claude/settings.json` in the project | everyone who cloned it | rules dictated by the project itself; committed |
+| `.claude/settings.local.json` in the project | only you | personal settings for this project; in `.gitignore` |
 
 The `allow`/`ask`/`deny` lists from all files are **merged**, not overridden. The check order
 is fixed: `deny` → `ask` → `allow`, the first matching rule decides. So the project file can
@@ -35,7 +35,8 @@ loosen it.
 - `env` from `~/.claude/settings.json` is also inherited by the `claude` process the gateway
   launches. If the Claude API is only reachable through a proxy — set `HTTPS_PROXY` here, and
   `NO_PROXY` must include `127.0.0.1`: the CLI reaches the gateway for approvals at that
-  address, and it won't get through a proxy.
+  address, and it won't get through a proxy. The example's `env` has `NO_PROXY`/`no_proxy`,
+  `MCP_TIMEOUT` and two `DOTNET_*` switches, no proxy.
 
 ## What to Deny, What to Ask, What to Allow
 
@@ -44,41 +45,51 @@ Below is the principle and representative examples, not a full list: that's in
 
 **Deny outright (`deny`):**
 
-- secrets: `.env*`, `secrets.json`, `*.pfx`, `*.pem`, `*.key`, `~/.ssh`, `~/.aws`,
-  `~/.git-credentials`. Denying `Read` shuts off the contents even if the file is inside the
-  project. For the `.env` family and `~/.ssh`, the example also denies `Edit`: these files
-  aren't in git, and an `.env` overwritten by the agent has nowhere to be restored from;
-- network access from the shell: `curl`, `wget`, `Invoke-WebRequest`, `Invoke-RestMethod`. This
-  is an exfiltration channel: whatever the agent read, it could send out. It can still reach
-  the internet through its own tools (`WebFetch`), which are visible in the card;
-- irreversible git actions: `push --force`, `reset --hard`, `rebase`, deleting `.git` — as
-  `git*push*--force*`, `git*reset*--h*`, `git*rebase*` patterns: they catch any argument
-  order, `git -C`, `--no-pager` and `git.exe`. `--h*`, not `--hard*`: git accepts the `--ha`
-  abbreviation;
+- secrets: the `.env` family (`.env`, `.env.local*`, `.env.prod*`, `.env.production*`),
+  `appsettings.Production.json`, `secrets.json`, `*.pfx`, `*.pem`, `*.key`, `*.publishsettings`,
+  `~/.ssh`, `~/.aws`, `~/.git-credentials`. Denying `Read` shuts off the contents even if the
+  file is inside the project. For the `.env` family and `~/.ssh`, the example also denies `Edit`:
+  these files aren't in git, and an `.env` overwritten by the agent has nowhere to be restored from;
+- network access from the shell: `curl`, `wget`, `Invoke-WebRequest`, `Invoke-RestMethod`,
+  `Start-BitsTransfer`. This is an exfiltration channel: whatever the agent read, it could send
+  out. It can still reach the internet through its own tools (`WebFetch`), which are visible in
+  the card;
+- irreversible git actions: `push --force`/`-f`/`+refspec`, `reset --hard`, `rebase` — as
+  `git*push*--force*`, `git*push* -f*`, `git*push* +*`, `git*reset*--h*`, `git*rebase*` patterns:
+  they catch any argument order, `git -C`, `--no-pager` and `git.exe`. `--h*`, not `--hard*`: git
+  accepts the `--ha` abbreviation. Deleting `.git` (`rm -rf .git*`, `Remove-Item*.git*`) is denied too;
 - deleting a repository through the GitHub plugin (`delete_repository`);
-- anything that runs someone else's code or changes the system: `docker run`/`exec`, `sudo`,
-  `dotnet nuget add source`, `dotnet nuget push`.
+- anything that runs someone else's code or changes the system: `docker run`/`exec`/`rm`/`rmi`,
+  `docker volume rm`, `docker system prune`, `sudo`, `dotnet nuget add source`/`push`/`config`,
+  `dotnet tool uninstall`;
+- destroying data: `mongosh` with `drop`/`deleteMany`/`deleteOne`/`remove`, `rm -rf bin`/`obj`.
 
 **Ask (`ask`):**
 
 - git after which work is lost or leaves the machine: `git push` (a `v*` tag is a release),
-  `git checkout`/`restore` (they wipe changes), `git switch -f`/`--discard-changes`,
-  `git branch -D`, `git stash drop`/`clear`, `git clean`, `git worktree remove --force`;
+  `git checkout`/`restore` (they wipe changes), `git switch -f`/`--force`/`--discard-changes`,
+  `git branch -D` and its other forms, `git stash drop`/`clear`, `git clean`,
+  `git worktree remove --force`;
 - writes to GitHub through the plugin: `push_files`, `create_or_update_file`,
   `merge_pull_request` and the rest — they write in your name past every git rule;
 - editing `~/.claude/settings.json` and hooks: the agent shouldn't be able to expand its own
   permissions;
-- deleting files from PowerShell (`Remove-Item`), stopping processes and scheduled tasks.
+- reading `~/AppData/Roaming/Microsoft/UserSecrets` (.NET user secrets);
+- deleting files from PowerShell (`Remove-Item`), stopping processes, stopping and unregistering
+  scheduled tasks.
 
 **No questions asked (`allow`):**
 
 - reading everything (`Read(**/*)`) — minus what's in `deny`;
-- build and tests: `dotnet build/test/format/restore`;
+- build and tests: `dotnet build/test/format/restore/run`, `dotnet tool`, `dotnet dev-certs`;
 - git that `git reflog` can undo: reading, `add`, `commit`, `reset`, `merge`, `cherry-pick`,
   `fetch`, `tag`, `switch`, `stash`, `worktree` — and all of it through `git -C`. The dangerous
   variants of the same commands sit in `ask`/`deny` and win;
-- reading through the GitHub plugin: `get_*`, `list_*`, `search_*`;
-- diagnostics: `tasklist`, `netstat`, `Get-Process`, `docker ps`/`logs`, `tail`, `head`.
+- reading through the GitHub plugin: `get_*`, `list_*`, `search_*`, `issue_read`,
+  `pull_request_read` (named one by one, not by a wildcard);
+- diagnostics: `tasklist`, `netstat`, `Get-Process`, `Get-NetTCPConnection`, `Get-ScheduledTask`,
+  `docker ps`/`info`/`version`/`logs`, `tail`, `head`;
+- the Playwright browser tools and `npx playwright`, `npm run test`.
 
 A mistake in `allow` is cheaper than one in `deny`: an extra question is annoying, an extra
 permission lets an action through silently.
@@ -99,7 +110,8 @@ belongs in that user's profile: `%USERPROFILE%\.claude\settings.json`.
 
    The file already exists (plugins, `env`, hooks) — do not overwrite it; move over only the three
    arrays `permissions.allow`, `ask`, `deny` from the example. Duplicate lines do no harm: the
-   lists are merged.
+   lists are merged. The example also sets `defaultMode: "auto"` (for your own interactive
+   sessions, not the gateway) and `disableBypassPermissionsMode`: take them if you want them.
 3. Proxy — per your network: `HTTPS_PROXY` in `env`, `NO_PROXY` must include `127.0.0.1`
    (section above). The example has no proxy.
 4. Do not put tokens in `env`: the agent reads this file without asking.
@@ -135,8 +147,8 @@ The `PowerShell(...)` and `git.exe` rules are not needed on Linux, but do no har
   for both; the example does this. The CLI resolves PowerShell aliases (`rm`, `curl`, `iwr`) to
   their full names, so `PowerShell(Invoke-WebRequest *)` also catches `curl`, but not
   `curl.exe` — that needs its own rule.
-- `git push --force*` doesn't catch `git push -f` — two separate rules. On the other hand `*`
-  works anywhere in the string: `Bash(mongosh*drop*)`.
+- `git push --force*` doesn't catch `git push -f` or `git push origin +master` — separate rules.
+  On the other hand `*` works anywhere in the string: `Bash(mongosh*drop*)`.
 - A rule matches from the start of the string: `git -C <folder> push --force` and
   `git push origin master --force` do not match `git push --force*`. So the git denies are written
   as `git*push*--force*`: a false hit (the same words in a commit message) costs one rewording.
@@ -149,7 +161,7 @@ The `PowerShell(...)` and `git.exe` rules are not needed on Linux, but do no har
 - A git `allow` names a subcommand, not a global option: `git --no-pager*` would silently admit
   `git --no-pager push` and `git --no-pager checkout -- file` — an `ask` on `git push*` matching
   from the start does not recognise them. For the same reason branch deletion in `ask` is written
-  as `git*branch*-D*`, `-df`, `-fd`, `-d -f`, `--force`: it has many forms.
+  as `git*branch*-D*`, `-df`, `-fd`, `-d -f`, `-f -d`, `--force`: it has many forms.
 - An `allow` on a broad prefix lets the destructive variant through too: `git switch*` admits
   `git switch -f`, `git branch*` admits `git branch -D`. `ask` and `deny` beat `allow`, so the
   dangerous variants are listed there separately.
@@ -162,21 +174,23 @@ The `PowerShell(...)` and `git.exe` rules are not needed on Linux, but do no har
 - Paths: `//**/.env` — anywhere on the filesystem, `~/…` — from the home folder, `**/.env` —
   only inside the current project. A single leading `/…` is **not** the disk root, but the
   root of the settings source; don't use it.
-- `mcp__server__*` in `allow` requires the server name; a bare `mcp__*` there silently does
-  nothing, but in `deny` it does work.
+- `mcp__server__*` in `allow` requires the server name (`mcp__plugin_playwright_playwright__*`);
+  a bare `mcp__*` there silently does nothing, but in `deny` it does work.
 
-## This Repository's Rules
+## This Project's Rules
 
 The `.claude/settings.json` file at the root closes off what the personal config doesn't need
 to know about:
 
-- `mcp-gateway-<pid>-<run>.json` — the token the `claude` process uses to reach the gateway: don't
-  read it;
+- `mcp-gateway-<pid>-<run>.json` — the token the `claude` process uses to reach the gateway: `deny`
+  on reading. `.env` is denied for reading and editing here too, so the protection holds without
+  the personal file;
 - `appsettings.Local.json` — the bot token: reading and editing both require a question. If
   `protect-secrets` has already run, it holds `dpapi:…`, but the rule is cheaper than checking;
 - `dotnet run`, `AgentsTracker.Gateway.exe`, `schtasks`, `docker compose`, `Stop-Process`,
   `Stop-ScheduledTask` — with a question: from a session started through Telegram, these would
-  stop or duplicate the gateway itself (`operations.md`);
+  stop or duplicate the gateway itself (`operations.md`). This `ask` beats the personal `allow`
+  on `dotnet run`;
 - `scripts\monitor-api.ps1` — no question. The `curl`/`Invoke-RestMethod` deny doesn't
   distinguish the internet from `127.0.0.1`, and the agent kept running into it session after
   session trying to read the monitor's `/api/snapshot`. The script only reaches loopback and
@@ -188,14 +202,15 @@ Project-personal settings go in `.claude/settings.local.json`, which is in `.git
 ## Hooks
 
 `hooks` in `~/.claude/settings.json` is the same restriction mechanism, but programmatic. The
-author has a `PreToolUse` hook on `Agent` that swaps subagent models to `sonnet` (the
-"Subagents only sonnet" rule from `../../CLAUDE.md`). Hooks are scripts kept outside the
-repository and are not included in the example; editing the hooks folder is set to `ask` so
+author has a `PreToolUse` hook on `Agent` that swaps subagent models to `sonnet` (the "Subagents
+only with `model: "sonnet"`" rule from `../../CLAUDE.md`). Hooks are scripts kept outside the
+project and are not included in the example; editing the hooks folder is set to `ask` so
 the agent can't rewrite its own restrictions.
 
 The hook and `CLAUDE_CODE_SUBAGENT_MODEL` in `env` set the `sonnet` alias, and what it resolves to
 is up to the CLI. CLI 2.1.283 maps it to `claude-sonnet-5`: it does not know the later
-`claude-sonnet-5-5`. So `env` holds `"ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-5-5[1m]"` —
-subagents, the `sonnet` button in the chat and `/ask` all go there. The `[1m]` is required: the CLI
-gives a model it does not know a 200 000 window, not 1 000 000. The variable pins the version —
-once the CLI knows `sonnet-5-5` itself or a newer one ships, remove it, or `sonnet` stays on 5-5.
+`claude-sonnet-5-5`. So the author's own `env` (not in the example) holds
+`"ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-5-5[1m]"` — subagents, the `sonnet` button in the
+chat and `/ask` (its default model is `sonnet`) all go there. The `[1m]` is required: the CLI gives
+a model it does not know a 200 000 window, not 1 000 000. The variable pins the version — once the
+CLI knows `sonnet-5-5` itself or a newer one ships, remove it, or `sonnet` stays on 5-5.

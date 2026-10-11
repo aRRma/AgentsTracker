@@ -21,8 +21,8 @@ raw payload is logged only at Debug: at Information, for Edit/Write that would b
 `IOperatorConsole.AskAsync`.
 
 CLI 2.1.261 `--help` drifted, the flags did not: it shows `default` as `manual` (the CLI still
-accepts `default` — `manual` is an alias) and no longer lists `--permission-prompt-tool` on its
-own (only inside `--permission-prompts`), yet the flag works. Re-check both after a CLI update.
+accepts `default`) and no longer lists `--permission-prompt-tool` on its own (only inside
+`--permission-prompts`), yet the flag works. Re-check both after a CLI update.
 
 ### The «Всегда» ("Always") button
 
@@ -47,12 +47,13 @@ Two cases:
 Approving a command that isn't fully visible is not allowed. When `ApprovalCard` truncates
 something (the command, the sides of an edit, the remaining `MultiEdit` edits, the tail of a
 `Write`), `OperatorConsole` sends the full text as a file before the card
-(`ApprovalBroker.SendAttachmentAsync`), and the card warns «показано не всё» ("not everything
-is shown"). The file name and content are decided by `ApprovalCardRenderer`
-(`ApprovalAttachment`): usually `<tool>-input.txt` with every truncated field under its own «=== <field> ===» header
-(«=== Команда ===», «=== Было ===» / «=== Станет ===», «=== Вход целиком ===»), an `ExitPlanMode` plan — in full, as `plan.md` (`Truncated.AddDocument`). Cards
-are assembled via `EscapeCapped` with a limit per fragment: an overflowing message would fail
-on send, and the exception would become a denial.
+(`ApprovalBroker.SendAttachmentAsync`), and the card warns «Показано не всё» ("not everything
+is shown"). `ApprovalCardRenderer` decides the name and content (`ApprovalAttachment`): usually
+`<tool>-input.txt` with every truncated field under its own «=== <field> ===» header («Команда»,
+«Было» / «Станет», «Содержимое файла», «Задание сабагенту», «Вход целиком»); an `ExitPlanMode`
+plan goes in full as `plan.md` (`Truncated.AddDocument`). Cards are assembled via `EscapeCapped`
+with a limit per fragment: an overflowing message would fail on send, and the exception would
+become a denial.
 
 ### Self-granting permissions
 
@@ -75,24 +76,33 @@ overrides the repository's `defaultMode`.
 
 The host asks instead, before the run: `IAgentBackend.InspectProject` (for Claude —
 `ClaudeProjectSettings`) lists hooks, `allow` rules, MCP servers, command keys (`apiKeyHelper`,
-`statusLine`…), `env` names, plugins and the files of `.claude/{skills,commands,agents,hooks}`,
-and gives a SHA-256 fingerprint of all of them; `ProjectTrustGate` shows the «Доверять проекту?»
-card and keeps the fingerprint in `GatewayState.TrustedProjects`. Any change of those files changes
-the fingerprint, and the card comes again. A вопрос is not checked: it runs in an empty temp folder,
-recreated before every вопрос — otherwise a task's agent could plant a `.claude/settings.json` there
-and its hook would run on every `/ask`; a folder that fails to clear refuses the вопрос.
+`statusLine`…), `env` variables, plugins and the files of `.claude/{skills,commands,agents,hooks}`
+and gives a SHA-256 fingerprint of all of them. `ProjectTrustGate` shows the «Доверять проекту?»
+card (12 items at most) and keeps the fingerprint in `GatewayState.TrustedProjects`. Any change
+of those files changes the fingerprint, and the card comes again. A вопрос is not checked: it runs
+in an empty temp folder, recreated before every вопрос — otherwise a task's agent could plant a
+`.claude/settings.json` there and its hook would run on every `/ask`; a folder that fails to
+clear refuses the вопрос.
 
-What keeps the fingerprint honest: settings files are always parsed (up to 16 MB — a
-`settings.json` padded with spaces must not hide its hook; above that it is an item «проверьте
-вручную»); hooks, command keys, MCP servers and `env` variables (with masked values:
-`NODE_OPTIONS=--require` runs code) come first on the card and `allow` rules fold into one line, so
-a hook never drops into «и ещё N»; every file counts, `allow` rules of `settings.local.json` and
-`node_modules`/`.pyc`/`.log` included — whatever is skipped by name could be changed after trust —
-at the price of one more card after «Всегда» with the agent's rule; a linked folder is not followed
-but becomes an item; each folder has its own cap of 2000 files. After «Доверять» the project is
-inspected again: if the files changed while the card waited, a new card comes with the new list.
+What keeps the fingerprint honest:
+
+- Settings files (`.claude/settings.json`, `settings.local.json`, `.mcp.json`) are always parsed,
+  up to 16 MB: a `settings.json` padded with spaces must not hide its hook. Above that it is an
+  item «проверьте вручную».
+- Hooks, command keys, MCP servers and `env` variables (value shown under a mask:
+  `NODE_OPTIONS=--require` runs code) come first on the card. `allow` rules go by name up to 3,
+  above that they fold into one line, so a hook never drops into «и ещё N».
+- Every file in the four folders counts, `node_modules`/`.pyc`/`.log` included — whatever is
+  skipped by name could be changed after trust. A file over 1 MB is hashed by size and time. Each
+  folder has its own cap of 2000 files. A linked folder is not followed but becomes an item.
+- `allow` rules of `settings.local.json` count too, at the price of one more card after «Всегда»
+  with the agent's rule.
+- After «Доверять» the project is inspected again: if the files changed while the card waited, a
+  new card comes with the new list.
+
 «Отклонить» and silence drop the task queue, like a refused limit — otherwise every queued task
-would wait for its own card. After a CLI update, recheck the trust skip with the same temp-folder run.
+would wait for its own card. After a CLI update, recheck the trust skip with the same temp-folder
+run.
 
 ### Waiting for a response
 
@@ -116,9 +126,8 @@ the server is silent for 5 minutes (`CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT`, error �
 response or progress for 300s»). At that point the card is still hanging in the chat, but the
 agent has already received a denial. That's why `McpConfigFile` writes the server's `timeout` =
 `ApprovalTimeoutMinutes` + 1 min: this is both the call limit and (since CLI 2.1.203) the lower
-bound of the idle threshold. Progress notifications don't extend it — there's no point sending
-them. On CLI older than 2.1.203 the threshold stays at 5 minutes, and the card doesn't live
-longer than that.
+bound of the idle threshold. Progress notifications don't extend it. On CLI older than 2.1.203 the
+threshold stays at 5 minutes, and the card doesn't live longer than that.
 
 ## File to chat (MCP tool `mcp__tg__send_file`)
 
@@ -128,18 +137,20 @@ Arguments: `path` (absolute or relative to the project folder), `caption` (capti
 `{"sent":true}` or `{"sent":false,"reason":"…"}`; a refusal is always a response: a tool error
 looks to the CLI like a server failure, and the agent doesn't understand what went wrong.
 
-The policy lives in `OperatorConsole.SendFileAsync`, the tool only translates: the file must be
-inside the current project's folder (`ProjectCatalog.Normalize` on both sides,
-`ProjectCatalog.IsInside`), the gateway's data directory is forbidden separately; neither the
-file itself nor the folders between it and the project root may be a symbolic link or
-junction — the path is checked as a string, while the OS opens the file following links, and a
-link inside the project pointing outward would hand over someone else's file; the extension is
-from a whitelist in code (`.md .txt .json .cs .js .html .zip .7z` — as a document,
-`.png .jpg .jpeg` — as a photo; an archive's contents are not inspected, and the path checks
-apply to the archive itself only — anything the agent could reach may travel inside it, files
-outside the project included); size and caption — per the channel's `ChannelLimits`. Refusals
-also go into the
-`file.send` audit with outcome `refused`.
+The policy lives in `OperatorConsole.SendFileAsync`, the tool only translates:
+
+- The file must be inside the run's project folder (`ProjectCatalog.Normalize` on both sides,
+  `ProjectCatalog.IsInside`); the gateway's data directory is forbidden separately.
+- Neither the file nor the folders between it and the project root may be a symbolic link or
+  junction: the path is checked as a string, while the OS opens the file following links, and a
+  link inside the project pointing outward would hand over someone else's file.
+- The extension is from a whitelist in code (`.md .txt .json .cs .js .html .zip .7z` — as a
+  document, `.png .jpg .jpeg` — as a photo). An archive's contents are not inspected and the path
+  checks apply to the archive itself only: anything the agent could reach may travel inside it,
+  files outside the project included.
+- Size and caption — per the channel's `ChannelLimits`.
+
+Refusals also go into the `file.send` audit with outcome `refused`.
 
 The tool is passed in `--allowedTools mcp__tg__send_file` so the CLI doesn't call
 `mcp__tg__approve` on every send: the gateway checks the folder, type, and size itself.
@@ -161,14 +172,18 @@ live there) and not the project subfolder: between the message landing in the qu
 starting, `/project` may change, while the path in the prompt is already written. The project
 subfolder exists so that `/new` in one project does not wipe another one's pictures.
 
-The policy is the inbound mirror of `OperatorConsole.SendFileAsync`: only PNG and JPEG, and the
-type is decided by the **signature bytes**, not by the MIME type or the file name — both are
-written by the sender (a `.png` with text inside is refused). The file name is generated by the
-gateway (`<timestamp>-<8 hex>.<ext>`); Telegram's own name is never used, it may hold `..\` or
-a reserved device name. Size is capped by `Gateway:Attachments:MaxBytes` and by the channel
-(`ChannelLimits.AttachmentBytes` — Telegram hands a bot files up to 20 MB); the declared size
-is checked before the download and the actual bytes during it. Anything else — voice, video,
-a document that is not an image — gets a polite refusal and never reaches the agent's queue.
+The policy is the inbound mirror of `OperatorConsole.SendFileAsync`:
+
+- Only PNG and JPEG, and the type is decided by the **signature bytes**, not by the MIME type
+  or the file name — both are written by the sender (a `.png` with text inside is refused).
+- The file name is generated by the gateway (`<timestamp>-<8 hex>.<ext>`); Telegram's own name is
+  never used, it may hold `..\` or a reserved device name.
+- Size is capped by `Gateway:Attachments:MaxBytes` and by the channel (`ChannelLimits.AttachmentBytes`
+  — Telegram hands a bot files up to 20 MB); the declared size is checked before the download and
+  the actual bytes during it.
+- Anything else — voice, video, a document that is not an image — gets a polite refusal and never
+  reaches the agent's queue.
+
 Both the accepted file and every refusal go into the `file.receive` audit.
 
 Cleanup: everything older than `RetentionHours` (24) is swept at gateway startup and before
@@ -186,23 +201,26 @@ through, but an artificial one in a test may not.
 
 ## Startup and event stream
 
-The CLI is started with `--output-format stream-json --verbose` (without `--verbose` the
-stream is not written in `-p`). `ClaudeBackend.StreamCollector` parses stdout line by line
-(`ClaudeStreamEvent.Classify`): tool calls → `IAgentRunObserver.Activity`, everything else is
-discarded — in a long run that's megabytes. The result is the last line, `"type":"result"`, in
-the same shape as `--output-format json`; non-JSON lines (an update banner) go into the error
-text. The CLI often leaves the error text in stderr and sends `result` empty (as with «No
-conversation found» on a broken `--resume`) — the session-reset and limit checks also look at
-stderr.
+`ClaudeBackend.BuildArguments` always passes `-p <prompt>`, `--output-format stream-json
+--verbose` (without `--verbose` the stream is not written in `-p`), `--permission-prompt-tool`,
+`--permission-mode`, `--mcp-config` and `--allowedTools mcp__tg__send_file`. Conditionally:
+`--resume <id>` or `--session-id <uuid>`, `--add-dir` (only if the chat folder exists), `--model`,
+`--effort`. A вопрос gets its own set — "A question with no session" below.
+
+`ClaudeBackend.StreamCollector` parses stdout line by line (`ClaudeStreamEvent.Classify`): tool
+calls → `IAgentRunObserver.Activity`, everything else is discarded — in a long run that's
+megabytes. The result is the last line, `"type":"result"`, in the same shape as
+`--output-format json`; non-JSON lines (an update banner) go into the error text. The CLI often
+leaves the error text in stderr and sends `result` empty (as with «No conversation found» on a
+broken `--resume`) — the session-reset and limit checks also look at stderr.
 
 After the process exits, stdout and stderr get `DrainGrace` (5 s) to end, then the result is
 built from what was read. A background process that inherits the CLI's output pipe holds its end
 until it exits itself, and a bare `await stdout` would hang the task lane forever — the run timeout
-and `/stop` don't reach past the process exit (shown with a fake CLI: 24 s for a 25-second
-background `ping`, 5 s now). CLI 2.1.292 kills what its Bash tool started with `&` when it exits,
-so a live run did not reproduce the hang; the grace is a guard for what escapes that (a detached
-`Start-Process`, `start /b` from a script, another CLI version). The pipe is left open and read idly: closing it would break the background process on its
-next write.
+and `/stop` don't reach past the process exit. CLI 2.1.292 kills what its Bash tool started with
+`&` when it exits, so a live run did not reproduce the hang (a fake CLI did); the grace guards
+what escapes that (a detached `Start-Process`, `start /b` from a script, another CLI version). The
+pipe is left open and read idly: closing it would break the background process on its next write.
 
 Every `claude` is put into `ClaudeProcessJob` — one Windows Job Object for the gateway's lifetime
 with `KILL_ON_JOB_CLOSE`. The gateway exiting, a `Stop-Process` included, kills every `claude` and
@@ -212,14 +230,18 @@ A failed `AssignProcessToJobObject` is logged once and the run goes on. Outside 
 nothing — a container gives the same.
 
 A run in progress is recorded in `state.json` (`GatewayState.ActiveRun`, a вопрос — in
-`ActiveQuestion`, since it runs in parallel): `ChatWorker` sets
-`BeginRun` before starting and `EndRun` in `finally`. If the record is still there at startup,
-the previous instance died mid-run: `StartupNotice` sends «🔌 Шлюз запущен» ("Gateway started")
-to everyone in `IChatChannel.AllowedUsers`, and to the chat of the interrupted run
-(`ActiveRun.ChatKey` is parsed with `IChatChannel.ParseChat`) — «прерван, напишите „продолжай“»
-("interrupted, write \"continue\""), and writes `run.end` with outcome `interrupted`. For a
-user who hasn't written to the bot yet, Telegram doesn't allow it to send first —
-`ChannelFailure.CannotReach` is swallowed at Debug.
+`ActiveQuestion`, since it runs in parallel): `ChatWorker` sets `BeginRun` before starting and
+`EndRun` in `finally`. If the record is still there at startup, the previous instance died
+mid-run, and `StartupNotice`:
+
+- sends «🔌 Шлюз запущен» ("Gateway started") to everyone in `IChatChannel.AllowedUsers`;
+- sends the chat of the interrupted run (`ActiveRun.ChatKey` is parsed with `IChatChannel.ParseChat`)
+  «прерван, напишите „продолжай“» ("interrupted, write \"continue\""); for a вопрос — «задайте его
+  снова через /ask»;
+- writes `run.end` with outcome `interrupted`.
+
+Telegram does not let a bot write first to a user who hasn't written to it: a failed send is
+logged at Debug.
 
 In the chat — `RunStatusMessage`: a single «Работаю…» ("Working…") message, edited every 4 s
 (elapsed time, call counter, the last three steps, subagents marked with `↳`). `Report` from
@@ -238,7 +260,7 @@ session's project.
 
 The new session's id is issued by the **gateway** (`NewSessionId` → `--session-id <uuid>`) and
 registered via `IAgentRunObserver.SessionStarted` right after the process starts: otherwise
-`/stop`, a timeout, or a crash on the first run would lose the branch. The session is reset
+`/stop`, a timeout, or a crash on the first run would lose the session. The session is reset
 only when the CLI explicitly says it couldn't find it (`LooksLikeMissingSession` →
 `AgentRunResult.SessionLost`), and only inside `ChatWorker.SettleSession` via
 `TrySetSessionId(onlyIfActive)` — so as not to overwrite a `/new` or a session switch made
@@ -257,18 +279,19 @@ Checked on CLI 2.1.261.
   `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`. Events with
   `"model": "<synthetic>"` are answers of local commands with zeros in `usage` — skipped. The
   window is `modelUsage.<model>.contextWindow` of the result (1 000 000 for `sonnet-5`, 200 000 for
-  `haiku-4-5`); `canonicalModel` next to it is the name without the build date. Aliases resolve
-  to the latest version of the family, all with 1 000 000 and no `[1m]` suffix (CLI 2.1.283):
-  `sonnet` → `claude-sonnet-5`, `opus` → `claude-opus-5-5`, `fable` → `claude-fable-5-1`. So the menu
-  buttons are the aliases themselves and go to `--model` as-is: a new version reaches the chat with a
-  CLI update, no gateway release needed. The version on the screens comes from the answer
-  (`state.json`, `ModelVersions`: alias → a `PrimaryModel` of the same family), and before the first
-  answer from `ClaudeCapabilities.KnownVersions`. A version without the prefix (`/model opus-5-5`, as in the
-  footer) is not an alias: `ClaudeCapabilities.CliModel`
-  adds `claude-` to it. CLI 2.1.261 silently replaced `fable` with `claude-opus-5`; `claude-opus-5-5`
-  needs CLI 2.1.280+. A model released after the CLI (`claude-sonnet-5-5` on 2.1.283) is let
-  through with an `unrecognized_model` warning on stderr and a 200 000 window; the alias is moved onto
-  it by `ANTHROPIC_DEFAULT_SONNET_MODEL` — see `claude-permissions.md`, "Hooks".
+  `haiku-4-5`); `canonicalModel` next to it is the name without the build date.
+- **Model aliases.** Aliases resolve to the latest version of the family, all with 1 000 000 and
+  no `[1m]` suffix (CLI 2.1.283): `sonnet` → `claude-sonnet-5`, `opus` → `claude-opus-5-5`,
+  `fable` → `claude-fable-5-1`. So the menu buttons are the aliases themselves and go to `--model`
+  as-is: a new version reaches the chat with a CLI update, no gateway release needed. The version on
+  the screens comes from the answer (`state.json`, `ModelVersions`: alias → a `PrimaryModel` of the
+  same family), and before the first answer from `ClaudeCapabilities.KnownVersions`. A version
+  without the prefix (`/model opus-5-5`, as in the footer) is not an alias:
+  `ClaudeCapabilities.CliModel` adds `claude-` to it. CLI 2.1.261 silently replaced `fable` with
+  `claude-opus-5`; `claude-opus-5-5` needs CLI 2.1.280+. A model released after the CLI
+  (`claude-sonnet-5-5` on 2.1.283) is let through with an `unrecognized_model` warning on stderr and
+  a 200 000 window; the alias is moved onto it by `ANTHROPIC_DEFAULT_SONNET_MODEL` — see
+  `claude-permissions.md`, "Hooks".
 - **Which model answered.** `modelUsage` mixes the main thread with subagents and haiku's chores, and
   a sonnet subagent often writes more output tokens than the session itself — so the answering model
   is `message.model` of the last `assistant` event with `parent_tool_use_id: null`, and its window is
@@ -288,7 +311,9 @@ Checked on CLI 2.1.261.
 - **Cache.** Checked on CLI 2.1.292 with `claude -p --resume`, the way the gateway runs:
   - The main thread writes the cache with a **one-hour** lifetime (`usage.cache_creation.ephemeral_1h_input_tokens`),
     sub-agents with a **five-minute** one (`ephemeral_5m`). Billing past the subscription is said to
-    drop the main thread to 5 minutes too, so the lifetime is read from the event, not assumed.
+    drop the main thread to 5 minutes too, so the lifetime is read from the event, not assumed. An
+    event can carry both (after a web search: the CLI adds a five-minute entry for the tail) — then
+    the hour counts.
   - The lifetime runs from the **start** of the request that read or wrote the entry; every read
     extends it for free. The stream gives a turn only when it is complete, so the backend takes the time
     of the last main-thread input (a `user` event without `parent_tool_use_id`, or the process start)
@@ -298,8 +323,8 @@ Checked on CLI 2.1.261.
     keeps it. Commits, edited files, `--add-dir` appearing, `--effort` and the modes
     `default`/`acceptEdits`/`auto` keep it too. **Lost:** a model switch (caches are per model, and the other
     model's thinking blocks are dropped from the history) and `--permission-mode plan` (different
-    tools — nothing is read at all). A compaction replaces the start of the session, so after it the
-    old cache does not count (`LastRequestUtc = null`).
+    tools — nothing is read at all; `OwnCacheModes` in `ClaudeCapabilities`). A compaction replaces
+    the start of the session, so after it the old cache does not count (`LastRequestUtc = null`).
   - A run with `--resume <id> --fork-session --no-session-persistence` reads the whole cached prefix,
     extends it by another hour and leaves no turn in the session (checked over 110 minutes).
 - Testing this from Git Bash: MSYS turns a leading `/context` into `C:/Program Files/Git/context`,
@@ -312,9 +337,9 @@ Checked on CLI 2.1.261.
 is impossible), no `--resume`/`--session-id`, `--tools WebSearch,WebFetch` (built-ins only; `""`
 disables all) and `--strict-mcp-config`: only the gateway's own `tg` server from `--mcp-config` is
 loaded — the user's MCP servers cost ~40k tokens of context per question otherwise (48k vs 9.6k on
-a one-word answer). `--permission-mode` and `--permission-prompt-tool` are passed as always. The
-working folder is an empty `%TEMP%\AgentsTracker-question`: not the project (its CLAUDE.md would load)
-and not the data directory (secrets).
+a one-word answer). `--permission-mode` and `--permission-prompt-tool` are passed as always; no
+`--add-dir`. The working folder is an empty `%TEMP%\AgentsTracker-question`: not the project (its
+CLAUDE.md would load) and not the data directory (secrets).
 
 A вопрос runs in its own `ChatWorker` lane, **in parallel** with a task: two `claude` processes at
 once at most. Its permissions are unchanged — cards and `send_file` (checked against the chat's
@@ -325,28 +350,30 @@ answer, the status and the cards come as a reply to the user's message.
 
 ## Plan limits
 
-The only limiter is `IAgentLimits`, with windows `five_hour`, `seven_day`,
-`seven_day_<model>`; checked in `ChatWorker.ProcessAsync` before starting a run. The remaining
-budget on one line — `ShortSummaryAsync` (menu summary); the windows for the gauges —
-`ViewAsync`. `LimitGauge.Used` is the **consumed** fraction 0..1 as a `decimal`: the `LimitBars`
-gauges on `/status` and the meters in the monitor fill with consumption, a full bar means the
-window is exhausted.
+The only limiter is `IAgentLimits`, with windows `five_hour`, `seven_day` and the per-model ones
+(`seven_day_<model>`, `five_hour_<model>`). `ChatWorker.ProcessAsync` checks it before a run,
+except the `/context` breakdown: it does not call the model, and it is most useful exactly when
+the plan is exhausted. The remaining budget on one line — `ShortSummaryAsync` (menu summary); the
+windows for the gauges — `ViewAsync`. `LimitGauge.Used` is the **consumed** fraction 0..1 as a
+`decimal`: the `LimitBars` gauges on `/status` and the meters in the monitor fill with consumption,
+a full bar means the window is exhausted.
 
 Percentages are produced **only** by `LimitMath` (`Agents.Abstractions`) — the single rounding
 rule for the whole gateway: `Percent` rounds consumption up to a whole number and clamps it to
 0..100, `Left` is `100 - Percent` rather than its own rounding. It is used by the chat gauges, by
 the menu summary (`ClaudeLimits.Left`) and by `/api/limits`: the monitor page receives `percent`
-and `left` ready-made and no longer has its own formula in JS — JavaScript has no `decimal`, and
+and `left` ready-made and has no formula of its own in JS — JavaScript has no `decimal`, and
 that formula diverged from the chat. Independent rounding diverged on 14 values out of 1001: the
 menu showed «неделя 32%» against «осталось 33%» in the very same `/status`.
 
 `ClaudeLimits` calls the **undocumented** `api.anthropic.com/api/oauth/usage` with the token
-from `~/.claude/.credentials.json`: it requires a plausible User-Agent, responds 429 on
-frequent polling (3 min cache), and can disappear in any version — on any error the run is
-**skipped**, not blocked, otherwise the gateway would go completely silent. Fields are read via
-`ClaudeLimits.Number` with a `ValueKind` check: `TryGetDecimal` on `null` throws, and
-`utilization: null` would reach the user as «Внутренняя ошибка шлюза» ("Internal gateway
-error").
+from `CLAUDE_CODE_OAUTH_TOKEN` or `~/.claude/.credentials.json` (an expired one is refused; the
+gateway never refreshes it — that is Claude Code's job). The endpoint requires a plausible
+User-Agent, responds 429 on frequent polling (3 min cache), and can disappear in any version. One
+attempt, 15 s. On any error the run is **skipped**, not blocked, otherwise the gateway would go
+completely silent. Fields are read via `ClaudeLimits.Number` with a `ValueKind` check:
+`TryGetDecimal` on `null` throws, and `utilization: null` would reach the user as «Внутренняя
+ошибка шлюза» ("Internal gateway error").
 
 The scale of `utilization` (percent 0..100 or a fraction 0..1) is decided for the **whole
 response at once** — `ClaudeLimits.LooksLikePercents`: any value of 1 or above, or all values
@@ -360,7 +387,8 @@ exhausted window does not hold a run back — the CLI itself runs into the limit
 
 Credits ("extra usage") are forbidden to the agent: `ClaudeBackend` sets
 `DISABLE_EXTRA_USAGE_COMMAND=1`, and when a run is aborted by the limit, `ChatWorker` clears
-the whole queue.
+the whole queue. Credits switched on in the account are logged as a warning — only the account
+owner can turn them off.
 
 ## Skills and plugins
 
@@ -388,8 +416,9 @@ into `/command text`. Runs are counted in `SkillUsage` (the `@bot` suffix is str
 
 ## Locating the binary
 
-`claude.exe` is located by `ClaudeCliLocator`: `Gateway:Claude:Executable` → standard paths →
-PATH → the VS Code extension's binary (only to get it running; the path with the extension
-version disappears on update — a warning is logged). The standard setup is a separate CLI
-(`irm https://claude.ai/install.ps1 | iex`). The path is cached but rechecked before every run.
-`ValidateStartup` logs the version — the JSON parsing depends on a specific version.
+`claude.exe` is located by `ClaudeCliLocator`: `Gateway:Claude:Executable` → standard paths
+(`~/.local/bin`, `~/.claude/local`, the global npm folder) → PATH → the VS Code extension's binary
+(only to get it running; the path with the extension version disappears on update — a warning is
+logged). The standard setup is a separate CLI (`irm https://claude.ai/install.ps1 | iex`). The
+path is cached but rechecked before every run. `ValidateStartup` logs the version — the JSON
+parsing depends on a specific version.
