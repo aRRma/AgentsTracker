@@ -7,9 +7,9 @@
 
 ## Команда чата
 
-Класс с `IChatCommandHandler` в папке фичи, `AddSingleton` в её `*Module`, запись в
-`ChatCommandCatalog` (`Infrastructure/Chat/`, подсказки команд в канале) и в тексте
-`HelpCommandHandler`.
+Класс с `IChatCommandHandler` в папке фичи, `AddSingleton` в её `*Module`, запись в тексте
+`HelpCommandHandler` и, если команде место в списке «Меню» ниже, в `ChatCommandCatalog`
+(`Infrastructure/Chat/`, подсказки команд в канале).
 
 Заняты: `/start /help` (Help), `/new /stop` (Chat), `/ask` (Question), `/rules` (Approvals),
 `/audit` (Audit), `/menu /settings /status /sessions /agent /model /effort /mode /skills /project
@@ -62,9 +62,9 @@
 а `publish --no-restore` падает).
 
 `Directory.Build.props` и `.editorconfig` в репозитории нет: каждый csproj сам повторяет
-`TargetFramework`, `Nullable`, `ImplicitUsings`, `TreatWarningsAsErrors` и `RootNamespace`.
-Скопируйте этот блок у соседнего проекта — `dotnet new` выключает предупреждения-как-ошибки и
-выбирает своё корневое пространство имён.
+`TargetFramework`, `Nullable`, `ImplicitUsings` и `TreatWarningsAsErrors`, а каждая библиотека
+добавляет `RootNamespace`. Скопируйте этот блок у соседнего проекта — `dotnet new` выключает
+предупреждения-как-ошибки и выбирает своё корневое пространство имён.
 
 ## Агент (Codex, Cursor)
 
@@ -118,9 +118,10 @@
 политика становится политикой шлюза. Там стоит только `mcp__tg__send_file`: хост сам проверяет
 папку, тип и размер. Больше туда ничего нельзя — это обход карточек.
 
-Белый список типов `send_file` живёт в пяти местах — таблица в `OperatorConsole`, описание
-инструмента в `ClaudeSendFileTool` (CLI видит описание **работающего** шлюза), `README.md`,
-`docs/cli-contract.md` и `docs/en/cli-contract.md`. Меняете тип — меняйте все пять.
+Белый список типов `send_file` живёт в нескольких местах — таблица в `OperatorConsole`, описание
+инструмента в `ClaudeSendFileTool` (CLI видит описание **работающего** шлюза),
+`docs/cli-contract.md` и `docs/safety.md` с их английскими близнецами в `docs/en/`, а также правило
+«Длинные документы» в `CLAUDE.md`. Меняете тип — меняйте все.
 
 ## Эндпоинт монитора
 
@@ -139,7 +140,8 @@
 
 ## Механизм автозапуска (launchd, systemd)
 
-Реализация `IAutostartInstaller` в `Infrastructure/Autostart/` и строка в
+Реализация `IAutostartInstaller` (наследник `ProcessAutostartInstaller`, у которого `Run`
+защищённый) в `Infrastructure/Autostart/` и строка в
 `AutostartInstaller.ForCurrentOs` (сегодня только Windows, на любой другой ОС —
 `UnsupportedAutostartInstaller`). Положите файл-описание и позовите утилиту системы через
 `ProcessAutostartInstaller.Run`: решайте по коду возврата, вывод локализован. XML для `schtasks` —

@@ -8,8 +8,8 @@ can reach. The project layout and the rules between projects are in `architectur
 ## A chat command
 
 A class implementing `IChatCommandHandler` in the feature folder, `AddSingleton` in its `*Module`,
-an entry in `ChatCommandCatalog` (`Infrastructure/Chat/`, the channel's command hints) and in the
-`HelpCommandHandler` text.
+an entry in the `HelpCommandHandler` text and, if the command belongs in the «Меню» list below, in
+`ChatCommandCatalog` (`Infrastructure/Chat/`, the channel's command hints).
 
 Taken: `/start /help` (Help), `/new /stop` (Chat), `/ask` (Question), `/rules` (Approvals),
 `/audit` (Audit), `/menu /settings /status /sessions /agent /model /effort /mode /skills /project
@@ -62,8 +62,9 @@ in `Gateway.csproj` and a `COPY …/*.csproj` line in the `Dockerfile` (without 
 skips the project and `publish --no-restore` fails).
 
 There is no `Directory.Build.props` and no `.editorconfig`: every csproj repeats `TargetFramework`,
-`Nullable`, `ImplicitUsings`, `TreatWarningsAsErrors` and `RootNamespace`. Copy that block from a
-neighbour — `dotnet new` turns warnings-as-errors off and picks its own root namespace.
+`Nullable`, `ImplicitUsings` and `TreatWarningsAsErrors`, and every library adds `RootNamespace`.
+Copy that block from a neighbour — `dotnet new` turns warnings-as-errors off and picks its own root
+namespace.
 
 ## An agent (Codex, Cursor)
 
@@ -116,9 +117,10 @@ A tool without an approval card goes into `--allowedTools` in `ClaudeBackend.Bui
 its whole policy becomes the gateway's. Only `mcp__tg__send_file` is there: the host checks the
 folder, the type and the size itself. Nothing else belongs there — it bypasses the cards.
 
-The `send_file` type whitelist lives in five places — the map in `OperatorConsole`, the tool
+The `send_file` type whitelist lives in several places — the map in `OperatorConsole`, the tool
 description in `ClaudeSendFileTool` (the CLI sees the description of the **running** gateway),
-`README.md`, `docs/cli-contract.md` and `docs/en/cli-contract.md`. Change a type — change all five.
+`docs/cli-contract.md` and `docs/safety.md` with their twins in `docs/en/`, and the «Long documents»
+rule of `CLAUDE.md`. Change a type — change all of them.
 
 ## A monitor endpoint
 
@@ -138,7 +140,8 @@ An argument starting with a dash or a slash is configuration, not a command.
 
 ## An autostart mechanism (launchd, systemd)
 
-An `IAutostartInstaller` implementation in `Infrastructure/Autostart/` and a line in
+An `IAutostartInstaller` implementation (deriving from `ProcessAutostartInstaller`, whose `Run` is
+protected) in `Infrastructure/Autostart/` and a line in
 `AutostartInstaller.ForCurrentOs` (today only Windows; any other OS gets
 `UnsupportedAutostartInstaller`). Drop a descriptor file and call the platform utility through
 `ProcessAutostartInstaller.Run` — decide by the exit code, the output is localized. The XML for
