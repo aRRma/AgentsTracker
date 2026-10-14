@@ -242,6 +242,30 @@ during the run.
 `/sessions` shows up to the last 8; the button carries the `ShortId` (8 characters), not the
 position: a run finishing between rendering and the press would shift the numbers.
 
+### A session in a worktree
+
+The agent can move its session into a worktree itself with the `EnterWorktree` tool and back with
+`ExitWorktree`. The CLI remembers the folder in the session: the next `--resume` continues there,
+although the gateway starts the process in the project folder. Verified on CLI 2.1.292:
+
+- `system`/`init` carries `cwd` — the session's real folder; after `EnterWorktree` it is already the
+  worktree on the next `--resume`, after `ExitWorktree` it is the project again;
+- the `user` event with the result of `EnterWorktree` has `tool_use_result.worktreePath` (plus
+  `worktreeBranch`); the one of `ExitWorktree` has `originalCwd` — the folder it returned to — and also
+  `worktreePath`, the folder it left.
+
+`ClaudeStreamEvent` takes `cwd` from `init` and a move from a main-thread result whose
+`tool_use_id` belongs to an `EnterWorktree`/`ExitWorktree` call: `worktreePath` alone may come from
+another tool (a subagent in its own worktree) while the session stays put. The collector calls
+`IAgentRunObserver.WorkingDirectoryChanged` on every change; the host keeps the folder in
+`SessionRecord.WorkingDirectory` (`null` — the project folder) and, before the run, takes it through
+`SessionStore.SessionFolder`: a removed or network folder falls back to the project.
+
+The trust gate follows the session: `ChatWorker.TrustAsync` checks the project and, if the session
+is in a worktree, that folder as well — `--resume` runs its `.claude/settings.json` and `.mcp.json`
+with no card just like the project's. A move in the middle of a run is not gated: the process is
+already running.
+
 ## Context: fill, breakdown, compaction
 
 Checked on CLI 2.1.261.

@@ -122,6 +122,11 @@ A card finds its chat by the **run id**, not by a "current chat": each run gets 
   keeps the fingerprint in `GatewayState.TrustedProjects`; a change of those files asks again. Do not
   skip the gate for any kind that runs in the project folder (`/context` and `/compact` included).
   Details — `docs/en/cli-contract.md`, "Project settings and the trust dialog".
+- The agent can move its session into a worktree itself (`EnterWorktree`), and `--resume` continues
+  it there although the process starts in the project. So the branch on every screen and the trust
+  gate follow the **session's folder** (`SessionStore.SessionFolder`, kept in
+  `SessionRecord.WorkingDirectory` from `init.cwd` and the worktree tools' results), not
+  `store.ProjectPath`. Details — `docs/en/cli-contract.md`, "A session in a worktree".
 - `--bare` is not allowed: it does not read `~/.claude` and breaks the subscription OAuth login.
 - `--allowedTools` holds only `mcp__tg__send_file`: its policy belongs to the gateway. Do not add
   other tools there — that bypasses the cards past the machine's config.

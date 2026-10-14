@@ -80,7 +80,9 @@ screen. The main agent's turns, as opposed to a сабагент's, are the «о
 
 **проект / worktree.** A worktree is a separate folder of the same repository on its own branch. To
 the gateway it is an ordinary проект: its own сессия, «всегда» rules and доверие к проекту. The 🌳
-mark shows which project it was made from.
+mark shows which project it was made from. The agent can also move a сессия into a worktree itself
+without changing the проект: «Статус» calls that «сессия в worktree», and доверие к проекту is asked
+for that folder too.
 
 **контекст / кэш.** The контекст is how much of the model's window a session takes. The кэш is how
 much longer the model keeps that session ready: an hour after the start of the last request, five

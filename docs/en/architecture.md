@@ -223,12 +223,19 @@ action, the same session and within 2 minutes; «Нет» or reopening the scree
 (folder → project) in pages of 12; after a selection the page resets to the first one, or the `▶`
 marker could end up off-screen.
 
-`GitRepository` gives the project's branch for «Статус», the project list, the run status, the
-footer, `run.start` in the journal and the monitor; the 🌳 mark (the project is a worktree) is only on
+`GitRepository` gives the branch for «Статус», the project list, the run status, the footer,
+`run.start` in the journal and the monitor; the 🌳 mark (the project is a worktree) is only on
 «Статус» and the project list. `.git` is looked up to the drive root, like git does. The class reads
 the `.git` files itself, with no `git` process: the caption is needed on every tick of the run status.
-It is the branch of the project folder, not "the agent's branch": the agent can move into another
-worktree through absolute paths and the gateway will not see it. Rules not to loosen:
+
+Everything about a run reads the branch of the **session's folder** (`SessionStore.SessionFolder`),
+not of the project folder. The agent can move its session into a worktree itself (`EnterWorktree`),
+and the CLI resumes it there although the process starts in the project — the details are in
+`docs/en/cli-contract.md`, "A session in a worktree". `ChatWorker.RunObserver` takes the folder from
+`IAgentRunObserver.WorkingDirectoryChanged`, the run status re-reads it every tick, and a change is
+written to `SessionRecord.WorkingDirectory` at once (an interrupted run moves the session too).
+«Статус» shows such a session as «🌳 сессия в worktree <folder> · 🌿 <branch>». A move through
+absolute paths is still invisible to the gateway. Rules not to loosen:
 
 - a file is opened with `FileShare.ReadWrite | FileShare.Delete` and only after its write time or
   length changed — otherwise the agent's `git checkout` on Windows fails renaming `HEAD.lock`;
