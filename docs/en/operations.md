@@ -144,6 +144,13 @@ A harness that drives the real CLI (`ChatWorker` + `ClaudeBackend`) also needs
 an `approve` tool (`AddMcpServer().WithHttpTransport().WithTools<…>()`, `MapMcp("/mcp")`): without
 `mcp__tg__approve` the CLI does not start. Use `haiku` to spare the limits.
 
+Stream parsing (`ClaudeStreamEvent`, `StreamCollector`, what reaches `IAgentRunObserver`) needs no
+live CLI and no MCP server. Point `ClaudeOptions.Executable` at a `.cmd` with one line,
+`@type "%REPLAY%"`, set the `REPLAY` environment variable to a recorded stream-json file before each
+run and call the real `ClaudeBackend.RunAsync` with your own observer. Record the stream once with
+`claude.exe -p … --output-format stream-json --verbose --model haiku > run.jsonl` in a throwaway
+`git init` repo in the scratchpad: a run on the user's own session would change it.
+
 ## Larger tasks — use a worktree
 
 The main `AgentsTracker` folder stays on `master` (there is no `main` branch): switching the

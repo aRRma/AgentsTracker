@@ -143,6 +143,13 @@ Junction, оставшийся во временной папке от прош�
 инструментом `approve` (`AddMcpServer().WithHttpTransport().WithTools<…>()`, `MapMcp("/mcp")`):
 без `mcp__tg__approve` CLI не стартует. Модель — `haiku`, чтобы беречь лимиты.
 
+Разбору потока (`ClaudeStreamEvent`, `StreamCollector`, что доходит до `IAgentRunObserver`) не нужны
+ни живой CLI, ни MCP-сервер. Укажите в `ClaudeOptions.Executable` файл `.cmd` с одной строкой
+`@type "%REPLAY%"`, перед каждым запуском задайте переменную окружения `REPLAY` — путь к записанному
+stream-json — и вызовите настоящий `ClaudeBackend.RunAsync` со своим наблюдателем. Поток запишите
+один раз: `claude.exe -p … --output-format stream-json --verbose --model haiku > run.jsonl` в
+одноразовой папке с `git init` в scratchpad: запуск на сессии пользователя изменил бы её.
+
 ## Крупные задачи — в worktree
 
 Основная папка `AgentsTracker` остаётся на `master` (ветки `main` нет): переключение ветки в ней

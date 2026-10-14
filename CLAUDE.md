@@ -48,6 +48,10 @@ docker compose up -d --build                    # the same gateway in a containe
 There are no tests. Anything touching the CLI contract is checked by hand: start the gateway and
 watch the log. Host logic that needs no live bot is checked by a file-based C# harness with fakes
 instead of a channel — `docs/en/operations.md`.
+Stream parsing is checked through the real `ClaudeBackend.RunAsync` with a fake CLI:
+`ClaudeOptions.Executable` → a `.cmd` with `@type "%REPLAY%"` replaying a recorded stream-json
+file; no MCP server is needed. Record the stream with `claude.exe -p … --output-format stream-json
+--verbose --model haiku` in a throwaway `git init` repo in the scratchpad — never on the user's sessions.
 
 **The working gateway on this machine is the published release** (find its folder with
 `Get-Process AgentsTracker.Gateway`). Do not stop it and do not rebuild over it: that is the stable
@@ -190,6 +194,10 @@ run (not for the `/context` breakdown); if the poll fails, the **check** is skip
 ahead. There is no money in the gateway: no `total_cost_usd`, no `--max-budget-usd`, no dollar
 estimates — only turns, tokens and time. Credits ("extra usage") are forbidden to the agent.
 Details — `docs/en/cli-contract.md`.
+
+What the agent really did is in the CLI transcript `~/.claude/projects/<folder-key>/<session>.jsonl`:
+every line carries `cwd` and `gitBranch`. After `EnterWorktree` the file moves under the
+worktree's key — look it up with `ls ~/.claude/projects/*/<session>*.jsonl`.
 
 A false refusal is diagnosed from the outside: `limit.refused` in `audit\audit-<YYYY-MM>.jsonl` (when
 and how many times) and `monitor-api.ps1 "api/limits"` (the parsed windows with `resetsAt`). The
