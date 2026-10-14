@@ -75,6 +75,13 @@ public interface IAgentRunObserver
 
     /// <summary>Агент позвал инструмент.</summary>
     void Activity(RunActivity activity);
+
+    /// <summary>
+    /// Папка сессии стала известна или сменилась. Она не всегда папка проекта: агент может сам
+    /// перевести сессию в другой worktree, и продолжение пойдёт уже там. Без этого ветка в чате
+    /// была бы веткой папки проекта, а не той, где агент правит файлы.
+    /// </summary>
+    void WorkingDirectoryChanged(string path);
 }
 
 /// <summary>Итог одного запуска в виде, пригодном для отправки в чат.</summary>

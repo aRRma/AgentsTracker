@@ -18,10 +18,18 @@ public static class ClaudeStreamEvent
     /// Ввод основной ветки (результаты инструментов): следующий запрос к модели начнётся после него.
     /// </param>
     /// <param name="CacheRead">Сколько токенов этот ход основной ветки прочитал из кэша; null — ход не основной.</param>
+    /// <param name="WorkingDirectory">Папка сессии из события <c>init</c>; null — событие другое.</param>
+    /// <param name="WorktreeCalls">Id вызовов EnterWorktree и ExitWorktree основной ветки в этом ходе.</param>
+    /// <param name="WorktreeMove">
+    /// Куда перешла сессия, если это результат EnterWorktree или ExitWorktree. Только кандидат: что
+    /// вызов был именно таким, сверяется по <paramref name="WorktreeCalls"/> прошлого хода.
+    /// </param>
     public sealed record Line(
         bool IsJson, bool IsResult, IReadOnlyList<RunActivity> ToolCalls,
         long? ContextTokens = null, ContextCompaction? Compaction = null, string? MainModel = null,
-        TimeSpan? CacheTtl = null, bool MainInput = false, long? CacheRead = null)
+        TimeSpan? CacheTtl = null, bool MainInput = false, long? CacheRead = null,
+        string? WorkingDirectory = null, IReadOnlyList<string>? WorktreeCalls = null,
+        (string ToolUseId, string Path)? WorktreeMove = null)
     {
         public static readonly Line Text = new(false, false, []);
         public static readonly Line Other = new(true, false, []);
@@ -41,9 +49,63 @@ public static class ClaudeStreamEvent
             "result" => Line.Result,
             "assistant" => Assistant(root),
             "system" when String(root, "subtype") == "compact_boundary" => new Line(true, false, [], Compaction: Compaction(root)),
-            "user" when !Nested(root) => new Line(true, false, [], MainInput: true),
+            "system" when String(root, "subtype") == "init" => new Line(true, false, [], WorkingDirectory: String(root, "cwd")),
+            "user" when !Nested(root) => new Line(true, false, [], MainInput: true, WorktreeMove: WorktreeMove(root)),
             _ => Line.Other,
         };
+    }
+
+    private const string EnterWorktree = "EnterWorktree";
+    private const string ExitWorktree = "ExitWorktree";
+
+    /// <summary>
+    /// Переход сессии между worktree по результату инструмента (проверено на CLI 2.1.292). CLI
+    /// запоминает новую папку в сессии и на <c>--resume</c> сам продолжает в ней, хотя процесс
+    /// запущен в папке проекта. EnterWorktree отдаёт <c>worktreePath</c>; ExitWorktree — тоже
+    /// <c>worktreePath</c>, но той папки, из которой вышли, а вернулась сессия в <c>originalCwd</c>.
+    /// </summary>
+    private static (string ToolUseId, string Path)? WorktreeMove(JsonElement root)
+    {
+        if (!root.TryGetProperty("tool_use_result", out var result) || result.ValueKind != JsonValueKind.Object)
+            return null;
+
+        if ((String(result, "originalCwd") ?? String(result, "worktreePath")) is not { Length: > 0 } path)
+            return null;
+
+        if (!root.TryGetProperty("message", out var message)
+            || !message.TryGetProperty("content", out var content)
+            || content.ValueKind != JsonValueKind.Array)
+            return null;
+
+        foreach (var block in content.EnumerateArray())
+            if (String(block, "type") == "tool_result" && String(block, "tool_use_id") is { Length: > 0 } id)
+                return (id, path);
+
+        return null;
+    }
+
+    /// <summary>
+    /// Id вызовов EnterWorktree и ExitWorktree. По ним, а не по полям результата, узнаётся переход:
+    /// <c>worktreePath</c> может вернуть и другой инструмент — например, сабагент в своём worktree,
+    /// а сессия при этом остаётся на месте.
+    /// </summary>
+    private static List<string>? WorktreeCalls(JsonElement root)
+    {
+        if (!root.TryGetProperty("message", out var message)
+            || !message.TryGetProperty("content", out var content)
+            || content.ValueKind != JsonValueKind.Array)
+            return null;
+
+        List<string>? ids = null;
+        foreach (var block in content.EnumerateArray())
+        {
+            if (String(block, "type") == "tool_use"
+                && String(block, "name") is EnterWorktree or ExitWorktree
+                && String(block, "id") is { Length: > 0 } id)
+                (ids ??= []).Add(id);
+        }
+
+        return ids;
     }
 
     /// <summary>
@@ -58,14 +120,16 @@ public static class ClaudeStreamEvent
         var calls = ToolCalls(root);
         if (!TryMainTurn(root, out var message, out var model)) return new Line(true, false, calls);
 
+        var worktree = WorktreeCalls(root);
+
         if (!message.TryGetProperty("usage", out var usage) || usage.ValueKind != JsonValueKind.Object)
-            return new Line(true, false, calls, MainModel: model);
+            return new Line(true, false, calls, MainModel: model, WorktreeCalls: worktree);
 
         var read = Number(usage, "cache_read_input_tokens");
         var context = Number(usage, "input_tokens") + read + Number(usage, "cache_creation_input_tokens");
 
         return new Line(true, false, calls, context > 0 ? context : null, MainModel: model,
-            CacheTtl: CacheTtl(usage), CacheRead: read);
+            CacheTtl: CacheTtl(usage), CacheRead: read, WorktreeCalls: worktree);
     }
 
     /// <summary>

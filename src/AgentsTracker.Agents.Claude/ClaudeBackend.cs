@@ -293,6 +293,8 @@ public sealed class ClaudeBackend(
         private long? _firstCacheRead;
         private bool _subagents;
         private bool _closed;
+        private string? _workingDirectory;
+        private readonly HashSet<string> _worktreeCalls = new(StringComparer.Ordinal);
 
         public void Feed(string line)
         {
@@ -302,6 +304,7 @@ public sealed class ClaudeBackend(
             if (line.Length == 0 || Volatile.Read(ref _closed)) return;
 
             var parsed = ClaudeStreamEvent.Classify(line);
+            string? moved = null;
 
             lock (_gate)
             {
@@ -349,6 +352,20 @@ public sealed class ClaudeBackend(
                 }
 
                 foreach (var activity in parsed.ToolCalls) _subagents |= activity.Nested;
+
+                if (parsed.WorktreeCalls is { } calls) _worktreeCalls.UnionWith(calls);
+
+                var directory = parsed.WorkingDirectory
+                    ?? (parsed.WorktreeMove is var (id, path) && _worktreeCalls.Remove(id) ? path : null);
+
+                if (directory is { Length: > 0 } && !string.Equals(directory, _workingDirectory, StringComparison.OrdinalIgnoreCase))
+                    _workingDirectory = moved = directory;
+            }
+
+            if (moved is not null)
+            {
+                try { observer.WorkingDirectoryChanged(moved); }
+                catch (Exception ex) { logger.LogWarning(ex, "Обработчик смены папки сессии бросил исключение"); }
             }
 
             foreach (var activity in parsed.ToolCalls)
