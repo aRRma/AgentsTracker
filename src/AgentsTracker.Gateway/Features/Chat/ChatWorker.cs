@@ -161,10 +161,14 @@ public sealed class ChatWorker(
         // куда её увёл агент) — тоже то, чему доверились.
         var project = question ? QuestionDirectory() : store.ProjectPath;
         string? session = null;
+        var sessionFolder = project;
         while (!question)
         {
             session = store.SessionId;
-            switch (await TrustAsync(prompt, project, store.SessionFolder(project, session), stoppingToken))
+            // Папку запуска берём ту же, которой доверились: считай её заново после карточки, и
+            // worktree, появившийся за это время, запустился бы без проверки.
+            sessionFolder = store.SessionFolder(project, session);
+            switch (await TrustAsync(prompt, project, sessionFolder, stoppingToken))
             {
                 case ProjectTrustGate.Outcome.Declined:
                     await DropQueueAsync(lane, prompt.Chat, "после решения о доверии к проекту", stoppingToken);
@@ -197,6 +201,17 @@ public sealed class ChatWorker(
             return;
         }
 
+        // /new или выбор сессии, пока шла проверка лимита (она ходит в сеть): берём новую сессию,
+        // если её папка уже проверена — проект или тот же worktree. Иначе идём с прежней: новой
+        // папке доверия никто не давал, а второй карточкой устарели бы модель и лимит.
+        if (!question && store.SessionId is var latest && latest != session
+            && store.SessionFolder(project, latest) is var latestFolder
+            && (ProjectCatalog.Same(latestFolder, project) || ProjectCatalog.Same(latestFolder, sessionFolder)))
+        {
+            session = latest;
+            sessionFolder = latestFolder;
+        }
+
         // Пока команда ждала в очереди, /new мог снять сессию: разбирать и сжимать нечего,
         // а запуск без сессии создал бы новую ради одной команды.
         if (kind is AgentRunKind.ContextReport or AgentRunKind.Compact && session is null)
@@ -212,7 +227,7 @@ public sealed class ChatWorker(
         // Ветка папки сессии, а не проекта: агент мог увести сессию в worktree (EnterWorktree), и
         // CLI продолжит её там, хотя процесс запущен в проекте. Уход по абсолютным путям шлюз всё
         // так же не видит. Вопрос идёт во временной папке — ветки нет.
-        var folder = question ? null : new RunFolder(store.SessionFolder(project, session));
+        var folder = question ? null : new RunFolder(sessionFolder);
         var startBranch = folder is null ? null : git.Head(folder.Path);
 
         Audit(prompt, AuditKinds.RunStart,
