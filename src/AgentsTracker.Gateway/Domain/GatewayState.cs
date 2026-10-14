@@ -143,6 +143,12 @@ public sealed class SessionRecord
     /// <summary>Нормализованный путь папки, в которой сессия создана.</summary>
     public string ProjectPath { get; set; } = "";
 
+    /// <summary>
+    /// Папка, куда агент сам перевёл сессию (EnterWorktree), — продолжение агент начнёт там же,
+    /// хотя процесс запущен в <see cref="ProjectPath"/>. null — сессия в папке проекта.
+    /// </summary>
+    public string? WorkingDirectory { get; set; }
+
     /// <summary>Начало первого сообщения — по нему сессия узнаётся в списке.</summary>
     public string Title { get; set; } = "";
 

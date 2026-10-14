@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using AgentsTracker.Gateway.Infrastructure.Git;
 
 namespace AgentsTracker.Gateway.Infrastructure.State;
 
@@ -269,6 +270,33 @@ public sealed class SessionStore
             record.ContextUtc = DateTimeOffset.UtcNow;
         });
     }
+
+    /// <summary>
+    /// Папка сессии после запуска. Папку проекта не храним: запись нужна только сессии,
+    /// которую агент увёл в worktree, иначе каждая сессия тянула бы копию своего пути.
+    /// </summary>
+    public void RecordWorkingDirectory(string sessionId, string path)
+    {
+        var folder = ProjectCatalog.Normalize(path);
+
+        Mutate(s =>
+        {
+            var record = s.Sessions.FirstOrDefault(r => string.Equals(r.Id, sessionId, StringComparison.Ordinal));
+            if (record is null) return;
+
+            record.WorkingDirectory = ProjectCatalog.Same(folder, record.ProjectPath) ? null : folder;
+        });
+    }
+
+    /// <summary>
+    /// Папка, где пойдёт запуск сессии: туда её вернёт сам агент. Удалённый worktree — уже не
+    /// папка сессии: агенту некуда в него вернуться, и ветка была бы веткой несуществующей папки.
+    /// Путь пришёл из вывода агента, поэтому сетевую папку не трогаем даже проверкой существования.
+    /// </summary>
+    public string SessionFolder(string projectPath, string? sessionId) =>
+        Session(sessionId)?.WorkingDirectory is { } folder && GitRepository.IsLocal(folder) && Directory.Exists(folder)
+            ? folder
+            : projectPath;
 
     /// <summary>
     /// Срок кэша сессии после запуска. Возвращает «кэш до» — его показывает подпись ответа, и
@@ -652,6 +680,7 @@ public sealed class SessionStore
     {
         Id = record.Id,
         ProjectPath = record.ProjectPath,
+        WorkingDirectory = record.WorkingDirectory,
         Title = record.Title,
         CreatedUtc = record.CreatedUtc,
         LastActivityUtc = record.LastActivityUtc,

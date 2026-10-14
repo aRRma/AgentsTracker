@@ -116,7 +116,8 @@ public sealed class GitRepository(ILogger<GitRepository> logger)
 
     private static bool IsUnc(string path) => path.StartsWith(@"\\", StringComparison.Ordinal) || path.StartsWith("//", StringComparison.Ordinal);
 
-    private static bool IsLocal(string path)
+    /// <summary>Не UNC и не сетевой диск: обращение к такой папке может отдать чужому серверу хэш учётной записи.</summary>
+    public static bool IsLocal(string path)
     {
         if (IsUnc(path)) return false;
         if (!OperatingSystem.IsWindows()) return true;

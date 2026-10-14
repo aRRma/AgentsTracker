@@ -91,7 +91,7 @@ public sealed class StatusScreen(
             🕔 Последняя активность: {E(state.LastActivityUtc?.Ago ?? "—")}
 
             📁 <b>{E(Path.GetFileName(project))}</b>
-            <code>{E(project)}</code>{Branch(project)}
+            <code>{E(project)}</code>{Branch(project, store.SessionFolder(project, store.SessionId))}
             🧵 Сессия: {(session is null ? "<i>новая</i>" : $"<b>{E(session.Title)}</b> · {session.Turns} х")}
             📦 Контекст: {(session is { ContextTokens: > 0, ContextWindow: > 0 } ? ContextScreen.Fill(session, bar: false) : "—")}
             🧊 Кэш: {ContextScreen.Cache(session, ContextScreen.Mismatch(store, agent, session))}
@@ -115,12 +115,15 @@ public sealed class StatusScreen(
     }
 
     /// <summary>
-    /// Ветка проекта: без неё задача уходит не в ту ветку незаметно. Соседние worktree со своими
-    /// ветками видны в списке проектов. Пусто — проект не в git.
+    /// Ветка, в которой пойдёт задача: без неё задача уходит не в ту ветку незаметно. Если агент
+    /// увёл сессию в worktree — ветка того worktree, а не папки проекта: следующая задача пойдёт
+    /// там. Соседние worktree со своими ветками видны в списке проектов. Пусто — папка не в git.
     /// </summary>
-    private string Branch(string project) => git.Head(project) switch
+    private string Branch(string project, string folder) => git.Head(folder) switch
     {
         null => "",
+        var head when !ProjectCatalog.Same(folder, project) =>
+            $"\n🌳 сессия в worktree <code>{E(Path.GetFileName(folder))}</code> · 🌿 <code>{E(head.Label)}</code>",
         { WorktreeOf: { } main } head => $"\n🌳 worktree от <b>{E(main)}</b> · 🌿 <code>{E(head.Label)}</code>",
         var head => $"\n🌿 <code>{E(head.Label)}</code>",
     };

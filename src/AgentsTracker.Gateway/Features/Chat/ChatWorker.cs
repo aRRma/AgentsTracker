@@ -157,11 +157,14 @@ public sealed class ChatWorker(
         // Доверие — первым: карточка ждёт до четверти часа, и модель, лимит и режим, посчитанные
         // до неё, к запуску устарели бы. Вопрос идёт в пустой временной папке — настроек агента
         // там нет. Проект задачи проверяем снова после карточки: пока она ждала, /project мог
-        // смениться, а доверие спрашивали про прежний.
+        // смениться, а доверие спрашивали про прежний. Сессию фиксируем здесь же: её папка (worktree,
+        // куда её увёл агент) — тоже то, чему доверились.
         var project = question ? QuestionDirectory() : store.ProjectPath;
+        string? session = null;
         while (!question)
         {
-            switch (await trust.EnsureAsync(prompt.Chat, prompt.ReplyTo, project, stoppingToken))
+            session = store.SessionId;
+            switch (await TrustAsync(prompt, project, store.SessionFolder(project, session), stoppingToken))
             {
                 case ProjectTrustGate.Outcome.Declined:
                     await DropQueueAsync(lane, prompt.Chat, "после решения о доверии к проекту", stoppingToken);
@@ -171,7 +174,7 @@ public sealed class ChatWorker(
             }
 
             var current = store.ProjectPath;
-            if (ProjectCatalog.Same(current, project)) break;
+            if (ProjectCatalog.Same(current, project) && store.SessionId == session) break;
             project = current;
         }
 
@@ -194,8 +197,6 @@ public sealed class ChatWorker(
             return;
         }
 
-        var session = question ? null : store.SessionId;
-
         // Пока команда ждала в очереди, /new мог снять сессию: разбирать и сжимать нечего,
         // а запуск без сессии создал бы новую ради одной команды.
         if (kind is AgentRunKind.ContextReport or AgentRunKind.Compact && session is null)
@@ -208,9 +209,11 @@ public sealed class ChatWorker(
 
         var thread = question ? "вопрос" : session is { Length: > 0 } ? session.ShortId : "новая сессия";
 
-        // Ветка папки, где идёт запуск, а не «ветка агента»: уйти в другой worktree он может
-        // по абсолютным путям, и шлюз этого не увидит. Вопрос идёт во временной папке — ветки нет.
-        var startBranch = question ? null : git.Head(project);
+        // Ветка папки сессии, а не проекта: агент мог увести сессию в worktree (EnterWorktree), и
+        // CLI продолжит её там, хотя процесс запущен в проекте. Уход по абсолютным путям шлюз всё
+        // так же не видит. Вопрос идёт во временной папке — ветки нет.
+        var folder = question ? null : new RunFolder(store.SessionFolder(project, session));
+        var startBranch = folder is null ? null : git.Head(folder.Path);
 
         Audit(prompt, AuditKinds.RunStart,
             $"{(question ? "вопрос, " : "")}{modelLabel ?? "модель по умолчанию"}, {store.EffectivePermissionMode}, effort {effort ?? "—"}"
@@ -242,7 +245,7 @@ public sealed class ChatWorker(
         var runSessionId = session is { Length: > 0 } ? session : request.NewSessionId;
 
         var status = await RunStatusMessage.StartAsync(
-            channel, prompt.Chat, thread, question ? null : () => git.Head(project)?.Label, prompt.ReplyTo, logger, stoppingToken);
+            channel, prompt.Chat, thread, folder is null ? null : () => git.Head(folder.Path)?.Label, prompt.ReplyTo, logger, stoppingToken);
         var startedUtc = DateTimeOffset.UtcNow;
 
         // Всё, что после статусного сообщения, — внутри try: сбой записи state.json или монитора
@@ -279,7 +282,7 @@ public sealed class ChatWorker(
             lane.RunCts = runCts;
 
             result = await agent.RunAsync(
-                request, new RunObserver(store, question ? null : monitor, request, status), runCts.Token);
+                request, new RunObserver(store, question ? null : monitor, request, runSessionId, folder, status), runCts.Token);
         }
         finally
         {
@@ -353,7 +356,7 @@ public sealed class ChatWorker(
         await SendRenderedAsync(
             prompt.Chat,
             Answer(kind, result) + note + Footer(kind, result, modelLabel, effort, cacheUntil,
-                question ? null : BranchCaption(startBranch, git.Head(project))),
+                folder is null ? null : BranchCaption(startBranch, git.Head(folder.Path))),
             prompt.ReplyTo, stoppingToken);
 
         // Упёрлись в лимит — следующие задачи упрутся в него же; очередь чистим,
@@ -443,12 +446,43 @@ public sealed class ChatWorker(
     }
 
     /// <summary>
-    /// Мост между бэкендом и шлюзом на время запуска: новая сессия — в state.json,
-    /// шаги — в статусное сообщение и монитор. <paramref name="monitor"/> null у вопроса:
-    /// текущий запуск монитора — задача, и шаги вопроса вписались бы в неё.
+    /// Доверие к папкам запуска: проекту и worktree, куда агент увёл сессию. <c>--resume</c>
+    /// вернёт агента туда, и настройки той папки выполнятся без карточки так же, как настройки проекта.
+    /// </summary>
+    private async Task<ProjectTrustGate.Outcome> TrustAsync(
+        QueuedPrompt prompt, string project, string folder, CancellationToken ct)
+    {
+        var outcome = await trust.EnsureAsync(prompt.Chat, prompt.ReplyTo, project, ct);
+
+        return outcome == ProjectTrustGate.Outcome.Trusted && !ProjectCatalog.Same(folder, project)
+            ? await trust.EnsureAsync(prompt.Chat, prompt.ReplyTo, folder, ct)
+            : outcome;
+    }
+
+    /// <summary>
+    /// Папка сессии на время запуска. Меняет её поток чтения вывода агента, а читает каждый такт
+    /// статус — отсюда volatile.
+    /// </summary>
+    private sealed class RunFolder(string path)
+    {
+        private string _path = path;
+
+        public string Path
+        {
+            get => Volatile.Read(ref _path);
+            set => Volatile.Write(ref _path, value);
+        }
+    }
+
+    /// <summary>
+    /// Мост между бэкендом и шлюзом на время запуска: новая сессия и её папка — в state.json,
+    /// шаги — в статусное сообщение и монитор. <paramref name="monitor"/> и <paramref name="folder"/>
+    /// null у вопроса: текущий запуск монитора — задача, и шаги вопроса вписались бы в неё, а
+    /// временная папка вопроса — не папка сессии.
     /// </summary>
     private sealed class RunObserver(
-        SessionStore store, RunMonitor? monitor, AgentRunRequest request, RunStatusMessage status) : IAgentRunObserver
+        SessionStore store, RunMonitor? monitor, AgentRunRequest request, string runSessionId, RunFolder? folder,
+        RunStatusMessage status) : IAgentRunObserver
     {
         public void SessionStarted(string sessionId) =>
             store.RegisterSession(request.ProjectPath, request.Prompt, sessionId);
@@ -457,6 +491,18 @@ public sealed class ChatWorker(
         {
             status.Report(activity);
             monitor?.Step(activity);
+        }
+
+        /// <summary>
+        /// Пишем сразу, а не по итогу: прерванный запуск тоже мог увести сессию, и следующий
+        /// продолжится уже там. Совпадение с ожидаемой папкой ничего не пишет — это каждый запуск.
+        /// </summary>
+        public void WorkingDirectoryChanged(string path)
+        {
+            if (folder is null || ProjectCatalog.Same(path, folder.Path)) return;
+
+            folder.Path = path;
+            store.RecordWorkingDirectory(runSessionId, path);
         }
     }
 
