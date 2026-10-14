@@ -28,8 +28,8 @@ public static class ClaudeStreamEvent
         bool IsJson, bool IsResult, IReadOnlyList<RunActivity> ToolCalls,
         long? ContextTokens = null, ContextCompaction? Compaction = null, string? MainModel = null,
         TimeSpan? CacheTtl = null, bool MainInput = false, long? CacheRead = null,
-        string? WorkingDirectory = null, IReadOnlyList<string>? WorktreeCalls = null,
-        (string ToolUseId, string Path)? WorktreeMove = null)
+        string? WorkingDirectory = null, IReadOnlyList<(string Id, bool Exit)>? WorktreeCalls = null,
+        (string ToolUseId, string? WorktreePath, string? OriginalCwd)? WorktreeMove = null)
     {
         public static readonly Line Text = new(false, false, []);
         public static readonly Line Other = new(true, false, []);
@@ -49,7 +49,7 @@ public static class ClaudeStreamEvent
             "result" => Line.Result,
             "assistant" => Assistant(root),
             "system" when String(root, "subtype") == "compact_boundary" => new Line(true, false, [], Compaction: Compaction(root)),
-            "system" when String(root, "subtype") == "init" => new Line(true, false, [], WorkingDirectory: String(root, "cwd")),
+            "system" when String(root, "subtype") == "init" && !Nested(root) => new Line(true, false, [], WorkingDirectory: String(root, "cwd")),
             "user" when !Nested(root) => new Line(true, false, [], MainInput: true, WorktreeMove: WorktreeMove(root)),
             _ => Line.Other,
         };
@@ -63,13 +63,17 @@ public static class ClaudeStreamEvent
     /// запоминает новую папку в сессии и на <c>--resume</c> сам продолжает в ней, хотя процесс
     /// запущен в папке проекта. EnterWorktree отдаёт <c>worktreePath</c>; ExitWorktree — тоже
     /// <c>worktreePath</c>, но той папки, из которой вышли, а вернулась сессия в <c>originalCwd</c>.
+    /// Какое поле брать, решает вызов (<see cref="Line.WorktreeCalls"/>), а не то, какое поле есть:
+    /// иначе отказ ExitWorktree с одним <c>worktreePath</c> оставил бы сессию в покинутой папке.
     /// </summary>
-    private static (string ToolUseId, string Path)? WorktreeMove(JsonElement root)
+    private static (string ToolUseId, string? WorktreePath, string? OriginalCwd)? WorktreeMove(JsonElement root)
     {
         if (!root.TryGetProperty("tool_use_result", out var result) || result.ValueKind != JsonValueKind.Object)
             return null;
 
-        if ((String(result, "originalCwd") ?? String(result, "worktreePath")) is not { Length: > 0 } path)
+        var worktreePath = String(result, "worktreePath");
+        var originalCwd = String(result, "originalCwd");
+        if (worktreePath is not { Length: > 0 } && originalCwd is not { Length: > 0 })
             return null;
 
         if (!root.TryGetProperty("message", out var message)
@@ -79,7 +83,7 @@ public static class ClaudeStreamEvent
 
         foreach (var block in content.EnumerateArray())
             if (String(block, "type") == "tool_result" && String(block, "tool_use_id") is { Length: > 0 } id)
-                return (id, path);
+                return (id, worktreePath, originalCwd);
 
         return null;
     }
@@ -89,23 +93,23 @@ public static class ClaudeStreamEvent
     /// <c>worktreePath</c> может вернуть и другой инструмент — например, сабагент в своём worktree,
     /// а сессия при этом остаётся на месте.
     /// </summary>
-    private static List<string>? WorktreeCalls(JsonElement root)
+    private static List<(string Id, bool Exit)>? WorktreeCalls(JsonElement root)
     {
         if (!root.TryGetProperty("message", out var message)
             || !message.TryGetProperty("content", out var content)
             || content.ValueKind != JsonValueKind.Array)
             return null;
 
-        List<string>? ids = null;
+        List<(string Id, bool Exit)>? calls = null;
         foreach (var block in content.EnumerateArray())
         {
             if (String(block, "type") == "tool_use"
-                && String(block, "name") is EnterWorktree or ExitWorktree
+                && String(block, "name") is { } name and (EnterWorktree or ExitWorktree)
                 && String(block, "id") is { Length: > 0 } id)
-                (ids ??= []).Add(id);
+                (calls ??= []).Add((id, name == ExitWorktree));
         }
 
-        return ids;
+        return calls;
     }
 
     /// <summary>

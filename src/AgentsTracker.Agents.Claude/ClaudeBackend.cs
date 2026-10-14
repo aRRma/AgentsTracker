@@ -294,7 +294,7 @@ public sealed class ClaudeBackend(
         private bool _subagents;
         private bool _closed;
         private string? _workingDirectory;
-        private readonly HashSet<string> _worktreeCalls = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, bool> _worktreeCalls = new(StringComparer.Ordinal);
 
         public void Feed(string line)
         {
@@ -353,10 +353,15 @@ public sealed class ClaudeBackend(
 
                 foreach (var activity in parsed.ToolCalls) _subagents |= activity.Nested;
 
-                if (parsed.WorktreeCalls is { } calls) _worktreeCalls.UnionWith(calls);
+                if (parsed.WorktreeCalls is { } calls)
+                    foreach (var (callId, exit) in calls) _worktreeCalls[callId] = exit;
 
-                var directory = parsed.WorkingDirectory
-                    ?? (parsed.WorktreeMove is var (id, path) && _worktreeCalls.Remove(id) ? path : null);
+                // Папку берём по вызову: ExitWorktree вернул сессию в originalCwd, а его worktreePath —
+                // папка, которую сессия покинула.
+                var directory = parsed.WorkingDirectory;
+                if (directory is null && parsed.WorktreeMove is var (id, worktreePath, originalCwd)
+                    && _worktreeCalls.Remove(id, out var isExit))
+                    directory = isExit ? originalCwd : worktreePath;
 
                 if (directory is { Length: > 0 } && !string.Equals(directory, _workingDirectory, StringComparison.OrdinalIgnoreCase))
                     _workingDirectory = moved = directory;
