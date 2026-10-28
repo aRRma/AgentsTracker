@@ -196,6 +196,38 @@ Check(!projRun.WebOnly && projRun.AttachmentsPath is not null && projRun.Model =
 // Ответы ушли в свои темы
 await Until(() => channel.Sent.Any(s => s.Chat == t2 && s.Text.Contains("ответ на «привет, беседа»")), "ответ беседы — в её тему");
 
+// Хук, положенный соседом, пока тема ждала замок, — снова карточка доверия, а не запуск
+var t4 = new TelegramChatId(100, 10);
+store.For(t4).SetProjectPath(projB);
+backend.Hold = true;
+worker.Enqueue(t3, user, "h1-сосед");
+await Until(() => backend.Running.ContainsKey("h1-сосед"), "сосед по проекту идёт");
+worker.Enqueue(t4, user, "h1-ждёт");
+await Until(() => channel.Sent.Any(s => s.Chat == t4 && s.Text.Contains("В проекте идёт другой запуск")), "тема ждёт замок соседа");
+Directory.CreateDirectory(Path.Combine(projB, ".claude"));
+File.WriteAllText(Path.Combine(projB, ".claude", "settings.json"), "{}");
+backend.Release("h1-сосед");
+await Until(() => channel.Sent.Any(s => s.Chat == t4 && s.Text.Contains("Доверять проекту")), "после замка — карточка доверия к новому хуку");
+Check(!backend.Requests.Any(r => r.Prompt == "h1-ждёт"), "без доверия запуск не начался");
+Check(worker.Stop(t4), "/stop снимает карточку доверия");
+await Until(() => !worker.IsBusy(t4), "тема освободилась");
+Check(!backend.Requests.Any(r => r.Prompt == "h1-ждёт"), "после /stop запуска не было");
+File.Delete(Path.Combine(projB, ".claude", "settings.json"));
+
+// /new, пока тема ждала замок, — запуск идёт новой сессией
+store.For(t4).SetSessionId("old-t4");
+worker.Enqueue(t3, user, "m2-сосед");
+await Until(() => backend.Running.ContainsKey("m2-сосед"), "сосед снова идёт");
+var waitsBefore = channel.Sent.Count(s => s.Chat == t4 && s.Text.Contains("В проекте идёт другой запуск"));
+worker.Enqueue(t4, user, "m2-ждёт");
+await Until(() => channel.Sent.Count(s => s.Chat == t4 && s.Text.Contains("В проекте идёт другой запуск")) > waitsBefore, "тема снова ждёт замок");
+store.For(t4).SetSessionId(null);
+backend.Release("m2-сосед");
+await Until(() => backend.Running.ContainsKey("m2-ждёт"), "после замка тема запустилась");
+Check(backend.Requests.Last(r => r.Prompt == "m2-ждёт").ResumeSessionId is null, "запуск после /new — новой сессией");
+backend.Release("m2-ждёт");
+await Until(() => !worker.IsBusy(t4), "тема закончила");
+
 await cts.CancelAsync();
 try { await worker.StopAsync(CancellationToken.None); } catch { }
 

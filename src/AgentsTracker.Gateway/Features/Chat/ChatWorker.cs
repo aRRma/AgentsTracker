@@ -214,42 +214,71 @@ public sealed class ChatWorker(
         var project = question ? QuestionDirectory() : scope.ProjectPath;
         string? session = null;
         var sessionFolder = project;
-        while (!question)
-        {
-            // Беседа — по итоговой папке, а не по теме при постановке: пока задача ждала, тему
-            // могли привязать к проекту. Её папку чистим до проверки доверия, как папку вопроса.
-            if (SessionStore.IsTalkFolder(project)) EmptyFolder(project);
-
-            session = scope.SessionId;
-            // Папку запуска берём ту же, которой доверились: считай её заново после карточки, и
-            // worktree, появившийся за это время, запустился бы без проверки.
-            sessionFolder = store.SessionFolder(project, session);
-            switch (await TrustAsync(prompt, project, sessionFolder, stoppingToken))
-            {
-                case ProjectTrustGate.Outcome.Declined:
-                    await DropQueueAsync(lane, "после решения о доверии к проекту", stoppingToken);
-                    return;
-                case ProjectTrustGate.Outcome.Cancelled:
-                    return;
-            }
-
-            var current = scope.ProjectPath;
-            if (ProjectCatalog.Same(current, project) && scope.SessionId == session) break;
-            project = current;
-        }
+        using var runCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        IDisposable? folderLock = null;
 
         // Чат — раньше токена: /stop читает их в этом порядке и иначе мог бы снять чужой вопрос.
-        using var runCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-        lane.Chat = prompt.Chat;
-        lane.RunCts = runCts;
+        void Arm()
+        {
+            lane.Chat = prompt.Chat;
+            lane.RunCts = runCts;
+        }
 
-        // Замок — до модели, лимита и сессии: ожидание бывает долгим, и посчитанное до него
-        // устарело бы — на исчерпанном за это время тарифе CLI ушёл бы на кредиты. Карточка
-        // доверия — снаружи: она ждёт до четверти часа и держала бы чужую тему. Вопрос идёт в
-        // своей пустой папке и ни с кем её не делит. Замок — на папку сессии, а не проекта: агент
-        // правит worktree, куда увёл сессию, и этот же worktree может быть проектом другой темы.
-        using var folderLock = question ? null : await LockFolderAsync(sessionFolder, prompt, runCts.Token, stoppingToken);
-        if (!question && folderLock is null) return;
+        while (!question)
+        {
+            while (true)
+            {
+                // Беседа — по итоговой папке, а не по теме при постановке: пока задача ждала, тему
+                // могли привязать к проекту. Её папку чистим до проверки доверия, как папку вопроса.
+                if (SessionStore.IsTalkFolder(project)) EmptyFolder(project);
+
+                session = scope.SessionId;
+                // Папку запуска берём ту же, которой доверились: считай её заново после карточки, и
+                // worktree, появившийся за это время, запустился бы без проверки.
+                sessionFolder = store.SessionFolder(project, session);
+                switch (await TrustAsync(prompt, project, sessionFolder, stoppingToken))
+                {
+                    case ProjectTrustGate.Outcome.Declined:
+                        await DropQueueAsync(lane, "после решения о доверии к проекту", stoppingToken);
+                        return;
+                    case ProjectTrustGate.Outcome.Cancelled:
+                        return;
+                }
+
+                var current = scope.ProjectPath;
+                if (ProjectCatalog.Same(current, project) && scope.SessionId == session) break;
+                project = current;
+            }
+
+            Arm();
+
+            // Замок — до модели, лимита и сессии: ожидание бывает долгим, и посчитанное до него
+            // устарело бы — на исчерпанном за это время тарифе CLI ушёл бы на кредиты. Карточка
+            // доверия — снаружи: она ждёт до четверти часа и держала бы чужую тему. Вопрос идёт в
+            // своей пустой папке и ни с кем её не делит. Замок — на папку сессии, а не проекта: агент
+            // правит worktree, куда увёл сессию, и этот же worktree может быть проектом другой темы.
+            folderLock = await LockFolderAsync(sessionFolder, prompt, runCts.Token, stoppingToken);
+            if (folderLock is null) return;
+
+            // Пока ждали замок, запуск соседней темы в этой папке мог положить в неё хук, а /new или
+            // /project — сменить сессию и её папку. Под замком проверяем без карточки; что-то
+            // изменилось — отпускаем папку и проходим доверие заново.
+            var admitted = false;
+            try
+            {
+                admitted = ProjectCatalog.Same(scope.ProjectPath, project) && scope.SessionId == session
+                    && Trusted(project) && (ProjectCatalog.Same(sessionFolder, project) || Trusted(sessionFolder));
+            }
+            finally
+            {
+                if (!admitted) folderLock.Dispose();
+            }
+
+            if (admitted) break;
+        }
+
+        if (question) Arm();
+        using var heldLock = folderLock;
 
         var talk = !question && SessionStore.IsTalkFolder(project);
 
@@ -272,12 +301,15 @@ public sealed class ChatWorker(
             return;
         }
 
-        // /new или выбор сессии, пока ждали замок или проверяли лимит (он ходит в сеть): берём
-        // новую сессию, если её папка уже проверена — проект или тот же worktree. Иначе идём с
-        // прежней: новой папке доверия никто не давал, а второй карточкой устарели бы модель и лимит.
+        // /stop, пока проверяли лимит: процесс ради мгновенной отмены не запускаем.
+        if (runCts.IsCancellationRequested) return;
+
+        // /new или выбор сессии, пока проверяли лимит (он ходит в сеть): берём новую сессию, если
+        // она в той же папке, что под замком. Иначе идём с прежней: папку без замка правил бы и
+        // запуск соседней темы, а заново ждать замок и карточку — устарели бы модель и лимит.
         if (!question && scope.SessionId is var latest && latest != session
             && store.SessionFolder(project, latest) is var latestFolder
-            && (ProjectCatalog.Same(latestFolder, project) || ProjectCatalog.Same(latestFolder, sessionFolder)))
+            && ProjectCatalog.Same(latestFolder, sessionFolder))
         {
             session = latest;
             sessionFolder = latestFolder;
@@ -441,7 +473,7 @@ public sealed class ChatWorker(
         });
 
         // Сессия и расход записаны — папку можно отдать следующему, не дожидаясь отправки ответа.
-        folderLock?.Dispose();
+        heldLock?.Dispose();
 
         await SendRenderedAsync(
             prompt.Chat,
@@ -586,6 +618,10 @@ public sealed class ChatWorker(
             ? await trust.EnsureAsync(prompt.Chat, prompt.ReplyTo, folder, ct)
             : outcome;
     }
+
+    /// <summary>Доверие без карточки: настроек агента в папке нет или их отпечаток уже доверен.</summary>
+    private bool Trusted(string folder) =>
+        agent.InspectProject(folder) is not { } settings || store.IsProjectTrusted(folder, settings.Fingerprint);
 
     /// <summary>
     /// Папка сессии на время запуска. Меняет её поток чтения вывода агента, а читает каждый такт
