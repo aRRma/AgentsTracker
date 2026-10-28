@@ -7,6 +7,7 @@ using AgentsTracker.Gateway.Features.Help;
 using AgentsTracker.Gateway.Features.Monitor;
 using AgentsTracker.Gateway.Features.Question;
 using AgentsTracker.Gateway.Features.Settings;
+using AgentsTracker.Gateway.Features.Topics;
 using AgentsTracker.Gateway.Infrastructure.Cli;
 using AgentsTracker.Gateway.Infrastructure.Modules;
 
@@ -37,6 +38,7 @@ IReadOnlyList<IFeatureModule> modules =
     new AuditModule(),
     new MonitorModule(),
     new QuestionModule(),
+    new TopicsModule(),
     new ChatModule(),
 ];
 
