@@ -13,7 +13,7 @@
 
 Заняты: `/start /help` (Help), `/new /stop` (Chat), `/ask` (Question), `/rules` (Approvals),
 `/audit` (Audit), `/menu /settings /status /sessions /agent /model /effort /mode /skills /project
-/usage` (Settings). **Дубль в двух фичах роняет запуск** (`ChatDispatcher` собирает словарь команд).
+/usage` (Settings), `/topic` (Topics). **Дубль в двух фичах роняет запуск** (`ChatDispatcher` собирает словарь команд).
 
 В списке «Меню» — `/menu`, экраны, `/ask`, `/rules`, `/audit` и `/help`, по частоте. `/new /stop
 /model /effort /mode` работают текстом, но в список не входят: то же делают кнопки на экранах
@@ -38,8 +38,11 @@
 - В `Apply` приходит `ChatId`: экран может поставить работу в очередь `ChatWorker`
   (`SkillsScreen`), и ответ уйдёт тому, кто нажал кнопку. Смена настройки пишется в журнал через
   `IAuditLog.Changed` (`SettingsAudit`).
-- Позиция в списке живёт в `ScreenNavigation` по пользователям: экраны — синглтоны.
-- Необратимая кнопка сначала спрашивает через `PendingConfirmations` (по пользователю: действие и
+- Каждый экран рисуется для чата (`RenderAsync(ChatId)`, `Open(ChatId)`) и читает выбор через
+  `store.For(chat)`: у темы свои проект, сессия, модель и режим.
+- Позиция в списке живёт в `ScreenNavigation` по чатам: экраны — синглтоны, а каждая тема — свой
+  чат.
+- Необратимая кнопка сначала спрашивает через `PendingConfirmations` (по чату: действие и
   сессия); «Да» несёт аргумент `yes:<действие>`, а `Open` снимает висящий вопрос. Пример —
   `ContextScreen`.
 - Страницы и ключи callback_data — `SettingsKeyboard.Page`/`Key12`. Однобуквенный префикс аргумента

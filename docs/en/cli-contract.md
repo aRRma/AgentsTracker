@@ -209,11 +209,12 @@ finishing the task with nobody listening and writing into the session the new in
 failed `AssignProcessToJobObject` is logged once and the run goes on. Outside Windows the class
 does nothing — a container gives the same.
 
-A run in progress is recorded in `state.json` (`GatewayState.ActiveRun`, a вопрос — in
-`ActiveQuestion`, since it runs in parallel): `ChatWorker` sets `BeginRun` before starting and
-`EndRun` in `finally`. If the record is still there at startup, the previous instance died
-mid-run, and `StartupNotice` sends «🔌 Шлюз запущен» to everyone in `IChatChannel.AllowedUsers`,
-tells the chat of the interrupted run (`ActiveRun.ChatKey` via `IChatChannel.ParseChat`) that it
+A run in progress is recorded in `state.json` (`GatewayState.ActiveRuns` by chat key, a вопрос — in
+`ActiveQuestion`, since it runs in parallel; the single `ActiveRun` of older versions is still read):
+`ChatWorker` sets `BeginRun` before starting and `EndRun` in `finally`. If a record is still there at
+startup, the previous instance died mid-run, and `StartupNotice` sends «🔌 Шлюз запущен» to everyone
+in `IChatChannel.AllowedUsers` (their лента), tells the chat of each interrupted run (`ActiveRun.ChatKey`
+via `IChatChannel.ParseChat`; a topic gets only this, without «запущен») that it
 was interrupted («напишите „продолжай“»; for a вопрос — «задайте его снова через /ask») and writes
 `run.end` with outcome `interrupted`. Telegram does not let a bot write first to a user who hasn't
 written to it: a failed send is logged at Debug.
@@ -337,7 +338,12 @@ a one-word answer). `--permission-mode` and `--permission-prompt-tool` are passe
 `--add-dir`. The working folder is an empty `%TEMP%\AgentsTracker-question`: not the project (its
 CLAUDE.md would load) and not the data directory (secrets).
 
-A вопрос runs in its own lane, **in parallel** with a task (`architecture.md`, "Two lanes"). Its
+A беседа (a topic without a project) gets the same `--tools WebSearch,WebFetch --strict-mcp-config`
+through `AgentRunRequest.WebOnly`, but keeps its session (`--session-id`/`--resume`) in its own
+`%TEMP%\AgentsTracker-talk\<topic>` folder, emptied before each run: verified live, `--resume` finds
+the session after the folder is deleted and created again — the transcript is keyed by the path.
+
+A вопрос runs in its own lane, **in parallel** with tasks (`architecture.md`, "Lanes"). Its
 permissions are unchanged: cards and `send_file` (checked against the chat's project) work as
 before, the two processes' cards told apart by the run id in the `X-AgentsTracker-Run` header of
 each run's own `--mcp-config` file. There is no `Agent` tool among `--tools`, so a вопрос has no

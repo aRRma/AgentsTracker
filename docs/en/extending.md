@@ -13,7 +13,7 @@ an entry in the `HelpCommandHandler` text and, if the command belongs in the «�
 
 Taken: `/start /help` (Help), `/new /stop` (Chat), `/ask` (Question), `/rules` (Approvals),
 `/audit` (Audit), `/menu /settings /status /sessions /agent /model /effort /mode /skills /project
-/usage` (Settings). **A duplicate across two features kills startup** (`ChatDispatcher` builds a
+/usage` (Settings), `/topic` (Topics). **A duplicate across two features kills startup** (`ChatDispatcher` builds a
 dictionary of commands).
 
 The «Меню» list holds `/menu`, the screens, `/ask`, `/rules`, `/audit` and `/help`, ordered by
@@ -39,8 +39,11 @@ in `SettingsModule`, a button in `RootScreen`.
 - `Apply` receives the `ChatId`: a screen can enqueue work on `ChatWorker` (`SkillsScreen`), and
   the answer goes to whoever pressed the button. A changed setting is written to the journal with
   `IAuditLog.Changed` (`SettingsAudit`).
-- The list position lives in `ScreenNavigation` per user: screens are singletons.
-- An irreversible button asks first through `PendingConfirmations` (per user: action and session);
+- Every screen renders for a chat (`RenderAsync(ChatId)`, `Open(ChatId)`) and reads the selection
+  through `store.For(chat)`: a topic has its own project, session, model and mode.
+- The list position lives in `ScreenNavigation` per chat: screens are singletons, and each topic is
+  a chat of its own.
+- An irreversible button asks first through `PendingConfirmations` (per chat: action and session);
   «Да» carries the argument `yes:<action>`, and `Open` drops the pending question. Example —
   `ContextScreen`.
 - Pages and callback_data keys — `SettingsKeyboard.Page`/`Key12`. The one-letter prefix of a

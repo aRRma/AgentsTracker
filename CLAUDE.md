@@ -71,7 +71,7 @@ src/AgentsTracker.Agents.Claude/         Claude Code behind those contracts, Mcp
 src/AgentsTracker.Channels.Abstractions/ channel contracts, no specific messenger
 src/AgentsTracker.Channels.Telegram/     Telegram behind those contracts
 src/AgentsTracker.Gateway/               Program.cs (agents, channels, features), Domain/, Infrastructure/,
-                                         Features/ — vertical slices: Approvals, Chat, Settings, Question, Help, Audit, Monitor
+                                         Features/ — vertical slices: Approvals, Chat, Settings, Question, Topics, Help, Audit, Monitor
 ```
 
 What each file inside them is for — `docs/en/architecture.md`. Layering rules, and breaking one is
@@ -79,7 +79,7 @@ an architecture error rather than a typo: `Domain` and `Abstractions` do not ope
 go over the network; `Gateway` knows about a specific agent and channel only in `Program.cs`; the
 backend and the channel know nothing about each other or about `GatewayOptions`; `Infrastructure`
 knows nothing about features (except the `Dispatch` contracts); a feature depends on a feature only
-through a public service (`Settings` → `ChatWorker.IsBusy`).
+through a public service (`Settings` → `ChatWorker.IsBusy(chat)`).
 
 **Adding anything** — the checklists in `docs/en/extending.md`, do not do it from memory: a
 half-registered command or screen either kills startup or cannot be reached from the chat. What
@@ -96,10 +96,22 @@ order: card answer → skill arguments → вопрос text after a bare `/ask`
 `true`, so `ChatModule` is last). Unknown slash commands are Claude Code's own and go to the CLI.
 Buttons: `cfg:` — the menu, anything else — approvals.
 
-`ChatWorker` has two lanes: tasks one at a time, вопросы one at a time, a task and a вопрос **in
-parallel** (two `claude` processes at most). `IsBusy`/`QueueLength` are about tasks only; `/stop`
-stops both lanes. A вопрос is answered as a reply to the user's message (`OutgoingMessage.ReplyTo`)
-and stays out of `RunMonitor`'s current run. Details — `docs/en/architecture.md`, "Two lanes".
+`ChatWorker` has a task lane per chat (the лента and every тема) plus one shared вопрос lane: a
+chat's tasks go one at a time, lanes of different chats and the вопрос lane run **in parallel**, the
+number of `claude` processes is not capped — but only one run per session folder at a time
+(`LockFolderAsync`, taken after the trust card and before the limit check, «⏳ В проекте идёт другой
+запуск»). `IsBusy(chat)`/`QueueLength(chat)` are about that chat's tasks only; `/stop` in a topic
+stops that topic's task, cards and вопрос, `/stop` in the лента stops everything. A вопрос is
+answered as a reply to the user's message (`OutgoingMessage.ReplyTo`) and stays out of
+`RunMonitor`'s current run. Details — `docs/en/architecture.md`, "Lanes".
+
+A Telegram topic is its own `ChatId` (`telegram:123/42`) with its own selection: **every place that
+has a chat reads it through `store.For(chat)`** (`SessionStore.ChatScope`); `store.Feed` only where
+there is no chat (startup, the monitor) — otherwise a topic shows and changes the лента's project. A
+topic's active session is `ActiveSessions["<chat key>|<project>"]`. A topic without a project is a
+«беседа»: its own folder under `SessionStore.TalkRoot`, emptied before every run, `AgentRunRequest.WebOnly`
+(the вопрос's tools, but a session). A new topic (no `TopicState`) shows «Тип темы» instead of
+running. Details — `docs/en/architecture.md`, "Topics".
 
 Pictures go through `AttachmentInbox` into `<data directory>\inbox\<chat>\<project>\`; the run gets
 the chat folder in `--add-dir`. A command wins over a picture: `/stop` works with one attached, the
@@ -130,7 +142,7 @@ A card finds its chat by the **run id**, not by a "current chat": each run gets 
   it there although the process starts in the project. So the branch on every screen and the trust
   gate follow the **session's folder** (`SessionStore.SessionFolder`, kept in
   `SessionRecord.WorkingDirectory` from `init.cwd` and the worktree tools' results), not
-  `store.ProjectPath`. Details — `docs/en/cli-contract.md`, "A session in a worktree".
+  `store.For(chat).ProjectPath`; the folder lock too. Details — `docs/en/cli-contract.md`, "A session in a worktree".
 - `--bare` is not allowed: it does not read `~/.claude` and breaks the subscription OAuth login.
 - `--allowedTools` holds only `mcp__tg__send_file`: its policy belongs to the gateway. Do not add
   other tools there — that bypasses the cards past the machine's config.
@@ -164,8 +176,9 @@ from `ValidateStartup`, not by `GatewayOptions.Validate` (the agent is not chose
 
 ### Sessions, state, audit
 
-Sessions are keyed by the **normalized project path**. A chat **project** equal to the config is
-stored as `null` (`SessionStore.SetProjectPath`), or a config edit would be silently overridden;
+Sessions are keyed by the **normalized project path** (a topic's — by `<chat key>|<path>`). A лента
+**project** equal to the config is stored as `null` (`ChatScope.SetProjectPath`), or a config edit
+would be silently overridden — a topic always stores the full path, its `null` is a беседа;
 model, effort and mode are stored as picked until «по умолчанию»/«из конфига» or `reset` clears them.
 State, secrets and
 the `audit\` journal live in `%LOCALAPPDATA%\AgentsTracker\`; config layers end with the `Gateway__*`

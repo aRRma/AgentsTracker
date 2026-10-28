@@ -45,11 +45,12 @@ src/AgentsTracker.Gateway/
                         Container.Detected (in a container `install` refuses, and startup warns if `MonitorBind` does not fit: there it must be `any`)
   Features/             vertical slices, each with its own *Module
     Approvals/          ApprovalBroker, ApprovalCardRenderer, OperatorConsole, /rules
-    Chat/               ChatWorker (two lanes), RunStatusMessage, /new /stop, AttachmentInbox (pictures from the chat),
+    Chat/               ChatWorker (a lane per chat, the folder lock), RunStatusMessage, /new /stop, AttachmentInbox (pictures from the chat),
                         ProjectTrustGate («Доверять проекту?» before a task's run)
     Settings/           SettingsMenuCoordinator + Screens/*, SkillLauncher, PendingConfirmations (the second press for irreversible buttons),
                         /menu /settings /status /sessions /agent /model /effort /mode /skills /project /usage
     Question/           /ask and the «Задать вопрос» buttons: a one-off run with no session (QuestionLauncher)
+    Topics/             «Тип темы» (TopicScreen), /topic and the text of a new topic (TopicHandler)
     Help/ Audit/ Monitor/   /start /help; /audit; the web page (index.html — EmbeddedResource) and /api/*
 ```
 
@@ -57,7 +58,7 @@ Layering rules (also in CLAUDE.md — breaking one is an architecture error, not
 `Abstractions` do not open files and do not go over the network; `Gateway` knows a specific agent
 and channel only in `Program.cs`; the backend and the channel know nothing about each other or
 `GatewayOptions`; `Infrastructure` knows nothing about features (except the `Dispatch` contracts); a
-feature depends on a feature only through a public service (`Settings` → `ChatWorker.IsBusy`).
+feature depends on a feature only through a public service (`Settings` → `ChatWorker.IsBusy(chat)`).
 
 ## How a message travels
 
@@ -68,7 +69,8 @@ is a rejection too). Text is processed in order:
    go to a waiting free-form answer and nothing could interrupt a stuck run;
 2. the `IChatTextHandler` chain in module order: an answer to a card (`ApprovalTextHandler`) →
    skill arguments (`SkillArgumentsTextHandler`) → the text of a вопрос after a bare `/ask` or the
-   «Задать вопрос» button (`QuestionTextHandler`) → the agent's queue (`ChatEnqueueTextHandler`, always
+   «Задать вопрос» button (`QuestionTextHandler`) → in a topic with no type yet, the «Тип темы»
+   screen instead of a run (`TopicHandler`) → the agent's queue (`ChatEnqueueTextHandler`, always
    `true`). That is why `ChatModule` is last. Unknown slash commands are Claude Code's own and go to
    the CLI.
 
@@ -92,21 +94,38 @@ goes through `ApprovalBroker` under its own short-lived `RunScope` (so `/stop` w
 project is re-read after the card: if `/project` changed meanwhile, the new one is checked too. Why —
 `cli-contract.md`, "Project settings and the trust dialog".
 
-### Two lanes: a task and a вопрос in parallel
+### Lanes: chats, topics and a вопрос in parallel
 
-`ChatWorker` has two lanes, each with its own queue and `CancellationTokenSource`: tasks (and
-`/context`, `/compact`) one at a time, вопросы (`AgentRunKind.Question`) one at a time, and a task
-runs **in parallel** with a вопрос — otherwise a вопрос, asked precisely so as not to wait, would
-wait for a long task. Never more than two agent processes at once.
+`ChatWorker` has a task lane per chat — the лента and every тема (`ChatId.Key`), created with the
+chat's first task — and one shared вопрос lane. Each has its own queue and
+`CancellationTokenSource`. A chat's tasks (and `/context`, `/compact`) go one at a time; lanes of
+different chats and the вопрос lane run **in parallel** — otherwise a вопрос, asked precisely so as
+not to wait, would wait for a long task, and a topic would wait for another topic's project. The
+number of agent processes is not capped.
 
-- `IsBusy`/`QueueLength` are about tasks only: the menu, a session switch and «Сжать» do not wait
-  for a вопрос. `IsAnswering`/`QuestionQueueLength` — for the status line.
-- `/stop` (`ChatWorker.Stop`) interrupts both lanes and calls `ApprovalBroker.CancelAll`.
+- **One run per folder.** `LockFolderAsync` keeps a `SemaphoreSlim` per normalized folder: the
+  session's folder (a worktree the agent moved it to), not the project, because that is what the
+  agent edits. The lock is taken right after the trust loop — the card waits outside it, up to a
+  quarter of an hour — and before the model, the limit and the session refresh: a long wait would
+  make them stale, and on a limit exhausted meanwhile the CLI would go to credits. A waiting run
+  says «⏳ В проекте идёт другой запуск…». The lane's token is set before the wait, so `/stop`
+  interrupts the wait too. The lock is released after the session and usage are recorded, before
+  the answer is sent.
+- `IsBusy(chat)`/`QueueLength(chat)` are about that chat's tasks only: the menu, a session switch
+  and «Сжать» do not wait for a вопрос. `AnyBusy` — for the monitor. `IsAnswering`/`QuestionQueueLength`
+  — for the status line.
+- `/stop` (`ChatWorker.Stop(chat)`) in a topic interrupts that topic's lane, its cards
+  (`ApprovalBroker.Cancel(chat)`) and the вопрос if it came from that topic (`Lane.Chat`). `/stop` in
+  the лента interrupts everything, as before topics.
 - A limit refusal, `RateLimited` or a declined trust drains only its own lane: the вопрос has its
-  own model, and the other lane checks the limit before its own run anyway.
-- A вопрос stays out of `RunMonitor` (the current run and the queue there are the task's) but is in
-  the run history and the journal. `state.json` keeps the task in `ActiveRun` and the вопрос in
-  `ActiveQuestion`; after a restart `StartupNotice` reports both.
+  own model, and the other lanes check the limit before their own runs anyway. The вопрос lane is
+  shared, so every chat whose вопросы were dropped is told.
+- A вопрос stays out of `RunMonitor` (the current run and the queue there are tasks') but is in
+  the run history and the journal. The monitor shows one run — the first of those in progress
+  (`RunStarted` returns whether it took the slot); the queue there is approximate. `state.json` keeps
+  tasks in `ActiveRuns` (by chat key; the old single `ActiveRun` is still read once after an update)
+  and the вопрос in `ActiveQuestion`; after a restart `StartupNotice` reports them all, a topic gets
+  only its «прервано», «запущен» goes to the лента.
 - A вопрос is answered as a **reply** to the user's message: «Вопрос принят», the status, every part
   of the answer, its cards and files. The path: `IncomingMessage.Message` → `QueuedPrompt.ReplyTo` →
   `OutgoingMessage.ReplyTo` and the `replyTo` parameter of the channel's file methods. Telegram sends
@@ -169,14 +188,45 @@ Sessions are keyed by the **normalized project path** (`ProjectCatalog.Normalize
 issues the id of a new one (`--session-id`) and resets it only on `SessionLost` from the CLI
 (`cli-contract.md`).
 
-The chat-side selection (`SessionStore`) sits on top of the config: `EffectiveModel`,
-`EffectivePermissionMode`, `EffectiveEffort`, `ProjectPath`. A project equal to the config is stored as
-`null` (`SetProjectPath`): otherwise a config edit would be silently overridden by an old selection.
+The chat-side selection sits on top of the config and belongs to a chat: `store.For(chat)` returns a
+`SessionStore.ChatScope` with `EffectiveModel`, `EffectivePermissionMode`, `EffectiveEffort`,
+`ProjectPath`, `SessionId` and the setters. `store.Feed` is the лента's selection for places without
+a chat (startup, the monitor); where a chat is known, only `For(chat)` — otherwise a topic would show
+and change the лента's project. For the лента a project equal to the config is stored as `null`
+(`SetProjectPath`): otherwise a config edit would be silently overridden by an old selection.
 The model, effort and mode are stored as picked, and the «по умолчанию» / «из конфига» buttons (or
 `reset`) put `null` back. The model is stored as the alias that goes to the agent (`opus`), but a
 person always sees it through
 `SessionStore.ModelLabel` — with the version the alias last answered with (`ModelVersions` in
 `state.json`), else the agent's `Describe`.
+
+### Topics
+
+A Telegram topic in the private chat is its own chat address: `TelegramChatId(Value, Thread)`, the
+key `telegram:123/42` (old keys without `/` still parse). The channel takes the thread from
+`IsTopicMessage ? MessageThreadId : null` of the message or of the pressed button's message and
+passes it to every send, so answers, cards, files and the status land in their topic by themselves.
+A reply to the topic's service «тема создана» message is not a reply (`ReplyToMessage.MessageId ==
+Thread`). A button on an inaccessible message (date 0) knows no thread and is `ChatKind.Unknown`.
+A topic deleted in the client sends nothing; sending to it gives «message thread not found»
+(`ChannelFailure.CannotReach`).
+
+The лента keeps the old root fields of `GatewayState`; a topic has a `TopicState` in
+`GatewayState.Topics` with the same `IChatSelection` shape. A topic's `ProjectPath` is always the full
+path: `null` there means «беседа», not «the config project». A topic with no record is new: its
+text opens «Тип темы» (`TopicHandler`) instead of a run, and a command in it works as in a беседа,
+so it cannot touch somebody else's project; the first write (a type, `/project`, `/model`…) creates
+the record. A topic's active session lives in `ActiveSessions` under `<chat key>|<project>`: two
+topics on one project keep different sessions, and switching a topic's project back returns to its
+session there. «Очистить» on «Сессии» drops the project's records except those active in other chats.
+
+A беседа runs in its own folder `SessionStore.TalkRoot\<chat key>` (`%TEMP%\AgentsTracker-talk`),
+emptied before each run, before the trust check, like the вопрос folder; `--resume` finds the session
+by the folder path, not its contents. The run carries `AgentRunRequest.WebOnly`: the backend gives it
+the вопрос's tools (`--tools WebSearch,WebFetch --strict-mcp-config`), for `/context` and `/compact`
+too, but keeps the session. No `--add-dir`, pictures are refused before download. The default model
+and effort are `Gateway:Question`. Whether a run is a беседа is decided by its final folder
+(`IsTalkFolder`), not by the topic at enqueue time: the topic may get a project while the task waits.
 
 ### Context and run kinds
 
