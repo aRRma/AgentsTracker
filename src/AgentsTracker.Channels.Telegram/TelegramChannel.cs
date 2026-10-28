@@ -321,15 +321,17 @@ public sealed class TelegramChannel(
     /// <summary>
     /// У callback-а сообщения может не быть (старое или недоступно боту), и тогда тип чата
     /// неизвестен. Отдаём <see cref="ChatKind.Unknown"/>, а не «личный»: иначе кнопка
-    /// из группы прошла бы в обход проверки.
+    /// из группы прошла бы в обход проверки. Недоступное сообщение (Bot API шлёт его с датой 0)
+    /// не знает и темы — нажатие из темы ушло бы в ленту и поменяло бы её проект, поэтому оно
+    /// тоже неизвестного чата.
     /// </summary>
     private static ButtonPress ToPress(CallbackQuery callback)
     {
-        var chat = callback.Message?.Chat;
-        var chatId = callback.Message is Message accessible ? ChatOf(accessible) : new TelegramChatId(chat?.Id ?? callback.From.Id);
+        var accessible = callback.Message is { } sent && sent.Date > DateTime.UnixEpoch ? sent : null;
+        var chatId = accessible is null ? new TelegramChatId(callback.Message?.Chat.Id ?? callback.From.Id) : ChatOf(accessible);
         var message = callback.Message is { } m ? new MessageRef(chatId, MessageIdOf(m.MessageId)) : null;
 
-        return new ButtonPress(callback.Id, chatId, new TelegramUserId(callback.From.Id), callback.Data ?? "", message, Kind(chat));
+        return new ButtonPress(callback.Id, chatId, new TelegramUserId(callback.From.Id), callback.Data ?? "", message, Kind(accessible?.Chat));
     }
 
     private static ChatKind Kind(Chat? chat) => chat switch
