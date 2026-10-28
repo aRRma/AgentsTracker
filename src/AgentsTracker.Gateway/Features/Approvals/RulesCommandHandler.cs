@@ -25,12 +25,13 @@ public sealed class RulesCommandHandler(IChatChannel channel, SessionStore store
     private string Manage(ChatCommandContext context)
     {
         var argument = context.Argument;
-        var rules = store.AlwaysAllowRules();
-        var project = Path.GetFileName(store.ProjectPath);
+        var scope = store.For(context.Chat);
+        var rules = scope.AlwaysAllowRules();
+        var project = Path.GetFileName(scope.ProjectPath);
 
         if (argument.Equals("clear", StringComparison.OrdinalIgnoreCase))
         {
-            var removed = store.ClearAlwaysAllow();
+            var removed = scope.ClearAlwaysAllow();
             if (removed > 0) Audit(context, $"clear ({removed})");
             return removed == 0
                 ? $"Правил «всегда» в {project} и не было."
@@ -45,7 +46,7 @@ public sealed class RulesCommandHandler(IChatChannel channel, SessionStore store
                 return $"Нужен номер правила из списка /rules (1..{rules.Count}).";
 
             var signature = rules[index - 1];
-            store.RemoveAlwaysAllow(signature);
+            scope.RemoveAlwaysAllow(signature);
             Audit(context, $"del {signature}");
             return $"♾ Снято: {Shorten(signature)}";
         }
@@ -80,7 +81,7 @@ public sealed class RulesCommandHandler(IChatChannel channel, SessionStore store
     }
 
     private void Audit(ChatCommandContext context, string summary) =>
-        audit.Write(AuditEvent.Now(AuditKinds.Rules, summary, context.User, context.Chat, store.ProjectPath, outcome: "gateway"));
+        audit.Write(AuditEvent.Now(AuditKinds.Rules, summary, context.User, context.Chat, store.For(context.Chat).ProjectPath, outcome: "gateway"));
 
     private static string Shorten(string text) => Text.Clip(text, RuleDisplayLimit);
 }

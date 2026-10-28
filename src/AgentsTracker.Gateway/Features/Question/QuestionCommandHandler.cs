@@ -14,7 +14,7 @@ public sealed class QuestionCommandHandler(
     {
         if (context.Argument.Length == 0)
         {
-            await channel.SendAsync(context.Chat, new OutgoingMessage(Prompt(context.User), Rich: false), ct);
+            await channel.SendAsync(context.Chat, new OutgoingMessage(Prompt(context.Chat), Rich: false), ct);
             return;
         }
 
@@ -22,14 +22,14 @@ public sealed class QuestionCommandHandler(
         await channel.SendAsync(context.Chat, new OutgoingMessage(accepted, Rich: false, ReplyTo: context.Message), ct);
     }
 
-    private string Prompt(UserId user)
+    private string Prompt(ChatId chat)
     {
         if (launcher.Refusal is { } refusal) return refusal;
 
         // Как и у кнопки «Задать вопрос»: иначе следующий текст мог достаться ожиданию аргументов
         // скилла (тот в цепочке раньше) — вопрос пропал бы, а скилл ушёл бы с ним аргументом.
-        skills.Cancel(user);
-        launcher.Expect(user);
+        skills.Cancel(chat);
+        launcher.Expect(chat);
         return Invitation(options.Value.Question.Model);
     }
 

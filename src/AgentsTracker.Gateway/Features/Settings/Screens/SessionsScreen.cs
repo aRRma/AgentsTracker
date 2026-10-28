@@ -19,23 +19,24 @@ public sealed class SessionsScreen(
 
     public string? Apply(string argument, UserId user, ChatId chat)
     {
-        var project = store.ProjectPath;
-        var previous = store.SessionId;
+        var scope = store.For(chat);
+        var project = scope.ProjectPath;
+        var previous = scope.SessionId;
 
         if (argument == "new")
         {
-            store.SetSessionId(null);
+            scope.SetSessionId(null);
 
             // Как и /new: прошлый контекст забыт, картинки к нему больше не нужны.
             inbox.ClearSession(chat, project);
 
-            audit.Changed(store, user, "session", previous, "новая");
+            audit.Changed(scope, user, "session", previous, "новая");
             return "Следующее сообщение начнёт новую сессию";
         }
 
         if (argument == "stop")
         {
-            var stopped = worker.Stop();
+            var stopped = worker.Stop(chat);
             audit.Write(AuditEvent.Now(AuditKinds.Gateway, "/stop", user, chat, project, previous,
                 stopped ? "stopped" : "idle"));
             return stopped ? "Остановлено" : "Сейчас ничего не выполняется";
@@ -43,8 +44,8 @@ public sealed class SessionsScreen(
 
         if (argument == "clear")
         {
-            var removed = store.ForgetSessions(project);
-            if (removed > 0) audit.Changed(store, user, "sessions", $"{removed}", "очищено");
+            var removed = scope.ForgetSessions();
+            if (removed > 0) audit.Changed(scope, user, "sessions", $"{removed}", "очищено");
             return removed == 0 ? "Список и так пуст" : $"Забыто сессий: {removed}";
         }
 
@@ -53,24 +54,25 @@ public sealed class SessionsScreen(
         var session = store.SessionsFor(project).FirstOrDefault(s => s.Id.ShortId == argument);
         if (session is null) return "Сессии уже нет в списке";
 
-        store.SetSessionId(session.Id);
-        audit.Changed(store, user, "session", previous?.ShortId, session.Id.ShortId);
-        return worker.IsBusy ? "Сессия сменится со следующего запуска" : "Сессия выбрана";
+        scope.SetSessionId(session.Id);
+        audit.Changed(scope, user, "session", previous?.ShortId, session.Id.ShortId);
+        return worker.IsBusy(chat) ? "Сессия сменится со следующего запуска" : "Сессия выбрана";
     }
 
-    public Task<(string Html, Keyboard Keyboard)> RenderAsync(UserId user, CancellationToken ct) =>
-        Task.FromResult(Render());
+    public Task<(string Html, Keyboard Keyboard)> RenderAsync(ChatId chat, CancellationToken ct) =>
+        Task.FromResult(Render(chat));
 
-    private (string Html, Keyboard Keyboard) Render()
+    private (string Html, Keyboard Keyboard) Render(ChatId chat)
     {
-        var project = store.ProjectPath;
-        var active = store.SessionId;
+        var scope = store.For(chat);
+        var project = scope.ProjectPath;
+        var active = scope.SessionId;
         var sessions = store.SessionsFor(project).Take(MaxShown).ToArray();
         var current = sessions.FirstOrDefault(s => s.Id == active);
-        var busy = worker.IsBusy;
+        var busy = worker.IsBusy(chat);
 
         var now = busy
-            ? $"🟢 <b>Выполняется</b>{(current is null ? "" : $" в «{E(current.Title)}»")}, в очереди: {worker.QueueLength}"
+            ? $"🟢 <b>Выполняется</b>{(current is null ? "" : $" в «{E(current.Title)}»")}, в очереди: {worker.QueueLength(chat)}"
             : current is null
                 ? "⚪ Активной сессии нет — следующее сообщение начнёт новую"
                 : $"▶ Активна: <b>{E(current.Title)}</b>";
@@ -82,7 +84,7 @@ public sealed class SessionsScreen(
                 $"   {s.Turns} х · {E(s.LastActivityUtc.Ago)}{Context(s)}"));
 
         var html = $"""
-            🧵 <b>Сессии</b> — {E(Path.GetFileName(project))}
+            🧵 <b>Сессии</b> — {E(scope.IsTalk ? "беседа" : Path.GetFileName(project))}
 
             {now}
 

@@ -21,16 +21,16 @@ public sealed class UsageScreen(SessionStore store, IAgentLimits limits, IAuditL
         if (argument != "reset") return null;
 
         store.ResetUsage();
-        audit.Changed(store, user, "usage", "расход", "обнулён");
+        audit.Changed(store.For(chat), user, "usage", "расход", "обнулён");
         return "Расход обнулён";
     }
 
-    public async Task<(string Html, Keyboard Keyboard)> RenderAsync(UserId user, CancellationToken ct)
+    public async Task<(string Html, Keyboard Keyboard)> RenderAsync(ChatId chat, CancellationToken ct)
     {
         var usage = store.Snapshot().Usage;
         var total = usage.Total;
 
-        var plan = await limits.ViewAsync(store.EffectiveModel, ct);
+        var plan = await limits.ViewAsync(store.For(chat).EffectiveModel, ct);
 
         var days = usage.ByDay
             .OrderByDescending(pair => pair.Key, StringComparer.Ordinal)

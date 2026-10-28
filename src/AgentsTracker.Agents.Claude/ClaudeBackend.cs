@@ -426,14 +426,8 @@ public sealed class ClaudeBackend(
         if (request.Kind == AgentRunKind.Question)
         {
             // Вопрос не пишется на диск: в списке сессий он был бы мусором, который
-            // не продолжить. Встроенные инструменты — только поиск в сети: файлы машины
-            // вопросу ни к чему, а без Bash и Edit ему нечего и спрашивать через карточки.
-            // Чужие MCP-серверы из настроек пользователя не грузим — их описания съели бы
-            // десятки тысяч токенов контекста на каждый вопрос.
+            // не продолжить.
             yield return "--no-session-persistence";
-            yield return "--tools";
-            yield return "WebSearch,WebFetch";
-            yield return "--strict-mcp-config";
         }
         else if (resumedSessionId is not null)
         {
@@ -444,6 +438,17 @@ public sealed class ClaudeBackend(
         {
             yield return "--session-id";
             yield return sessionId;
+        }
+
+        // Встроенные инструменты вопроса и беседы — только поиск в сети: файлы машины им ни к
+        // чему, а без Bash и Edit им нечего и спрашивать через карточки. Чужие MCP-серверы из
+        // настроек пользователя не грузим — их описания съели бы десятки тысяч токенов
+        // контекста на каждый запуск.
+        if (request.Kind == AgentRunKind.Question || request.WebOnly)
+        {
+            yield return "--tools";
+            yield return "WebSearch,WebFetch";
+            yield return "--strict-mcp-config";
         }
 
         yield return "--permission-prompt-tool";

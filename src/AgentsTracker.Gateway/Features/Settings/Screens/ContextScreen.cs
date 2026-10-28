@@ -22,11 +22,12 @@ public sealed class ContextScreen(
 
     public string Key => "ctx";
 
-    public void Open(UserId user) => _confirmations.Cancel(user);
+    public void Open(ChatId chat) => _confirmations.Cancel(chat);
 
     public string? Apply(string argument, UserId user, ChatId chat)
     {
-        var session = store.SessionId;
+        var scope = store.For(chat);
+        var session = scope.SessionId;
 
         switch (argument)
         {
@@ -37,29 +38,29 @@ public sealed class ContextScreen(
 
             case NewSession or Compact:
                 if (session is null) return "Активной сессии нет — следующее сообщение и так начнёт новую";
-                if (argument == Compact && worker.IsBusy) return "Идёт запуск — сжать можно, когда он закончится";
+                if (argument == Compact && worker.IsBusy(chat)) return "Идёт запуск — сжать можно, когда он закончится";
 
                 // Сессию запоминаем вместе с вопросом: если её сменят до «Да», подтверждение
                 // не сработает по чужой ветке.
-                _confirmations.Ask(user, argument, session);
+                _confirmations.Ask(chat, argument, session);
                 return null;
 
             case "no":
-                _confirmations.Cancel(user);
+                _confirmations.Cancel(chat);
                 return null;
 
             case "yes:" + NewSession:
-                if (session is null || !_confirmations.TryConfirm(user, NewSession, session)) return Stale;
+                if (session is null || !_confirmations.TryConfirm(chat, NewSession, session)) return Stale;
 
-                store.SetSessionId(null);
+                scope.SetSessionId(null);
                 // Как и /new: прошлый контекст забыт, картинки к нему больше не нужны.
-                inbox.ClearSession(chat, store.ProjectPath);
-                audit.Changed(store, user, "session", session.ShortId, "новая");
+                inbox.ClearSession(chat, scope.ProjectPath);
+                audit.Changed(scope, user, "session", session.ShortId, "новая");
                 return "🆕 Следующее сообщение начнёт новую сессию";
 
             case "yes:" + Compact:
-                if (!_confirmations.TryConfirm(user, Compact, session)) return Stale;
-                if (worker.IsBusy) return "Идёт запуск — сжать можно, когда он закончится";
+                if (!_confirmations.TryConfirm(chat, Compact, session)) return Stale;
+                if (worker.IsBusy(chat)) return "Идёт запуск — сжать можно, когда он закончится";
 
                 return Enqueue(chat, user, AgentRunKind.Compact, "контекст: сжать",
                     "🗜 Сжатие запущено — итог придёт сообщением");
@@ -73,27 +74,28 @@ public sealed class ContextScreen(
 
     private string Enqueue(ChatId chat, UserId user, AgentRunKind kind, string label, string reply)
     {
-        audit.Write(AuditEvent.Now(AuditKinds.Message, label, user, chat, store.ProjectPath, store.SessionId));
+        var scope = store.For(chat);
+        audit.Write(AuditEvent.Now(AuditKinds.Message, label, user, chat, scope.ProjectPath, scope.SessionId));
 
         // Занятость проверяется до постановки в очередь — как в ChatEnqueueTextHandler.
-        var wasBusy = worker.IsBusy;
+        var wasBusy = worker.IsBusy(chat);
         worker.Enqueue(chat, user, label, kind);
         return wasBusy ? "📥 В очереди — отвечу, как освобожусь" : reply;
     }
 
-    public Task<(string Html, Keyboard Keyboard)> RenderAsync(UserId user, CancellationToken ct) =>
-        Task.FromResult(Render(user));
+    public Task<(string Html, Keyboard Keyboard)> RenderAsync(ChatId chat, CancellationToken ct) =>
+        Task.FromResult(Render(chat));
 
-    private (string Html, Keyboard Keyboard) Render(UserId user)
+    private (string Html, Keyboard Keyboard) Render(ChatId chat)
     {
-        var project = store.ProjectPath;
-        var active = store.SessionId;
+        var scope = store.For(chat);
+        var active = scope.SessionId;
         var session = store.Session(active);
 
-        if (active is not null && _confirmations.Asked(user) is { } asked)
+        if (active is not null && _confirmations.Asked(chat) is { } asked)
             return Confirmation(asked, session);
 
-        var title = $"📦 <b>Контекст</b> — {E(Path.GetFileName(project))}";
+        var title = $"📦 <b>Контекст</b> — {E(scope.IsTalk ? "беседа" : Path.GetFileName(scope.ProjectPath))}";
 
         if (active is null)
         {
@@ -111,7 +113,7 @@ public sealed class ContextScreen(
 
             🧵 Сессия: <b>{E(name)}</b>
             {Fill(session)}
-            🧊 Кэш: {Cache(session, Mismatch(store, agent, session))}
+            🧊 Кэш: {Cache(session, Mismatch(store, scope, agent, session))}
 
             <i>«Подробно» — из чего состоит контекст. «Сжать» — агент перескажет разговор кратко, сессия останется та же. «Новая сессия» — начать с чистого листа.</i>
             """;
@@ -163,10 +165,10 @@ public sealed class ContextScreen(
     }
 
     /// <summary>Выбор в меню против модели и режима, на которых записан кэш активной сессии.</summary>
-    internal static bool Mismatch(SessionStore store, IAgentBackend agent, SessionRecord? session) =>
+    internal static bool Mismatch(SessionStore store, SessionStore.ChatScope scope, IAgentBackend agent, SessionRecord? session) =>
         CacheGuard.Mismatch(session,
-            store.ModelLabel(store.EffectiveModel, agent.Capabilities.Model),
-            CacheGuard.ModeScope(agent.Capabilities, store.EffectivePermissionMode));
+            store.ModelLabel(scope.EffectiveModel, agent.Capabilities.Model),
+            CacheGuard.ModeScope(agent.Capabilities, scope.EffectivePermissionMode));
 
     /// <summary>Лампа и процент для строки списка; пусто, пока замера не было.</summary>
     internal static string Short(SessionRecord session) =>

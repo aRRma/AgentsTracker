@@ -28,16 +28,17 @@ public sealed class AgentScreen(
 
     public string Key => "agent";
 
-    public void Open(UserId user) => _confirmations.Cancel(user);
+    public void Open(ChatId chat) => _confirmations.Cancel(chat);
 
     public string? Apply(string argument, UserId user, ChatId chat)
     {
+        var scope = store.For(chat);
         var now = argument.StartsWith(Now, StringComparison.Ordinal);
         if (now) argument = argument[Now.Length..];
 
         if (argument == "no")
         {
-            _confirmations.Cancel(user);
+            _confirmations.Cancel(chat);
             return null;
         }
 
@@ -46,11 +47,11 @@ public sealed class AgentScreen(
             argument = argument[Yes.Length..];
             // Сессию сверяем с той, о которой спрашивали: после смены сессии «Да» сбросил бы
             // кэш другой ветки, про которую вопроса не было.
-            if (!_confirmations.TryConfirm(user, argument, store.SessionId)) return Stale;
+            if (!_confirmations.TryConfirm(chat, argument, scope.SessionId)) return Stale;
         }
-        else if (!now && CacheWarning(argument) is not null)
+        else if (!now && CacheWarning(argument, chat) is not null)
         {
-            _confirmations.Ask(user, argument, store.SessionId);
+            _confirmations.Ask(chat, argument, scope.SessionId);
             return null;
         }
 
@@ -61,28 +62,28 @@ public sealed class AgentScreen(
 
         return argument[..separator] switch
         {
-            "model" => ApplyModel(value, user),
-            "effort" => ApplyEffort(value, user),
-            "mode" => ApplyMode(value, user),
+            "model" => ApplyModel(value, user, scope),
+            "effort" => ApplyEffort(value, user, scope),
+            "mode" => ApplyMode(value, user, chat, scope),
             _ => null,
         };
     }
 
-    private string ApplyModel(string value, UserId user)
+    private string ApplyModel(string value, UserId user, SessionStore.ChatScope scope)
     {
         var reset = IsReset(value);
         var model = reset ? null : agent.Capabilities.Model.Resolve(value);
         if (!reset && model is null) return "Не знаю такую модель";
 
         var setting = agent.Capabilities.Model;
-        var previous = store.ModelLabel(store.Model, setting);
+        var previous = store.ModelLabel(scope.Model, setting);
         var label = store.ModelLabel(model, setting);
-        store.SetModel(model);
-        audit.Changed(store, user, "model", previous, label);
+        scope.SetModel(model);
+        audit.Changed(scope, user, "model", previous, label);
         return $"Модель: {label ?? "по умолчанию"}";
     }
 
-    private string ApplyEffort(string value, UserId user)
+    private string ApplyEffort(string value, UserId user, SessionStore.ChatScope scope)
     {
         if (agent.Capabilities.Effort is not { } setting) return $"{agent.DisplayName} не поддерживает уровень усилий";
 
@@ -90,20 +91,20 @@ public sealed class AgentScreen(
         var effort = reset ? null : setting.Resolve(value);
         if (!reset && effort is null) return "Не знаю такой уровень";
 
-        var previous = store.Effort;
-        store.SetEffort(effort);
-        audit.Changed(store, user, "effort", previous, effort);
+        var previous = scope.Effort;
+        scope.SetEffort(effort);
+        audit.Changed(scope, user, "effort", previous, effort);
         return $"Effort: {effort ?? "по умолчанию"}";
     }
 
-    private string ApplyMode(string value, UserId user)
+    private string ApplyMode(string value, UserId user, ChatId chat, SessionStore.ChatScope scope)
     {
-        var previous = store.EffectivePermissionMode;
+        var previous = scope.EffectivePermissionMode;
 
         if (IsReset(value))
         {
-            store.SetPermissionMode(null);
-            audit.Changed(store, user, "mode", previous, options.Value.PermissionMode);
+            scope.SetPermissionMode(null);
+            audit.Changed(scope, user, "mode", previous, options.Value.PermissionMode);
             return $"Режим: {options.Value.PermissionMode} (из конфига)";
         }
 
@@ -114,9 +115,9 @@ public sealed class AgentScreen(
 
         if (mode == previous) return $"Уже {mode}";
 
-        store.SetPermissionMode(mode);
-        audit.Changed(store, user, "mode", previous, mode);
-        return worker.IsBusy
+        scope.SetPermissionMode(mode);
+        audit.Changed(scope, user, "mode", previous, mode);
+        return worker.IsBusy(chat)
             ? $"Режим: {mode} — со следующего запуска"
             : $"Режим: {mode}";
     }
@@ -128,7 +129,7 @@ public sealed class AgentScreen(
     /// смены: после неё «сейчас» уже другое, и сравнивать не с чем.
     /// </summary>
     /// <param name="argument">Нажатие или команда: «model:opus», «mode:plan», «mode:reset».</param>
-    internal string? CacheWarning(string argument)
+    internal string? CacheWarning(string argument, ChatId chat)
     {
         var separator = argument.IndexOf(':');
         if (separator < 0) return null;
@@ -136,9 +137,10 @@ public sealed class AgentScreen(
         var kind = argument[..separator];
         var value = argument[(separator + 1)..];
         var caps = agent.Capabilities;
+        var scope = store.For(chat);
 
-        var fromModel = store.ModelLabel(store.EffectiveModel, caps.Model);
-        var fromMode = CacheGuard.ModeScope(caps, store.EffectivePermissionMode);
+        var fromModel = store.ModelLabel(scope.EffectiveModel, caps.Model);
+        var fromMode = CacheGuard.ModeScope(caps, scope.EffectivePermissionMode);
         string? toModel = fromModel;
         var toMode = fromMode;
 
@@ -158,7 +160,7 @@ public sealed class AgentScreen(
                 return null;
         }
 
-        var session = store.Session(store.SessionId);
+        var session = store.Session(scope.SessionId);
         if (!CacheGuard.WillReset(session, fromModel, toModel, fromMode, toMode)) return null;
 
         return $"Кэш сессии жив до {session!.CacheUntilUtc!.Value.Clock}. После смены следующий запуск "
@@ -166,10 +168,10 @@ public sealed class AgentScreen(
                + "лимита тарифа, чем обычный шаг. Дешевле сменить в начале новой сессии.";
     }
 
-    public Task<(string Html, Keyboard Keyboard)> RenderAsync(UserId user, CancellationToken ct) =>
-        Task.FromResult(_confirmations.Asked(user) is { } asked && CacheWarning(asked) is { } warning
+    public Task<(string Html, Keyboard Keyboard)> RenderAsync(ChatId chat, CancellationToken ct) =>
+        Task.FromResult(_confirmations.Asked(chat) is { } asked && CacheWarning(asked, chat) is { } warning
             ? Confirmation(asked, warning)
-            : Render());
+            : Render(store.For(chat)));
 
     private static (string Html, Keyboard Keyboard) Confirmation(string asked, string warning)
     {
@@ -184,12 +186,12 @@ public sealed class AgentScreen(
         return (html, new Keyboard([[Button("✅ Да, сменить", $"agent:{Yes}{asked}"), Button("↩️ Нет", "agent:no")]]));
     }
 
-    private (string Html, Keyboard Keyboard) Render()
+    private (string Html, Keyboard Keyboard) Render(SessionStore.ChatScope scope)
     {
         var caps = agent.Capabilities;
-        var model = store.EffectiveModel;
-        var effort = store.EffectiveEffort;
-        var mode = store.EffectivePermissionMode;
+        var model = scope.EffectiveModel;
+        var effort = scope.EffectiveEffort;
+        var mode = scope.EffectivePermissionMode;
 
         var effortLine = caps.Effort is { } setting
             ? $"\n🎚 Effort: <b>{E(effort is null ? "по умолчанию" : setting.Describe(effort))}</b>"
@@ -223,7 +225,7 @@ public sealed class AgentScreen(
         }
 
         rows.AddRange(Group("🔐", caps.PermissionMode, mode, "mode", 2));
-        rows.Add([Button($"🔐 {Marker(store.PermissionMode is null)} из конфига ({options.Value.PermissionMode})", "agent:mode:reset")]);
+        rows.Add([Button($"🔐 {Marker(scope.PermissionMode is null)} из конфига ({options.Value.PermissionMode})", "agent:mode:reset")]);
 
         rows.Add([BackButton]);
 

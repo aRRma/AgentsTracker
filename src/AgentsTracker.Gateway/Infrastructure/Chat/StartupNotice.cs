@@ -25,7 +25,7 @@ public sealed class StartupNotice(
         // Версия шлюза рядом с версией агента: после «распакуйте архив поверх» это
         // единственный способ из чата убедиться, что поднялась новая сборка.
         var started = $"🔌 Шлюз запущен {AppVersion.Current} — {agent.DisplayName}{version}, "
-                      + $"проект {Path.GetFileName(store.ProjectPath)}.";
+                      + $"проект {Path.GetFileName(store.Feed.ProjectPath)}.";
 
         // Потерю состояния видно сразу, а не когда не найдётся сессия или карточка доверия
         // придёт к проекту, которому уже доверяли.
@@ -52,10 +52,11 @@ public sealed class StartupNotice(
             await SendQuietlyAsync(chat, string.Join("\n\n", [started, .. mine]), ct);
         }
 
-        // Прерванный запуск шёл в чате, которого в списке разрешённых уже нет или который
-        // канал не смог вычислить. Сказать всё равно надо: ответа там так и не было.
+        // Прерванный запуск шёл в теме или в чате, которого в списке разрешённых уже нет. Сказать
+        // всё равно надо: ответа там так и не было. В тему — только «прервано»: «запущен» уже
+        // ушёл в ленту, и в каждой теме он был бы повтором.
         foreach (var (chat, texts) in notices)
-            await SendQuietlyAsync(chat, string.Join("\n\n", [started, .. texts]), ct);
+            await SendQuietlyAsync(chat, string.Join("\n\n", chat.IsTopic ? texts : [started, .. texts]), ct);
     }
 
     private static string Interrupted(ActiveRun run)

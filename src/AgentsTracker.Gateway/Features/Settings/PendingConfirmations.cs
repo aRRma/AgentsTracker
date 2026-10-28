@@ -17,27 +17,28 @@ internal sealed class PendingConfirmations
 
     private sealed record Pending(string Action, string? Scope, DateTimeOffset AskedUtc);
 
-    // По пользователю, а не общим полем: экраны — синглтоны, а разрешённых бывает несколько.
-    private readonly ConcurrentDictionary<UserId, Pending> _byUser = new();
+    // По чату, а не общим полем: экраны — синглтоны, а чатов много — у каждого разрешённого и
+    // у каждой темы. Вопрос из одной темы не должен всплыть в меню другой.
+    private readonly ConcurrentDictionary<ChatId, Pending> _byChat = new();
 
-    public void Ask(UserId user, string action, string? scope) =>
-        _byUser[user] = new Pending(action, scope, DateTimeOffset.UtcNow);
+    public void Ask(ChatId chat, string action, string? scope) =>
+        _byChat[chat] = new Pending(action, scope, DateTimeOffset.UtcNow);
 
-    /// <summary>О чём сейчас спрашиваем пользователя; null — ни о чём или вопрос устарел.</summary>
-    public string? Asked(UserId user) =>
-        _byUser.TryGetValue(user, out var pending) && Fresh(pending) ? pending.Action : null;
+    /// <summary>О чём сейчас спрашиваем в чате; null — ни о чём или вопрос устарел.</summary>
+    public string? Asked(ChatId chat) =>
+        _byChat.TryGetValue(chat, out var pending) && Fresh(pending) ? pending.Action : null;
 
     /// <summary>
     /// Снимает вопрос и говорит, можно ли выполнять: то же действие, та же сессия и не позже
     /// <see cref="Lifetime"/>. Снимаем в любом случае — повторное «Да» не должно сработать.
     /// </summary>
-    public bool TryConfirm(UserId user, string action, string? scope) =>
-        _byUser.TryRemove(user, out var pending)
+    public bool TryConfirm(ChatId chat, string action, string? scope) =>
+        _byChat.TryRemove(chat, out var pending)
         && pending.Action == action
         && string.Equals(pending.Scope, scope, StringComparison.Ordinal)
         && Fresh(pending);
 
-    public void Cancel(UserId user) => _byUser.TryRemove(user, out _);
+    public void Cancel(ChatId chat) => _byChat.TryRemove(chat, out _);
 
     private static bool Fresh(Pending pending) => DateTimeOffset.UtcNow - pending.AskedUtc <= Lifetime;
 }

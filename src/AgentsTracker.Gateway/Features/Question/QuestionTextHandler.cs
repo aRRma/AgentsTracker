@@ -18,7 +18,7 @@ public sealed class QuestionTextHandler(IChatChannel channel, QuestionLauncher l
         // Ожидание остаётся — вопрос пришлют следующим сообщением.
         if (message.Attachments.Count > 0) return false;
 
-        if (!launcher.TryTake(user)) return false;
+        if (!launcher.TryTake(chat)) return false;
 
         var text = message.Text.Trim();
 

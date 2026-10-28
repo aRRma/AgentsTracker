@@ -41,7 +41,7 @@ public sealed class ChatGatewayService(
             return;
         }
 
-        audit.Write(AuditEvent.Now(AuditKinds.Gateway, "старт", project: store.ProjectPath));
+        audit.Write(AuditEvent.Now(AuditKinds.Gateway, "старт", project: store.Feed.ProjectPath));
         await notice.SendAsync(stoppingToken);
 
         try
@@ -65,7 +65,7 @@ public sealed class ChatGatewayService(
             try
             {
                 var bot = await channel.ConnectAsync(stoppingToken);
-                logger.LogInformation("{Channel}: бот {Bot} готов. Проект: {Project}", channel.DisplayName, bot, store.ProjectPath);
+                logger.LogInformation("{Channel}: бот {Bot} готов. Проект: {Project}", channel.DisplayName, bot, store.Feed.ProjectPath);
                 await channel.PublishCommandsAsync(ChatCommandCatalog.Commands, stoppingToken);
                 return true;
             }

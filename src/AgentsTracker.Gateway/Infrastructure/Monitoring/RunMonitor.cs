@@ -67,15 +67,25 @@ public sealed class RunMonitor
     /// <summary>Задача взята из очереди в работу — превью уходит из списка ожидающих.</summary>
     public void Dequeued() => Change(() => { if (_queue.Count > 0) _queue.RemoveAt(0); });
 
-    public void QueueCleared() => Change(_queue.Clear);
-
-    public void RunStarted(RunStart start) => Change(() =>
+    /// <summary>
+    /// Запуск становится текущим, только если другого нет. false — монитор уже показывает чужой
+    /// запуск (темы идут параллельно), и шаги и конец этого слать сюда нельзя: они стёрли бы его.
+    /// </summary>
+    public bool RunStarted(RunStart start)
     {
-        _run = start;
-        _runStartedUtc = DateTimeOffset.UtcNow;
-        _toolCalls = 0;
-        _steps.Clear();
-    });
+        var taken = false;
+        Change(() =>
+        {
+            if (_run is not null) return;
+
+            _run = start;
+            _runStartedUtc = DateTimeOffset.UtcNow;
+            _toolCalls = 0;
+            _steps.Clear();
+            taken = true;
+        });
+        return taken;
+    }
 
     /// <summary>Зовётся из потока чтения stdout — только запоминает, сеть здесь не ходит.</summary>
     public void Step(RunActivity activity) => Change(() =>

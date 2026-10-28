@@ -35,8 +35,11 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
         path.StartsWith(directory + Path.DirectorySeparatorChar,
             OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
-    /// <summary>Текущая папка всегда первая в списке, дальше — по алфавиту.</summary>
-    public IReadOnlyList<string> List(string current)
+    /// <summary>
+    /// Текущая папка всегда первая в списке, дальше — по алфавиту. null — текущей нет (беседа):
+    /// её временная папка проектом не станет.
+    /// </summary>
+    public IReadOnlyList<string> List(string? current)
     {
         var found = new List<string>();
 
@@ -49,6 +52,7 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
         }
 
         found.Sort(StringComparer.OrdinalIgnoreCase);
+        if (current is null) return found;
 
         // Текущую папку могли выбрать до правки конфига: без этого она пропала бы
         // из списка, и вернуться к ней стало бы нечем.
@@ -65,11 +69,11 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
     /// <see cref="List"/> сохраняется, текущая папка и её группа идут первыми — иначе
     /// её пришлось бы искать перелистыванием.
     /// </summary>
-    public IReadOnlyList<ProjectGroup> Grouped(string current) =>
+    public IReadOnlyList<ProjectGroup> Grouped(string? current) =>
         [.. List(current)
             .GroupBy(GroupOf, StringComparer.OrdinalIgnoreCase)
             .Select(group => new ProjectGroup(group.Key, [.. group]))
-            .OrderBy(group => group.Projects.Any(p => Same(p, current)) ? 0 : 1)
+            .OrderBy(group => current is not null && group.Projects.Any(p => Same(p, current)) ? 0 : 1)
             .ThenBy(group => group.Name, StringComparer.OrdinalIgnoreCase)];
 
     /// <summary>

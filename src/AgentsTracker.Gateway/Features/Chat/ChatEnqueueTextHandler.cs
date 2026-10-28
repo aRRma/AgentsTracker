@@ -14,8 +14,18 @@ public sealed class ChatEnqueueTextHandler(
     public async Task<bool> TryHandleAsync(IncomingMessage message, CancellationToken ct)
     {
         var (chat, user) = (message.Chat, message.User);
+        var scope = store.For(chat);
 
-        var attachments = await inbox.StoreAsync(chat, user, message.Attachments, ct);
+        // Беседа картинку не примет: инструментов чтения файлов у неё нет. Отказ до скачивания —
+        // незачем тянуть файл, который никто не откроет.
+        var talk = scope.IsTalk;
+        if (talk && message.Attachments.Count > 0)
+        {
+            await channel.SendAsync(chat, new OutgoingMessage(
+                "⚠️ Беседа не принимает картинки — только текст. Картинку можно прислать в теме с проектом.", Rich: false), ct);
+        }
+
+        var attachments = await inbox.StoreAsync(chat, user, talk ? [] : message.Attachments, ct);
 
         if (attachments.Refusal is { Length: > 0 } refusal)
             await channel.SendAsync(chat, new OutgoingMessage(refusal, Rich: false), ct);
@@ -26,11 +36,11 @@ public sealed class ChatEnqueueTextHandler(
         if (text.Length == 0) return true;
 
         // Превью, а не весь промпт: в него могли вставить токен или содержимое файла.
-        audit.Write(AuditEvent.Now(AuditKinds.Message, $"text: {Text.Preview(text)}", user, chat, store.ProjectPath, store.SessionId));
+        audit.Write(AuditEvent.Now(AuditKinds.Message, $"text: {Text.Preview(text)}", user, chat, scope.ProjectPath, scope.SessionId));
 
         // Занятость проверяем до постановки в очередь: иначе сообщение увидит уже
         // начавшуюся собственную обработку.
-        var wasBusy = worker.IsBusy;
+        var wasBusy = worker.IsBusy(chat);
 
         // Команды шлюза сюда не доходят, так что слэш здесь — команда или скилл агента.
         // Считаем запуски, чтобы экран скиллов знал, что зовут чаще.
