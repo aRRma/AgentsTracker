@@ -274,13 +274,24 @@ public sealed class TelegramChannel(
 
         if (text.Length == 0 && attachments.Count == 0) return null;
 
-        var chat = new TelegramChatId(message.Chat.Id);
+        var chat = ChatOf(message);
+
+        // Сообщение в теме приходит ответом на служебное «тема создана»: это не ответ человека,
+        // и ожидание текста приняло бы его за ответ не туда.
+        var replied = message.ReplyToMessage is { } r && r.MessageId != chat.Thread ? r : null;
 
         return new IncomingMessage(
             chat, new TelegramUserId(from.Id), text, Kind(message.Chat), attachments,
             new MessageRef(chat, MessageIdOf(message.MessageId)),
-            message.ReplyToMessage is { } replied ? new MessageRef(chat, MessageIdOf(replied.MessageId)) : null);
+            replied is null ? null : new MessageRef(chat, MessageIdOf(replied.MessageId)));
     }
+
+    /// <summary>
+    /// Чат вместе с темой. Тему берём только у сообщения темы: номер ветки ответов бывает и
+    /// вне тем, и ответ ушёл бы в несуществующую тему.
+    /// </summary>
+    private static TelegramChatId ChatOf(Message message) =>
+        new(message.Chat.Id, message.IsTopicMessage ? message.MessageThreadId : null);
 
     /// <summary>
     /// Вложения сообщения. Голос, видео и стикеры тоже отдаём, помеченные
@@ -315,7 +326,7 @@ public sealed class TelegramChannel(
     private static ButtonPress ToPress(CallbackQuery callback)
     {
         var chat = callback.Message?.Chat;
-        var chatId = new TelegramChatId(chat?.Id ?? callback.From.Id);
+        var chatId = callback.Message is Message accessible ? ChatOf(accessible) : new TelegramChatId(chat?.Id ?? callback.From.Id);
         var message = callback.Message is { } m ? new MessageRef(chatId, MessageIdOf(m.MessageId)) : null;
 
         return new ButtonPress(callback.Id, chatId, new TelegramUserId(callback.From.Id), callback.Data ?? "", message, Kind(chat));
@@ -337,7 +348,8 @@ public sealed class TelegramChannel(
         try
         {
             var sent = await Bot.SendMessage(
-                id, message.Text, ParseMode(message), replyParameters: reply, replyMarkup: markup, cancellationToken: ct);
+                id, message.Text, ParseMode(message), replyParameters: reply, replyMarkup: markup,
+                messageThreadId: ThreadOf(chat), cancellationToken: ct);
             return new MessageRef(chat, MessageIdOf(sent.MessageId));
         }
         catch (ApiRequestException ex) when (message.Rich && RetryWithoutMarkup(ex))
@@ -355,7 +367,8 @@ public sealed class TelegramChannel(
         try
         {
             var sent = await Bot.SendMessage(
-                id, ChatHtml.StripTags(message.Text), replyParameters: reply, replyMarkup: markup, cancellationToken: ct);
+                id, ChatHtml.StripTags(message.Text), replyParameters: reply, replyMarkup: markup,
+                messageThreadId: ThreadOf(chat), cancellationToken: ct);
             return new MessageRef(chat, MessageIdOf(sent.MessageId));
         }
         catch (RequestException ex)
@@ -371,7 +384,8 @@ public sealed class TelegramChannel(
         try
         {
             var sent = await Bot.SendDocument(
-                ChatIdOf(chat), InputFile.FromStream(stream, fileName), replyParameters: Reply(chat, replyTo), cancellationToken: ct);
+                ChatIdOf(chat), InputFile.FromStream(stream, fileName), replyParameters: Reply(chat, replyTo),
+                messageThreadId: ThreadOf(chat), cancellationToken: ct);
             return new MessageRef(chat, MessageIdOf(sent.MessageId));
         }
         catch (RequestException ex)
@@ -383,12 +397,14 @@ public sealed class TelegramChannel(
     public Task<MessageRef> SendDocumentAsync(
         ChatId chat, string fileName, Stream content, string? caption, MessageRef? replyTo, CancellationToken ct) =>
         SendMediaAsync(chat, file => Bot.SendDocument(
-            ChatIdOf(chat), file, caption, replyParameters: Reply(chat, replyTo), cancellationToken: ct), fileName, content);
+            ChatIdOf(chat), file, caption, replyParameters: Reply(chat, replyTo),
+            messageThreadId: ThreadOf(chat), cancellationToken: ct), fileName, content);
 
     public Task<MessageRef> SendPhotoAsync(
         ChatId chat, string fileName, Stream content, string? caption, MessageRef? replyTo, CancellationToken ct) =>
         SendMediaAsync(chat, file => Bot.SendPhoto(
-            ChatIdOf(chat), file, caption, replyParameters: Reply(chat, replyTo), cancellationToken: ct), fileName, content);
+            ChatIdOf(chat), file, caption, replyParameters: Reply(chat, replyTo),
+            messageThreadId: ThreadOf(chat), cancellationToken: ct), fileName, content);
 
     /// <summary>
     /// Ответ на сообщение. AllowSendingWithoutReply обязателен: пользователь мог удалить своё
@@ -493,7 +509,7 @@ public sealed class TelegramChannel(
     {
         try
         {
-            await Bot.SendChatAction(ChatIdOf(chat), ChatAction.Typing, cancellationToken: ct);
+            await Bot.SendChatAction(ChatIdOf(chat), ChatAction.Typing, ThreadOf(chat), cancellationToken: ct);
         }
         catch (RequestException ex)
         {
@@ -527,6 +543,9 @@ public sealed class TelegramChannel(
         ? id
         : throw new ArgumentException($"Адрес {chat.Key} не из Telegram.", nameof(chat));
 
+    /// <summary>Тема получателя. Правка, удаление и ответ на нажатие её не принимают: сообщение и так в ней.</summary>
+    private static int? ThreadOf(ChatId chat) => (chat as TelegramChatId)?.Thread;
+
     private static string MessageIdOf(int messageId) => messageId.ToString(CultureInfo.InvariantCulture);
 
     private static int MessageId(MessageRef message) => int.Parse(message.Id, CultureInfo.InvariantCulture);
@@ -544,8 +563,11 @@ public sealed class TelegramChannel(
     private static bool RetryWithoutMarkup(ApiRequestException ex) =>
         ex.ErrorCode == 400 && !IsUnreachable(ex);
 
+    /// <summary>«message thread not found» — тему удалили в клиенте: события об этом Telegram боту не шлёт.</summary>
     private static bool IsUnreachable(ApiRequestException ex) =>
-        ex.ErrorCode == 403 || ex.Message.Contains("chat not found", StringComparison.OrdinalIgnoreCase);
+        ex.ErrorCode == 403
+        || ex.Message.Contains("chat not found", StringComparison.OrdinalIgnoreCase)
+        || ex.Message.Contains("message thread not found", StringComparison.OrdinalIgnoreCase);
 
     private static ChannelRequestException Translate(RequestException ex)
     {

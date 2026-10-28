@@ -11,6 +11,12 @@ public abstract record ChatId
     /// <summary>Строковая форма «канал:значение», например «telegram:123456789».</summary>
     public abstract string Key { get; }
 
+    /// <summary>
+    /// Тема внутри чата — отдельная лента со своим проектом и сессией. false — сам чат: у него
+    /// выбор, общий с прошлыми версиями шлюза.
+    /// </summary>
+    public virtual bool IsTopic => false;
+
     public sealed override string ToString() => Key;
 }
 
