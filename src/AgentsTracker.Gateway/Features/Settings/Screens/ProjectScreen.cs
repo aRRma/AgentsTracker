@@ -55,6 +55,7 @@ public sealed class ProjectScreen(
 
         var scope = store.For(chat);
         var previous = Current(scope);
+        var fromLabel = scope.IsNewTopic ? null : previous is null ? "беседа" : Path.GetFileName(previous);
 
         // По ключу, а не по номеру: между отрисовкой и нажатием список мог измениться,
         // и номер указал бы на другой путь.
@@ -69,7 +70,7 @@ public sealed class ProjectScreen(
         _nav.Update(chat, p => p with { Page = 0 });
 
         logger.LogInformation("Проект переключён на {Project}", project);
-        audit.Changed(scope, user, "project", previous is null ? "беседа" : Path.GetFileName(previous), Path.GetFileName(project));
+        audit.Changed(scope, user, "project", fromLabel, Path.GetFileName(project));
 
         // Сессии живут в папке, где созданы: у нового проекта своя или ни одной.
         // Предупреждаем, чтобы смена контекста не выглядела потерей истории.
