@@ -48,7 +48,7 @@ public sealed class TopicScreen(SessionStore store, IAuditLog audit, IOptions<Ga
             : $"📁 проект {E(Path.GetFileName(scope.ProjectPath))}";
 
         var hint = scope.IsNewTopic
-            ? "\n\n<i>Задача не запущена: сначала выберите тип темы, потом пришлите её снова.</i>"
+            ? "\n\n<i>Задача не запущена: сначала выберите тип темы, потом пришлите её снова — с картинкой, если она была.</i>"
             : "";
 
         var html = $"""

@@ -246,8 +246,9 @@ public sealed class ChatWorker(
         // Замок — до модели, лимита и сессии: ожидание бывает долгим, и посчитанное до него
         // устарело бы — на исчерпанном за это время тарифе CLI ушёл бы на кредиты. Карточка
         // доверия — снаружи: она ждёт до четверти часа и держала бы чужую тему. Вопрос идёт в
-        // своей пустой папке и ни с кем её не делит.
-        using var folderLock = question ? null : await LockFolderAsync(project, prompt, runCts.Token, stoppingToken);
+        // своей пустой папке и ни с кем её не делит. Замок — на папку сессии, а не проекта: агент
+        // правит worktree, куда увёл сессию, и этот же worktree может быть проектом другой темы.
+        using var folderLock = question ? null : await LockFolderAsync(sessionFolder, prompt, runCts.Token, stoppingToken);
         if (!question && folderLock is null) return;
 
         var talk = !question && SessionStore.IsTalkFolder(project);
