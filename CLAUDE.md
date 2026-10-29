@@ -157,8 +157,8 @@ A card finds its chat by the **run id**, not by a "current chat": each run gets 
   and `--strict-mcp-config` in an empty `%TEMP%\AgentsTracker-question`, recreated before every
   вопрос (a task could plant a hook there, and the trust gate skips вопросы) — never in the project or the
   data directory, and its `SessionId` never reaches `SessionStore`. Its model is `Gateway:Question`,
-  not the chat selection. A вопрос and a беседа (`WebOnly`) also get `--permission-mode default` and an
-  `--append-system-prompt` saying there is no computer access — the user's `CLAUDE.md` still loads
+  not the chat selection. A вопрос and a беседа (`WebOnly`) also get an `--append-system-prompt`
+  saying there is no computer access — the user's `CLAUDE.md` still loads
   and promises a shell. The permission tool, the `tg` server and `send_file` (checked against the
   chat's project) stay. Details — `docs/en/cli-contract.md`, "A question".
 - CLI arguments go through `ProcessStartInfo.ArgumentList`, do not concatenate a string.

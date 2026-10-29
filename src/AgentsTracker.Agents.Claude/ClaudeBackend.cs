@@ -461,10 +461,9 @@ public sealed class ClaudeBackend(
         yield return McpConfigFile.PermissionToolName;
 
         // Без явного режима действует defaultMode из настроек пользователя, а при "auto"
-        // карточки в чате не появляются вовсе. Вопросу и беседе режим ни к чему — их инструменты
-        // разрешены ниже, а plan запер бы ответ в план.
+        // карточки в чате не появляются вовсе.
         yield return "--permission-mode";
-        yield return webOnly ? "default" : request.PermissionMode;
+        yield return request.PermissionMode;
 
         yield return "--mcp-config";
         yield return mcpConfigPath;

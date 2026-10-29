@@ -107,10 +107,11 @@ public sealed class ChatWorker(
         ChatId chat, UserId user, string text, AgentRunKind kind = AgentRunKind.Task, MessageRef? replyTo = null)
     {
         var question = kind == AgentRunKind.Question;
-        (question ? _questions : TaskLane(chat)).Queue.Writer.TryWrite(new QueuedPrompt(chat, user, text, kind, replyTo));
 
-        // Монитор показывает очередь задач: вопрос в ней стоял бы, хотя ждёт не их.
+        // Монитор показывает очередь задач: вопрос в ней стоял бы, хотя ждёт не их. До записи в
+        // очередь: свободная полоса берёт задачу сразу, и превью осталось бы в мониторе навсегда.
         if (!question) monitor.Enqueued(Text.Preview(text));
+        (question ? _questions : TaskLane(chat)).Queue.Writer.TryWrite(new QueuedPrompt(chat, user, text, kind, replyTo));
     }
 
     private Lane TaskLane(ChatId chat)
@@ -203,7 +204,7 @@ public sealed class ChatWorker(
         var kind = prompt.Kind;
         var question = kind == AgentRunKind.Question;
 
-        if (!question) monitor.Dequeued();
+        if (!question) monitor.Dequeued(Text.Preview(prompt.Text));
 
         // Доверие — первым: карточка ждёт до четверти часа, и модель, лимит и режим, посчитанные
         // до неё, к запуску устарели бы. Вопрос идёт в пустой временной папке — настроек агента
@@ -373,9 +374,9 @@ public sealed class ChatWorker(
             // Тему удалили в клиенте: Telegram об этом не сообщает, узнаём по отказу. Ни статус, ни
             // ответ туда не дойдут — не запускаем, и очередь темы туда же: иначе каждая задача из
             // неё жгла бы запуск впустую. Полоса вопросов общая — её чужие вопросы не трогаем.
-            var dropped = question ? 0 : lane.Drain().Count;
-            for (var i = 0; i < dropped; i++) monitor.Dequeued();
-            logger.LogWarning("Чат {Chat} недоступен: запуск не начат, снято из очереди: {Dropped}", prompt.Chat.Key, dropped);
+            List<QueuedPrompt> dropped = question ? [] : lane.Drain();
+            foreach (var queued in dropped) monitor.Dequeued(Text.Preview(queued.Text));
+            logger.LogWarning("Чат {Chat} недоступен: запуск не начат, снято из очереди: {Dropped}", prompt.Chat.Key, dropped.Count);
             return;
         }
 
@@ -761,7 +762,7 @@ public sealed class ChatWorker(
         var question = lane == _questions;
 
         // Очередь монитора общая для всех полос задач: снимаем столько, сколько снято здесь.
-        if (!question) foreach (var _ in dropped) monitor.Dequeued();
+        if (!question) foreach (var queued in dropped) monitor.Dequeued(Text.Preview(queued.Text));
 
         if (dropped.Count == 0) return;
 

@@ -64,8 +64,15 @@ public sealed class RunMonitor
 
     public void Enqueued(string preview) => Change(() => _queue.Add(preview));
 
-    /// <summary>Задача взята из очереди в работу — превью уходит из списка ожидающих.</summary>
-    public void Dequeued() => Change(() => { if (_queue.Count > 0) _queue.RemoveAt(0); });
+    /// <summary>
+    /// Задача взята из очереди в работу — превью уходит из списка ожидающих. Своё, а не первое:
+    /// полосы тем разбирают общий список вперемешку, и первым ушло бы превью чужой задачи.
+    /// </summary>
+    public void Dequeued(string preview) => Change(() =>
+    {
+        var index = _queue.IndexOf(preview);
+        if (index >= 0) _queue.RemoveAt(index);
+    });
 
     /// <summary>
     /// Запуск становится текущим, только если другого нет. false — монитор уже показывает чужой

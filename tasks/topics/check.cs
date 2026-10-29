@@ -242,6 +242,7 @@ await Task.Delay(200);
 Check(backend.Requests.Count() == requestsBefore, "в удалённую тему запусков не было");
 Check(channel.DeadAttempts == 1, "в удалённую тему — одна попытка: ни «внутренней ошибки», ни второй задачи");
 channel.Dead = null;
+Check(monitor.Current.Queue.Count == 0, "очередь монитора пуста, когда все полосы разобраны");
 
 await cts.CancelAsync();
 try { await worker.StopAsync(CancellationToken.None); } catch { }
