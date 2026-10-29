@@ -10,6 +10,6 @@ internal static class SettingsAudit
         public void Changed(SessionStore.ChatScope scope, UserId user, string what, string? from, string? to) =>
             audit.Write(AuditEvent.Now(
                 AuditKinds.Settings, $"{what}: {from ?? "—"} → {to ?? "—"}",
-                user, project: scope.ProjectPath, session: scope.SessionId));
+                user, scope.Chat, scope.ProjectPath, scope.SessionId));
     }
 }

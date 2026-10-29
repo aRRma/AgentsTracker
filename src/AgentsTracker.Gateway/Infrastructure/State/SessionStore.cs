@@ -67,6 +67,9 @@ public sealed class SessionStore
 
         public bool IsTopic => _chat?.IsTopic == true;
 
+        /// <summary>Чат выбора; null — <see cref="SessionStore.Feed"/>, у которого чата нет.</summary>
+        public ChatId? Chat => _chat;
+
         /// <summary>Тема, где ещё ничего не выбирали: шлюз сначала спросит её тип.</summary>
         public bool IsNewTopic
         {
@@ -141,6 +144,20 @@ public sealed class SessionStore
 
             s.LastActivityUtc = DateTimeOffset.UtcNow;
         });
+
+        /// <summary>
+        /// Сессия активна в другом чате на этом проекте. Выбрать её здесь — две темы продолжали бы
+        /// одну сессию, и их разговоры перемешались бы.
+        /// </summary>
+        public bool IsActiveElsewhere(string sessionId)
+        {
+            lock (_store._gate)
+            {
+                var own = Slot(_store.ProjectPathLocked(_chat));
+                var slots = _store._state.ActiveSessions;
+                return slots.Any(kv => !slots.Comparer.Equals(kv.Key, own) && string.Equals(kv.Value, sessionId, StringComparison.Ordinal));
+            }
+        }
 
         /// <summary>
         /// Меняет активную сессию проекта, только если она всё ещё равна

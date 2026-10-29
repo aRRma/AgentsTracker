@@ -100,6 +100,12 @@ public sealed class ChatWorker(
     /// <summary>Идёт вопрос — с момента, как его взяли из очереди.</summary>
     public bool IsAnswering => Volatile.Read(ref _questions.InFlight) > 0;
 
+    /// <summary>
+    /// Идёт вопрос, который этот чат может остановить: в теме — только свой, в ленте — любой, как
+    /// и у /stop. Иначе тема показывала бы чужой вопрос и «Остановить», которое ничего не делает.
+    /// </summary>
+    public bool IsAnsweringFor(ChatId chat) => IsAnswering && (!chat.IsTopic || _questions.Chat == chat);
+
     /// <summary>Вопросы, ждущие своей очереди за идущим вопросом.</summary>
     public int QuestionQueueLength => _questions.Queue.Reader.Count;
 
@@ -495,13 +501,15 @@ public sealed class ChatWorker(
             OutputTokens = result.Usage?.OutputTokens ?? 0,
         });
 
+        // Ветку — до отпускания папки: следующий в ней запуск мог бы её сменить, и подпись соврала бы.
+        var branch = folder is null ? null : BranchCaption(startBranch, git.Head(folder.Path));
+
         // Сессия и расход записаны — папку можно отдать следующему, не дожидаясь отправки ответа.
         heldLock?.Dispose();
 
         await SendRenderedAsync(
             prompt.Chat,
-            Answer(kind, result) + note + Footer(kind, result, modelLabel, effort, cacheUntil,
-                folder is null ? null : BranchCaption(startBranch, git.Head(folder.Path))),
+            Answer(kind, result) + note + Footer(kind, result, modelLabel, effort, cacheUntil, branch),
             prompt.ReplyTo, stoppingToken);
 
         // Упёрлись в лимит — следующие задачи упрутся в него же; очередь чистим,
@@ -566,7 +574,17 @@ public sealed class ChatWorker(
 
         if (!gate.Wait(0))
         {
-            await SendPlainAsync(prompt.Chat, "⏳ В проекте идёт другой запуск — начну, когда он закончится.", prompt.ReplyTo, stopping);
+            MessageRef? notice = null;
+            try
+            {
+                notice = await channel.SendAsync(prompt.Chat,
+                    new OutgoingMessage("⏳ В проекте идёт другой запуск — начну, когда он закончится.", Rich: false, ReplyTo: prompt.ReplyTo), stopping);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError(ex, "Не удалось отправить сообщение в чат {Chat}", prompt.Chat.Key);
+            }
+
             try
             {
                 await gate.WaitAsync(run);
@@ -574,6 +592,11 @@ public sealed class ChatWorker(
             catch (OperationCanceledException) when (!stopping.IsCancellationRequested)
             {
                 return null;
+            }
+            finally
+            {
+                // Ожидание кончилось — стартом или /stop: висящее «⏳» обещало бы запуск, которого не будет.
+                if (notice is not null) await DeleteQuietlyAsync(notice, stopping);
             }
         }
 
@@ -614,7 +637,7 @@ public sealed class ChatWorker(
             inbox.ClearSession(chat, project);
 
             logger.LogWarning("Сессия {SessionId} сброшена: агент не нашёл её", resumed);
-            audit.Write(AuditEvent.Now(AuditKinds.SessionReset, "агент не нашёл сессию", project: project, session: resumed));
+            audit.Write(AuditEvent.Now(AuditKinds.SessionReset, "агент не нашёл сессию", chat: chat, project: project, session: resumed));
             return "\n\n_Сессия сброшена — следующее сообщение начнёт новую._";
         }
 

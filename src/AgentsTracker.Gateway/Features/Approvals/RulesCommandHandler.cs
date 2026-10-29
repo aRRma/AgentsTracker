@@ -27,15 +27,18 @@ public sealed class RulesCommandHandler(IChatChannel channel, SessionStore store
         var argument = context.Argument;
         var scope = store.For(context.Chat);
         var rules = scope.AlwaysAllowRules();
-        var project = Path.GetFileName(scope.ProjectPath);
+        // У беседы вместо имени — слово: имя её временной папки («telegram_123_42») человеку ни о чём.
+        var name = Path.GetFileName(scope.ProjectPath);
+        var where = scope.IsTalk ? "в беседе" : $"в {name}";
+        var project = scope.IsTalk ? "беседы" : name;
 
         if (argument.Equals("clear", StringComparison.OrdinalIgnoreCase))
         {
             var removed = scope.ClearAlwaysAllow();
             if (removed > 0) Audit(context, $"clear ({removed})");
             return removed == 0
-                ? $"Правил «всегда» в {project} и не было."
-                : $"♾ Снято правил в {project}: {removed}. Теперь всё снова спрашивается кнопками.";
+                ? $"Правил «всегда» {where} и не было."
+                : $"♾ Снято правил {where}: {removed}. Теперь всё снова спрашивается кнопками.";
         }
 
         if (argument.StartsWith("del", StringComparison.OrdinalIgnoreCase))
@@ -73,7 +76,7 @@ public sealed class RulesCommandHandler(IChatChannel channel, SessionStore store
 
         // Правила у каждого проекта свои: заголовок говорит, чьи это.
         return $"""
-            Разрешено без вопросов в {project} ({rules.Count}):
+            Разрешено без вопросов {where} ({rules.Count}):
             {list}{tail}
 
             Снять: /rules del <номер> | /rules clear

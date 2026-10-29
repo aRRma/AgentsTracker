@@ -42,7 +42,7 @@ public sealed class RootScreen(
 
         // Вопрос идёт параллельно задаче: без своей строки «простаивает» при идущем вопросе
         // выглядело бы так, будто ответа не будет.
-        var questions = worker.IsAnswering
+        var questions = worker.IsAnsweringFor(chat)
             ? $"\n💬 Идёт вопрос{(worker.QuestionQueueLength > 0 ? $", ещё в очереди: {worker.QuestionQueueLength}" : "")}"
             : "";
 

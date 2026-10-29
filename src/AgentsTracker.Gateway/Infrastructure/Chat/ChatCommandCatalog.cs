@@ -21,6 +21,7 @@ public static class ChatCommandCatalog
         new("skills", "🧩 скиллы"),
         new("ask", "💬 вопрос вне сессии"),
         new("project", "📁 проект"),
+        new("topic", "🧵 тип темы"),
         new("usage", "📊 расход и лимиты"),
         new("rules", "♾ правила «всегда»"),
         new("audit", "📜 журнал"),

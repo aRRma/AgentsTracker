@@ -77,7 +77,7 @@ public sealed class StatusScreen(
 
         // Вопрос идёт параллельно задаче: без своей строки и кнопки «Остановить» идущий вопрос
         // выглядел бы простоем, а остановить его со статуса было бы нечем.
-        var answering = worker.IsAnswering;
+        var answering = worker.IsAnsweringFor(chat);
         var questions = answering
             ? $"\n💬 Идёт вопрос{(worker.QuestionQueueLength > 0 ? $", ещё в очереди: {worker.QuestionQueueLength}" : "")}"
             : "";
@@ -101,7 +101,7 @@ public sealed class StatusScreen(
             📦 Контекст: {(session is { ContextTokens: > 0, ContextWindow: > 0 } ? ContextScreen.Fill(session, bar: false) : "—")}
             🧊 Кэш: {ContextScreen.Cache(session, ContextScreen.Mismatch(store, scope, agent, session))}
             🧠 {E(store.ModelLabel(scope.EffectiveModel, agent.Capabilities.Model) ?? "модель по умолчанию")}{effort} · 🔐 {E(scope.EffectivePermissionMode)}
-            ♾ Правил «всегда» в проекте: {scope.AlwaysAllowRules().Count}
+            ♾ Правил «всегда» {(scope.IsTalk ? "в беседе" : "в проекте")}: {scope.AlwaysAllowRules().Count}
 
             🚦 <b>Лимиты тарифа</b>
             {LimitBars.Render(view, progress)}

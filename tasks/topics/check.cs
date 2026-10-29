@@ -93,6 +93,7 @@ sf.RegisterSession(projA, "лента", "feed-reg");
 var removed = sf.ForgetSessions();
 Check(removed >= 1 && sf.SessionId is null && s1.SessionId == "reg-1", "очистка в ленте не трогает активную сессию темы");
 Check(store.Session("reg-1") is not null && store.Session("feed-reg") is null, "запись активной в теме сессии осталась");
+Check(sf.IsActiveElsewhere("reg-1") && !s1.IsActiveElsewhere("reg-1"), "сессия темы для ленты — активна в другом месте, для самой темы — нет");
 
 // Правила «всегда» — по проекту чата
 store.AddAlwaysAllow(projA, "Bash(ls)");

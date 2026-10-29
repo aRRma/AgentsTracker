@@ -53,6 +53,7 @@ public sealed class SessionsScreen(
         // между отрисовкой и нажатием запуск сдвинул бы номера на соседнюю сессию.
         var session = store.SessionsFor(project).FirstOrDefault(s => s.Id.ShortId == argument);
         if (session is null) return "Сессии уже нет в списке";
+        if (session.Id != previous && scope.IsActiveElsewhere(session.Id)) return "Сессия активна в другой теме или ленте — выберите другую или «Новая»";
 
         scope.SetSessionId(session.Id);
         audit.Changed(scope, user, "session", previous?.ShortId, session.Id.ShortId);
@@ -81,7 +82,8 @@ public sealed class SessionsScreen(
             ? "<i>Сессий ещё нет — первое сообщение создаст первую.</i>"
             : string.Join("\n", sessions.Select((s, i) =>
                 $"{Marker(s.Id == active)} <b>{i + 1}.</b> {E(s.Title)}\n" +
-                $"   {s.Turns} х · {E(s.LastActivityUtc.Ago)}{Context(s)}"));
+                $"   {s.Turns} х · {E(s.LastActivityUtc.Ago)}{Context(s)}" +
+                (s.Id != active && scope.IsActiveElsewhere(s.Id) ? " · 🔒 в другой теме или ленте" : "")));
 
         var html = $"""
             🧵 <b>Сессии</b> — {E(scope.IsTalk ? "беседа" : Path.GetFileName(project))}
