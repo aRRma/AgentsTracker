@@ -108,12 +108,18 @@ number of agent processes is not capped.
   agent edits. The lock is taken right after the trust loop — the card waits outside it, up to a
   quarter of an hour — and before the model, the limit and the session refresh: a long wait would
   make them stale, and on a limit exhausted meanwhile the CLI would go to credits. A waiting run
-  says «⏳ В проекте идёт другой запуск…». The lane's token is set before the wait, so `/stop`
-  interrupts the wait too. The lock is released after the session and usage are recorded, before
-  the answer is sent.
+  says «⏳ В проекте идёт другой запуск…», and the message is deleted when the wait ends. The
+  lane's token is set before the wait, so `/stop` interrupts the wait too. Under the lock the run
+  checks again, without a card, that the folders are still trusted and the project and session are
+  the same: a neighbour's run in the folder could have planted a hook, and `/new` could have moved
+  the session to another folder. If anything changed, the lock is released and the trust loop runs
+  again. The lock is released after the session and usage are recorded, before the answer is sent.
+  Known limit: the lock key is fixed at the start, so a session the agent moves into a worktree
+  mid-run (`EnterWorktree`) does not lock that worktree.
 - `IsBusy(chat)`/`QueueLength(chat)` are about that chat's tasks only: the menu, a session switch
   and «Сжать» do not wait for a вопрос. `AnyBusy` — for the monitor. `IsAnswering`/`QuestionQueueLength`
-  — for the status line.
+  — for the вопрос lane; the screens use `IsAnsweringFor(chat)`: in a topic only its own вопрос, as
+  `/stop` there stops only its own.
 - `/stop` (`ChatWorker.Stop(chat)`) in a topic interrupts that topic's lane, its cards
   (`ApprovalBroker.Cancel(chat)`) and the вопрос if it came from that topic (`Lane.Chat`). `/stop` in
   the лента interrupts everything, as before topics.
@@ -220,6 +226,9 @@ topic typed; `/model`, `/effort` or `/mode` before that create a record with `Un
 topic stays new — otherwise the next text would silently run as a беседа. A topic's active session lives in `ActiveSessions` under `<chat key>|<project>`: two
 topics on one project keep different sessions, and switching a topic's project back returns to its
 session there. «Очистить» on «Сессии» drops the project's records except those active in other chats.
+The list on «Сессии» is per project, so it shows the other chats' sessions too; one active in another
+chat is marked «🔒» and cannot be picked (`ChatScope.IsActiveElsewhere`) — two topics would continue
+one session.
 
 A беседа runs in its own folder `SessionStore.TalkRoot\<chat key>` (`%TEMP%\AgentsTracker-talk`),
 emptied before each run, before the trust check, like the вопрос folder; `--resume` finds the session
