@@ -70,7 +70,7 @@ public sealed class SessionStore
         /// <summary>Тема, где ещё ничего не выбирали: шлюз сначала спросит её тип.</summary>
         public bool IsNewTopic
         {
-            get { lock (_store._gate) return IsTopic && !_store._state.Topics.ContainsKey(_chat!.Key); }
+            get { lock (_store._gate) return IsTopic && _store._state.Topics.GetValueOrDefault(_chat!.Key) is null or { Untyped: true }; }
         }
 
         /// <summary>Беседа: тема без проекта. Идёт в своей пустой папке, только с поиском в сети.</summary>
@@ -122,7 +122,7 @@ public sealed class SessionStore
                 ? ProjectCatalog.Normalize(path)
                 : null;
 
-            Write(s => s.ProjectPath = value);
+            Write(s => s.ProjectPath = value, typed: true);
         }
 
         public void SetModel(string? model) => Write(s => s.Model = model);
@@ -252,8 +252,12 @@ public sealed class SessionStore
             lock (_store._gate) return Selection() is { } selection ? field(selection) : null;
         }
 
-        /// <summary>Первая запись в теме заводит её выбор — с этого момента тип темы известен.</summary>
-        private void Write(Action<IChatSelection> change) => _store.Mutate(s =>
+        /// <summary>
+        /// Первая запись в теме заводит её выбор. Тип известен только после выбора проекта или
+        /// беседы (<paramref name="typed"/>): после одной /model тема осталась бы новой по смыслу, а
+        /// следующий текст ушёл бы беседой без вопроса.
+        /// </summary>
+        private void Write(Action<IChatSelection> change, bool typed = false) => _store.Mutate(s =>
         {
             if (!IsTopic)
             {
@@ -261,7 +265,8 @@ public sealed class SessionStore
                 return;
             }
 
-            if (!s.Topics.TryGetValue(_chat!.Key, out var topic)) s.Topics[_chat.Key] = topic = new TopicState();
+            if (!s.Topics.TryGetValue(_chat!.Key, out var topic)) s.Topics[_chat.Key] = topic = new TopicState { Untyped = true };
+            if (typed) topic.Untyped = null;
             change(topic);
         });
     }

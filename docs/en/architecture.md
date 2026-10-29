@@ -215,8 +215,9 @@ The лента keeps the old root fields of `GatewayState`; a topic has a `Topic
 `GatewayState.Topics` with the same `IChatSelection` shape. A topic's `ProjectPath` is always the full
 path: `null` there means «беседа», not «the config project». A topic with no record is new: its
 text opens «Тип темы» (`TopicHandler`) instead of a run, and a command in it works as in a беседа,
-so it cannot touch somebody else's project; the first write (a type, `/project`, `/model`…) creates
-the record. A topic's active session lives in `ActiveSessions` under `<chat key>|<project>`: two
+so it cannot touch somebody else's project. Only a type (the «Тип темы» screen or `/project`) makes a
+topic typed; `/model`, `/effort` or `/mode` before that create a record with `Untyped = true`, and the
+topic stays new — otherwise the next text would silently run as a беседа. A topic's active session lives in `ActiveSessions` under `<chat key>|<project>`: two
 topics on one project keep different sessions, and switching a topic's project back returns to its
 session there. «Очистить» on «Сессии» drops the project's records except those active in other chats.
 

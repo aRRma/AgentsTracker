@@ -86,8 +86,8 @@ public sealed class StatusScreen(
             ? ""
             : $" · 🎚 {E(scope.EffectiveEffort ?? "по умолчанию")}";
 
-        var where = scope.IsTalk
-            ? "💬 <b>Беседа</b>"
+        var where = scope.IsNewTopic ? RootScreen.NewTopic
+            : scope.IsTalk ? "💬 <b>Беседа</b>"
             : $"📁 <b>{E(Path.GetFileName(project))}</b>\n<code>{E(project)}</code>{Branch(project, store.SessionFolder(project, scope.SessionId))}";
 
         var html = $"""

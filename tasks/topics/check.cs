@@ -70,9 +70,9 @@ Check(s1.EffectiveModel == "fable" && sf.EffectiveModel == "opus", "модель
 
 var s2 = store.For(t2);
 s2.SetModel("haiku");
-Check(!s2.IsNewTopic && s2.IsTalk && s2.EffectiveModel == "haiku", "/model в новой теме делает её беседой");
+Check(s2.IsNewTopic && s2.EffectiveModel == "haiku", "/model в новой теме: модель запомнена, тип не выбран");
 s2.SetProjectPath(null);
-Check(s2.IsTalk, "выбор «беседа» оставляет беседу");
+Check(s2.IsTalk && !s2.IsNewTopic && s2.EffectiveModel == "haiku", "выбор «беседа» — тип выбран, модель осталась");
 
 // TrySetSessionId — только в своём ключе
 Check(!s1.TrySetSessionId(projA, "x", onlyIfActive: "feed-sess"), "тема не меняет сессию по ленточной");
@@ -113,10 +113,11 @@ Check(reloaded.TakeInterruptedRuns().Count == 0, "прерванные сним�
 // Старый state.json с одним ActiveRun
 var legacyDir = Path.Combine(root, "legacy");
 Directory.CreateDirectory(legacyDir);
-File.WriteAllText(Path.Combine(legacyDir, "state.json"), """{"ActiveRun":{"ChatKey":"telegram:100","Prompt":"старое"},"ActiveSessions":{"C:\\x":"s"}}""");
+File.WriteAllText(Path.Combine(legacyDir, "state.json"), """{"ActiveRun":{"ChatKey":"telegram:100","Prompt":"старое"},"ActiveSessions":{"C:\\x":"s"},"Topics":{"telegram:100/5":{}}}""");
 AppPaths.UseDirectory(legacyDir);
 var legacy = new SessionStore(options, NullLogger<SessionStore>.Instance);
 Check(legacy.TakeInterruptedRuns() is [{ Prompt: "старое" }], "старое поле ActiveRun читается");
+Check(!legacy.For(new TelegramChatId(100, 5)).IsNewTopic, "запись темы прошлой версии — тип выбран");
 AppPaths.UseDirectory(Path.Combine(root, "data"));
 
 // Папки бесед

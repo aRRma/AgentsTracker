@@ -22,6 +22,12 @@ public sealed class TopicState : IChatSelection
     public string? Model { get; set; }
     public string? PermissionMode { get; set; }
     public string? Effort { get; set; }
+
+    /// <summary>
+    /// true — запись завели /model, /effort или /mode, а тип ещё не выбран: тема остаётся новой.
+    /// null, а не false, — у записей прошлых версий поля нет, и их тип уже выбран.
+    /// </summary>
+    public bool? Untyped { get; set; }
 }
 
 /// <summary>Всё, что шлюз помнит между перезапусками. Лежит в state.json.</summary>
