@@ -196,6 +196,8 @@ public sealed class ChatWorker(
                 // Сбой до конца запуска (тема удалена, статус не ушёл) иначе оставил бы полосу
                 // «занятой» навсегда.
                 lane.RunCts = null;
+                // Иначе общая полоса вопросов помнила бы чат прошлого запуска, пока следующий не взят в работу.
+                lane.Chat = null;
                 Interlocked.Decrement(ref lane.InFlight);
             }
         }
