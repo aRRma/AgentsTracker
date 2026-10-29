@@ -444,28 +444,38 @@ public sealed class ClaudeBackend(
         // чему, а без Bash и Edit им нечего и спрашивать через карточки. Чужие MCP-серверы из
         // настроек пользователя не грузим — их описания съели бы десятки тысяч токенов
         // контекста на каждый запуск.
-        if (request.Kind == AgentRunKind.Question || request.WebOnly)
+        var webOnly = request.Kind == AgentRunKind.Question || request.WebOnly;
+        if (webOnly)
         {
             yield return "--tools";
             yield return "WebSearch,WebFetch";
             yield return "--strict-mcp-config";
+
+            // Пользовательский CLAUDE.md грузится и сюда и обещает модели оболочку: без этой
+            // строки она искала, как запустить команды, и обещала их человеку.
+            yield return "--append-system-prompt";
+            yield return "Доступа к компьютеру нет: ни файлов, ни команд. Есть только поиск в сети и чтение страниц. Не обещай запустить команду или создать файл — отвечай текстом.";
         }
 
         yield return "--permission-prompt-tool";
         yield return McpConfigFile.PermissionToolName;
 
         // Без явного режима действует defaultMode из настроек пользователя, а при "auto"
-        // карточки в чате не появляются вовсе.
+        // карточки в чате не появляются вовсе. Вопросу и беседе режим ни к чему — их инструменты
+        // разрешены ниже, а plan запер бы ответ в план.
         yield return "--permission-mode";
-        yield return request.PermissionMode;
+        yield return webOnly ? "default" : request.PermissionMode;
 
         yield return "--mcp-config";
         yield return mcpConfigPath;
 
         // Отправка файла без карточки: папку, тип и размер проверяет сам шлюз, а карточка
         // «разрешить tg:send_file?» лишь дублировала бы его же проверку лишним нажатием.
+        // Поиск и чтение страниц у вопроса и беседы — тоже без карточки: файлов и команд у них нет,
+        // а карточка на каждый поиск съедала пятую часть времени ответа. Риск принят: страница с
+        // внушением может заставить модель открыть адрес с текстом беседы.
         yield return "--allowedTools";
-        yield return McpConfigFile.SendFileToolFullName;
+        yield return webOnly ? $"{McpConfigFile.SendFileToolFullName},WebSearch,WebFetch" : McpConfigFile.SendFileToolFullName;
 
         // Картинки из чата лежат вне рабочей папки: без этого Read до них не дотянется.
         // Проверка существования обязательна — у чата без вложений папки нет.

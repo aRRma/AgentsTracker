@@ -334,12 +334,15 @@ Checked on CLI 2.1.261.
 is impossible), no `--resume`/`--session-id`, `--tools WebSearch,WebFetch` (built-ins only; `""`
 disables all) and `--strict-mcp-config`: only the gateway's own `tg` server from `--mcp-config` is
 loaded — the user's MCP servers cost ~40k tokens of context per question otherwise (48k vs 9.6k on
-a one-word answer). `--permission-mode` and `--permission-prompt-tool` are passed as always; no
-`--add-dir`. The working folder is an empty `%TEMP%\AgentsTracker-question`: not the project (its
+a one-word answer). `--permission-prompt-tool` is passed as always, `--permission-mode` is always
+`default` (`plan` would lock the answer in a plan), and `--allowedTools` adds `WebSearch,WebFetch` —
+no card per search: there are no files or commands to protect, and nine cards in two runs took a
+fifth of the time. `--append-system-prompt` tells the model it has no computer: the user's
+`~/.claude/CLAUDE.md` still loads, and without the line the model hunted for a way to run commands.
+No `--add-dir`. The working folder is an empty `%TEMP%\AgentsTracker-question`: not the project (its
 CLAUDE.md would load) and not the data directory (secrets).
 
-A беседа (a topic without a project) gets the same `--tools WebSearch,WebFetch --strict-mcp-config`
-through `AgentRunRequest.WebOnly`, but keeps its session (`--session-id`/`--resume`) in its own
+A беседа (a topic without a project) gets the same set through `AgentRunRequest.WebOnly`, but keeps its session (`--session-id`/`--resume`) in its own
 `%TEMP%\AgentsTracker-talk\<topic>` folder, emptied before each run: verified live, `--resume` finds
 the session after the folder is deleted and created again — the transcript is keyed by the path.
 

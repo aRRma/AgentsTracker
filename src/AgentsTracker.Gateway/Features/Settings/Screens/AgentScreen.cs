@@ -97,8 +97,16 @@ public sealed class AgentScreen(
         return $"Effort: {effort ?? "по умолчанию"}";
     }
 
+    /// <summary>
+    /// Отказ на смену режима в беседе: агент её режим не читает, и «Режим: auto» молча делал бы
+    /// вид, что что-то поменялось.
+    /// </summary>
+    public const string TalkModeRefusal = "В беседе режим не меняется: поиск и сайты идут без карточек всегда";
+
     private string ApplyMode(string value, UserId user, ChatId chat, SessionStore.ChatScope scope)
     {
+        if (scope is { IsTalk: true, IsNewTopic: false }) return TalkModeRefusal;
+
         var previous = scope.EffectivePermissionMode;
 
         if (IsReset(value))

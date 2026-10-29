@@ -145,18 +145,22 @@ A card finds its chat by the **run id**, not by a "current chat": each run gets 
   `store.For(chat).ProjectPath`; the folder lock too. Details — `docs/en/cli-contract.md`, "A session in a worktree".
 - `--bare` is not allowed: it does not read `~/.claude` and breaks the subscription OAuth login.
 - `--allowedTools` holds only `mcp__tg__send_file`: its policy belongs to the gateway. Do not add
-  other tools there — that bypasses the cards past the machine's config.
+  other tools there — that bypasses the cards past the machine's config. The one exception: a вопрос
+  and a беседа also get `WebSearch,WebFetch` there (the user's decision of 28.10.2026 — they have no
+  files and no commands, and a card per search took a fifth of the answer time; the accepted risk is a
+  page talking the model into opening an address with the conversation in it).
 - `--add-dir` carries exactly one folder — the chat's `inbox`. Never the data directory itself
   (`state.json`, `appsettings.Local.json` with the secrets, the MCP token) and never the project
-  subfolder: `/project` may change while the message waits in the queue. A вопрос (`/ask`) gets no
-  `--add-dir` at all.
+  subfolder: `/project` may change while the message waits in the queue. A вопрос (`/ask`) and a
+  беседа get no `--add-dir` at all.
 - A вопрос (`AgentRunKind.Question`) runs with `--no-session-persistence`, `--tools WebSearch,WebFetch`
   and `--strict-mcp-config` in an empty `%TEMP%\AgentsTracker-question`, recreated before every
   вопрос (a task could plant a hook there, and the trust gate skips вопросы) — never in the project or the
   data directory, and its `SessionId` never reaches `SessionStore`. Its model is `Gateway:Question`,
-  not the chat selection. Cards work as for a task: `--permission-prompt-tool`, the `tg` server and
-  `send_file` (checked against the chat's project) stay. Details — `docs/en/cli-contract.md`,
-  "A question".
+  not the chat selection. A вопрос and a беседа (`WebOnly`) also get `--permission-mode default` and an
+  `--append-system-prompt` saying there is no computer access — the user's `CLAUDE.md` still loads
+  and promises a shell. The permission tool, the `tg` server and `send_file` (checked against the
+  chat's project) stay. Details — `docs/en/cli-contract.md`, "A question".
 - CLI arguments go through `ProcessStartInfo.ArgumentList`, do not concatenate a string.
 - The CLI's output is read until it ends or `DrainGrace` (5 s) after the exit, never by a bare
   `await` on the reader: a background process that escaped the CLI keeps the pipe open, and the task

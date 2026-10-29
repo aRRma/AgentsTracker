@@ -49,7 +49,10 @@ your task and the pieces of files the agent read go to Anthropic, otherwise it c
   by the send limit: `appsettings.Local.json` is a `.json`, and a copy of `.env` named `.txt` passes
   too. Keep secrets outside the project;
 - read a "pack it and send it" request carefully. The gateway checks the archive itself, not what
-  is packed inside.
+  is packed inside;
+- a беседа and `/ask` search the web and open sites with no card. They have no files and no
+  commands, but a page can talk the model into opening an address with the conversation in it. Don't
+  write in a беседа what must not leave the chat.
 
 ## 4. Permissions Piled Up and the Questions Stopped
 

@@ -103,6 +103,8 @@ public sealed class SettingsCommandHandler(
     /// </summary>
     private string ChangeMode(string argument, UserId user, ChatId chat)
     {
+        if (store.For(chat) is { IsTalk: true, IsNewTopic: false }) return AgentScreen.TalkModeRefusal + ".";
+
         if (argument.Equals("reset", StringComparison.OrdinalIgnoreCase))
         {
             var warning = CacheNote(Agent().CacheWarning("mode:reset", chat));
