@@ -26,7 +26,8 @@
 ## Экран настроек
 
 Класс с `ISettingsScreen` в `Features/Settings/Screens/`, `AddSingleton<ISettingsScreen, …>` в
-`SettingsModule`, кнопка в `RootScreen`.
+`SettingsModule`, кнопка в `RootScreen`. Экран другой фичи лежит в ней и регистрируется её модулем
+так же — `TopicScreen` в `Topics`.
 
 - `Key` — префикс экрана в данных кнопки: кнопка несёт `cfg:<Key>:<аргумент>`. Ключ уникален, а
   неизвестный молча открывает `root`: несовпадение выглядит как кнопка, которая ничего не делает.
@@ -40,6 +41,9 @@
   `IAuditLog.Changed` (`SettingsAudit`).
 - Каждый экран рисуется для чата (`RenderAsync(ChatId)`, `Open(ChatId)`) и читает выбор через
   `store.For(chat)`: у темы свои проект, сессия, модель и режим.
+- У новой темы ещё нет типа (`IsNewTopic`). Смена модели, effort или режима оставляет её новой
+  (`TopicState.Untyped`), тип даёт только `SetProjectPath`. Всё, что начинает запуск, в новой теме
+  отказывает, как `SkillLauncher`: «Сначала выберите тип темы: /topic».
 - Позиция в списке живёт в `ScreenNavigation` по чатам: экраны — синглтоны, а каждая тема — свой
   чат.
 - Необратимая кнопка сначала спрашивает через `PendingConfirmations` (по чату: действие и
@@ -55,7 +59,9 @@
 Папка в `Features/` с `*Module : IFeatureModule` (`Infrastructure/Modules/`: `AddServices` и
 `MapEndpoints`, второй пустой, если монтировать нечего) и строка в списке модулей в `Program.cs`.
 Текстовые обработчики (`IChatTextHandler`) опрашиваются в этом порядке, поэтому `ChatModule`
-остаётся последним: его обработчик всегда возвращает `true`. Нажатия кнопок — `IChatButtonHandler`,
+остаётся последним: его обработчик всегда возвращает `true`. `TopicsModule` стоит прямо перед ним,
+после `SettingsModule` и `QuestionModule`: аргументы скилла и вопрос после голого `/ask` — это
+ответы, а не текст новой темы. Нажатия кнопок — `IChatButtonHandler`,
 свои он узнаёт по префиксу данных кнопки (`cfg:` — меню).
 
 ## Проект

@@ -27,7 +27,8 @@ An unknown slash command goes to the CLI as-is: it is Claude Code's own. So «К
 ## A settings screen
 
 A class implementing `ISettingsScreen` in `Features/Settings/Screens/`, `AddSingleton<ISettingsScreen, …>`
-in `SettingsModule`, a button in `RootScreen`.
+in `SettingsModule`, a button in `RootScreen`. A screen of another feature lives in that feature and
+is registered by its module the same way — `TopicScreen` in `Topics`.
 
 - `Key` is the screen's callback prefix: a button carries `cfg:<Key>:<argument>`. It must be unique,
   and an unknown key silently opens `root`, so a mismatch looks like a button that does nothing.
@@ -41,6 +42,9 @@ in `SettingsModule`, a button in `RootScreen`.
   `IAuditLog.Changed` (`SettingsAudit`).
 - Every screen renders for a chat (`RenderAsync(ChatId)`, `Open(ChatId)`) and reads the selection
   through `store.For(chat)`: a topic has its own project, session, model and mode.
+- A new topic has no type yet (`IsNewTopic`). A model, effort or mode change there keeps it new
+  (`TopicState.Untyped`); only `SetProjectPath` types it. Anything that starts a run refuses in a new
+  topic, as `SkillLauncher` does: «Сначала выберите тип темы: /topic».
 - The list position lives in `ScreenNavigation` per chat: screens are singletons, and each topic is
   a chat of its own.
 - An irreversible button asks first through `PendingConfirmations` (per chat: action and session);
@@ -55,7 +59,9 @@ in `SettingsModule`, a button in `RootScreen`.
 A folder in `Features/` with a `*Module : IFeatureModule` (`Infrastructure/Modules/`: `AddServices`
 and `MapEndpoints`, the latter empty if there is nothing to mount) and a line in the module list in
 `Program.cs`. Text handlers (`IChatTextHandler`) are polled in that order, so `ChatModule` stays
-last: its handler always returns `true`. Buttons are `IChatButtonHandler`, told apart by a prefix of
+last: its handler always returns `true`. `TopicsModule` goes right before it, after `SettingsModule`
+and `QuestionModule`: a skill's arguments and a вопрос after a bare `/ask` are answers, not a new
+topic's text. Buttons are `IChatButtonHandler`, told apart by a prefix of
 the callback data (`cfg:` — the menu).
 
 ## A project

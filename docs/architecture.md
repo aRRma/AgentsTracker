@@ -393,9 +393,10 @@ Telegram 3800). Обычный текст режется как **исходны
 
 - `Channel.CreateUnbounded` в полосах `ChatWorker` без `SingleReader`: с ним `Reader.Count` бросает
   исключение и `/status` разваливается.
-- `Lane.RunCts` и регистрация в брокере ставятся в `ChatWorker` прямо перед `agent.RunAsync`, после
-  отправки статусного сообщения: чистит их только `finally` запуска, а падение выше оставило бы
-  `IsBusy` (или зарегистрированный запуск) до перезапуска.
+- `Lane.RunCts` в `ChatWorker` ставится после проверки доверия и до замка папки — иначе `/stop` не
+  прервал бы ожидание замка; снимает его `finally` в `ConsumeAsync`, поэтому сбой на любом пути
+  (удалённая тема, неотправленный статус) не оставляет `IsBusy`. Регистрация в брокере ставится
+  прямо перед `agent.RunAsync`, после статусного сообщения, и снимает её `finally` самого запуска.
 - `HttpClient` только через `IHttpClientFactory`. `ClaudeLimits.HttpClientName` — один таймаут, без
   повторов. Клиент Telegram (`TelegramClientFactory`) — синглтон, DNS обновляет
   `PooledConnectionLifetime`; повтор только на `HttpRequestException`: методы Bot API — POST без

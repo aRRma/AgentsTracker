@@ -224,7 +224,7 @@ The data directory is the gateway's whole state. On Windows only the owner and S
 | File | What |
 |---|---|
 | `appsettings.Local.json` | config; on Windows secrets are encrypted |
-| `state.json` | sessions per project, project, model, mode and effort selection, the versions the model aliases answered with, "Always" rules and trusted projects per project, statistics, run history |
+| `state.json` | sessions per project, project, model, mode and effort selection (the лента's and each topic's), the runs in progress per chat, the versions the model aliases answered with, "Always" rules and trusted projects per project, statistics, run history |
 | `audit\audit-YYYY-MM.jsonl` | the "who did what, when" journal, one file per month |
 | `inbox\<chat>\<project>\` | pictures from the chat; swept after `Attachments:RetentionHours` (24 by default) |
 | `mcp-gateway-<pid>-<run>.json` | temporary, one per agent run: created at its start, removed at its end |

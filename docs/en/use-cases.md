@@ -109,8 +109,9 @@ photo "as a file" — Telegram compresses photos.
 
 - **The computer on** and not asleep. If it sleeps on its own, turn that off — otherwise the message
   waits until morning.
-- **One task at a time.** The rest wait in the queue. `/status` shows what is running, `/stop`
-  interrupts it, `/new` starts a new session.
+- **One task at a time in a chat.** The rest wait in the queue. Topics run in parallel, but one
+  project takes one run at a time. `/status` shows what is running, `/stop` interrupts it (in a topic
+  only that topic, in the лента everything), `/new` starts a new session.
 - **Confirmations.** In the `default` mode anything that changes or deletes files and is not
   already allowed by a rule arrives as a card with buttons. Read the card and don't press
   «Всегда» ("Always") without looking.

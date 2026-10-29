@@ -396,9 +396,11 @@ remainder once put «67% · осталось 32%» in one message.
 
 - `Channel.CreateUnbounded` in `ChatWorker` lanes without `SingleReader`: with it `Reader.Count` throws
   and `/status` falls over.
-- `Lane.RunCts` and the broker registration in `ChatWorker` are set right before `agent.RunAsync`,
-  after the status message is sent: only the run's `finally` clears them, and a failure above would
-  leave `IsBusy` (or a registered run) set until a restart.
+- `Lane.RunCts` in `ChatWorker` is set after the trust check and before the folder lock — otherwise
+  `/stop` could not interrupt the wait for the lock; the `finally` in `ConsumeAsync` clears it, so a
+  failure on any path (a deleted topic, a status that did not go out) does not leave `IsBusy` set.
+  The broker registration is set right before `agent.RunAsync`, after the status message, and the
+  run's own `finally` removes it.
 - `HttpClient` only through `IHttpClientFactory`. `ClaudeLimits.HttpClientName` — one timeout, no
   retries. The Telegram client (`TelegramClientFactory`) is a singleton, DNS is refreshed by
   `PooledConnectionLifetime`; retry only on `HttpRequestException`: Bot API methods are POSTs without

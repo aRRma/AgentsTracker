@@ -28,7 +28,7 @@ English (`IAgentLimits`, `ProjectPath`, `audit\`) — the glossary is about text
 | A one-off request with no session and no project (`/ask`) | **вопрос** | запрос, режим ASK, режим вопроса |
 | A Telegram topic in the private chat with the bot: its own session, project, model and mode | **тема** | тред, топик, ветка, чат |
 | The private chat outside any topic | **лента** («лента без темы») | общий чат, главная тема, General |
-| A topic with no project: web search only, a session of its own (`Path = null`) | **беседа** | чат, диалог, разговор, вопрос |
+| A topic with no project: web search only, a session of its own (`ProjectPath = null`) | **беседа** | чат, диалог, разговор, вопрос |
 | What a topic works with: a project or a беседа («Тип темы?») | **тип темы** | режим темы, вид темы |
 | The agent asking about an action | **подтверждение** | согласование, запрос разрешения, апрув |
 | The message with the decision buttons | **карточка подтверждения** | карточка согласования, запрос |

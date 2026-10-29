@@ -110,8 +110,9 @@ has a chat reads it through `store.For(chat)`** (`SessionStore.ChatScope`); `sto
 there is no chat (startup, the monitor) — otherwise a topic shows and changes the лента's project. A
 topic's active session is `ActiveSessions["<chat key>|<project>"]`. A topic without a project is a
 «беседа»: its own folder under `SessionStore.TalkRoot`, emptied before every run, `AgentRunRequest.WebOnly`
-(the вопрос's tools, but a session). A new topic (no `TopicState`) shows «Тип темы» instead of
-running. Details — `docs/en/architecture.md`, "Topics".
+(the вопрос's tools, but a session). A new topic (no `TopicState`, or one with `Untyped` left by
+`/model`, `/effort`, `/mode`) shows «Тип темы» instead of running, and a skill there is refused; only
+`SetProjectPath` gives a topic its type. Details — `docs/en/architecture.md`, "Topics".
 
 Pictures go through `AttachmentInbox` into `<data directory>\inbox\<chat>\<project>\`; the run gets
 the chat folder in `--add-dir`. A command wins over a picture: `/stop` works with one attached, the

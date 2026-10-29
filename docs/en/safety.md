@@ -109,7 +109,9 @@ cut off after an hour (`RunTimeoutMinutes`).
 - `/usage` shows what is left in the current window. When the window is used up, the gateway starts
   no new run and drops the queue;
 - ask for big things in parts: "start with the January folder";
-- `/stop` interrupts a task, `/status` shows what is running.
+- `/stop` interrupts a task: in a topic only that topic, in the лента everything. `/status` shows
+  what is running;
+- topics run in parallel, and each one spends the same limit. Keep the heavy tasks in one topic.
 
 ## 8. Someone Else Can See the Computer
 

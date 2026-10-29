@@ -55,7 +55,7 @@ public sealed class TopicScreen(SessionStore store, IAuditLog audit, IOptions<Ga
             🧵 <b>Тип темы</b> — сейчас: {now}
 
             📁 <b>Проект</b> — задачи в папке проекта: правки, команды, своя сессия.
-            💬 <b>Беседа</b> — разговор без проекта: только поиск в сети, файлов нет. Модель — {E(options.Value.Question.Model ?? "по умолчанию")}.{hint}
+            💬 <b>Беседа</b> — тема без проекта: только поиск в сети, файлов нет. Модель — {E(options.Value.Question.Model ?? "по умолчанию")}.{hint}
             """;
 
         var talk = scope.IsTalk && !scope.IsNewTopic;
