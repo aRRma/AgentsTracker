@@ -228,6 +228,20 @@ Check(backend.Requests.Last(r => r.Prompt == "m2-ждёт").ResumeSessionId is n
 backend.Release("m2-ждёт");
 await Until(() => !worker.IsBusy(t4), "тема закончила");
 
+// Удалённая тема: статус не дошёл — запуска нет, очередь темы снята, «внутренней ошибки» нет
+backend.Hold = false;
+var t5 = new TelegramChatId(100, 11);
+store.For(t5).SetProjectPath(projA);
+channel.Dead = t5;
+var requestsBefore = backend.Requests.Count();
+worker.Enqueue(t5, user, "в удалённую 1");
+worker.Enqueue(t5, user, "в удалённую 2");
+await Until(() => worker.QueueLength(t5) == 0 && !worker.IsBusy(t5), "удалённая тема разобрана");
+await Task.Delay(200);
+Check(backend.Requests.Count() == requestsBefore, "в удалённую тему запусков не было");
+Check(channel.DeadAttempts == 1, "в удалённую тему — одна попытка: ни «внутренней ошибки», ни второй задачи");
+channel.Dead = null;
+
 await cts.CancelAsync();
 try { await worker.StopAsync(CancellationToken.None); } catch { }
 
@@ -304,8 +318,12 @@ sealed class FakeChannel : IChatChannel
     public Task PublishCommandsAsync(IReadOnlyList<ChatCommand> commands, CancellationToken ct) => Task.CompletedTask;
     public Task ListenAsync(IChatInbound sink, CancellationToken ct) => Task.CompletedTask;
 
+    public ChatId? Dead;
+    public int DeadAttempts;
+
     public Task<MessageRef> SendAsync(ChatId chat, OutgoingMessage message, CancellationToken ct)
     {
+        if (chat == Dead && Interlocked.Increment(ref DeadAttempts) > 0) throw new ChannelRequestException("message thread not found", ChannelFailure.CannotReach);
         SentQueue.Enqueue((chat, message.Text));
         return Task.FromResult(new MessageRef(chat, Interlocked.Increment(ref _id).ToString()));
     }

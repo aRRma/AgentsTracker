@@ -331,11 +331,6 @@ public sealed class ChatWorker(
         var folder = question ? null : new RunFolder(sessionFolder);
         var startBranch = folder is null ? null : git.Head(folder.Path);
 
-        Audit(prompt, AuditKinds.RunStart,
-            $"{(question ? "вопрос, " : talk ? "беседа, " : "")}{modelLabel ?? "модель по умолчанию"}, {scope.EffectivePermissionMode}, effort {effort ?? "—"}"
-            + (startBranch is null ? "" : $", ветка {startBranch.Label}"),
-            session);
-
         var preview = Text.Preview(prompt.Text);
 
         // Сессию и папку фиксируем до запуска: переключение из меню посреди работы иначе
@@ -362,9 +357,36 @@ public sealed class ChatWorker(
         // иначе итог перетёр бы /new или смену сессии по ходу работы.
         var runSessionId = session is { Length: > 0 } ? session : request.NewSessionId;
 
-        var status = await RunStatusMessage.StartAsync(
-            channel, prompt.Chat, thread, folder is null ? null : () => git.Head(folder.Path)?.Label, prompt.ReplyTo, logger, stoppingToken);
+        // Статус — первое, что уходит в чат: все темы лички делят один предел отправки, и 429 здесь
+        // ждём, как у частей ответа.
+        RunStatusMessage? started = null;
+        try
+        {
+            await RateLimitRetry.OnceAsync(
+                async () => started = await RunStatusMessage.StartAsync(
+                    channel, prompt.Chat, thread, folder is null ? null : () => git.Head(folder.Path)?.Label, prompt.ReplyTo, logger, stoppingToken),
+                wait => logger.LogWarning("Канал просит подождать {Wait}, статус запуска будет отправлен повторно", wait),
+                stoppingToken);
+        }
+        catch (ChannelRequestException ex) when (ex.Kind == ChannelFailure.CannotReach)
+        {
+            // Тему удалили в клиенте: Telegram об этом не сообщает, узнаём по отказу. Ни статус, ни
+            // ответ туда не дойдут — не запускаем, и очередь темы туда же: иначе каждая задача из
+            // неё жгла бы запуск впустую. Полоса вопросов общая — её чужие вопросы не трогаем.
+            var dropped = question ? 0 : lane.Drain().Count;
+            for (var i = 0; i < dropped; i++) monitor.Dequeued();
+            logger.LogWarning("Чат {Chat} недоступен: запуск не начат, снято из очереди: {Dropped}", prompt.Chat.Key, dropped);
+            return;
+        }
+
+        var status = started!;
         var startedUtc = DateTimeOffset.UtcNow;
+
+        // После статуса: не ушёл он — запуска не было, и «начат» без конца в журнале соврал бы.
+        Audit(prompt, AuditKinds.RunStart,
+            $"{(question ? "вопрос, " : talk ? "беседа, " : "")}{modelLabel ?? "модель по умолчанию"}, {scope.EffectivePermissionMode}, effort {effort ?? "—"}"
+            + (startBranch is null ? "" : $", ветка {startBranch.Label}"),
+            session);
 
         // Всё, что после статусного сообщения, — внутри try: сбой записи state.json или монитора
         // оставил бы статус тикать в чате, а «идёт запуск» в state.json — до ложного «прервано»
