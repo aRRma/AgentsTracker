@@ -71,8 +71,12 @@ Check(s1.EffectiveModel == "fable" && sf.EffectiveModel == "opus", "модель
 var s2 = store.For(t2);
 s2.SetModel("haiku");
 Check(s2.IsNewTopic && s2.EffectiveModel == "haiku", "/model в новой теме: модель запомнена, тип не выбран");
+s2.SetPermissionMode("plan");
+Check(s2.IsNewTopic && s2.PermissionMode == "plan", "/mode в новой теме запомнен");
 s2.SetProjectPath(null);
 Check(s2.IsTalk && !s2.IsNewTopic && s2.EffectiveModel == "haiku", "выбор «беседа» — тип выбран, модель осталась");
+Check(s2.PermissionMode is null && s2.EffectivePermissionMode == "default", "режим беседы — из конфига, сохранённый plan не действует");
+Check(store.Snapshot().Topics[t2.Key].PermissionMode is null, "выбор беседы стёр режим: проект потом не получит старый plan");
 
 // TrySetSessionId — только в своём ключе
 Check(!s1.TrySetSessionId(projA, "x", onlyIfActive: "feed-sess"), "тема не меняет сессию по ленточной");
@@ -136,7 +140,8 @@ var audit = new NullAudit();
 var inbox = new AttachmentInbox(channel, store, audit, options, NullLogger<AttachmentInbox>.Instance);
 var trust = new ProjectTrustGate(backend, store, broker, channel, audit, NullLogger<ProjectTrustGate>.Instance);
 var monitor = new RunMonitor();
-var worker = new ChatWorker(channel, backend, new NoAgentLimits(), broker, inbox, trust, store,
+var limits = new FakeLimits();
+var worker = new ChatWorker(channel, backend, limits, broker, inbox, trust, store,
     new GitRepository(NullLogger<GitRepository>.Instance), options, audit, monitor, NullLogger<ChatWorker>.Instance);
 using var cts = new CancellationTokenSource();
 await worker.StartAsync(cts.Token);
@@ -229,6 +234,66 @@ await Until(() => backend.Running.ContainsKey("m2-ждёт"), "после зам
 Check(backend.Requests.Last(r => r.Prompt == "m2-ждёт").ResumeSessionId is null, "запуск после /new — новой сессией");
 backend.Release("m2-ждёт");
 await Until(() => !worker.IsBusy(t4), "тема закончила");
+
+// «⏳» не удалилось (сбой сети) — замок папки всё равно не теряется
+worker.Enqueue(t3, user, "del-сосед");
+await Until(() => backend.Running.ContainsKey("del-сосед"), "сосед держит папку");
+worker.Enqueue(t4, user, "del-ждёт");
+await Until(() => worker.IsBusy(t4) && !backend.Running.ContainsKey("del-ждёт"), "тема ждёт замок");
+channel.FailDelete = true;
+backend.Release("del-сосед");
+await Until(() => backend.Running.ContainsKey("del-ждёт"), "после сбоя удаления «⏳» тема запустилась");
+backend.Release("del-ждёт");
+channel.FailDelete = false;
+worker.Enqueue(t3, user, "del-после");
+await Until(() => backend.Running.ContainsKey("del-после"), "папка свободна: следующий запуск начался");
+backend.Release("del-после");
+await Until(() => !worker.IsBusy(t3), "сосед закончил");
+
+// Монитор снимает из очереди превью взятой задачи, а не первое в списке
+worker.Enqueue(t1, user, "mon-x");
+await Until(() => backend.Running.ContainsKey("mon-x"), "тема 1 занята");
+worker.Enqueue(t1, user, "mon-a");
+worker.Enqueue(t3, user, "mon-b");
+await Until(() => backend.Running.ContainsKey("mon-b"), "тема 3 взяла свою задачу");
+Check(monitor.Current.Queue is ["mon-a"], "в очереди монитора — ждущая задача темы 1, а не взятая темы 3");
+backend.Release("mon-x");
+await Until(() => backend.Running.ContainsKey("mon-a"), "тема 1 взяла следующую");
+backend.Release("mon-a");
+backend.Release("mon-b");
+await Until(() => !worker.IsBusy(t1) && !worker.IsBusy(t3), "темы 1 и 3 закончили");
+
+// /stop во время проверки лимита — процесс не запускается
+limits.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+limits.Entered = false;
+worker.Enqueue(t3, user, "lim-ждёт");
+await Until(() => limits.Entered, "запуск проверяет лимит");
+Check(worker.Stop(t3), "/stop во время проверки лимита вернул true");
+var gateOpen = limits.Gate;
+limits.Gate = null;
+gateOpen.SetResult();
+await Until(() => !worker.IsBusy(t3), "тема освободилась после проверки лимита");
+Check(!backend.Requests.Any(r => r.Prompt == "lim-ждёт"), "после /stop во время проверки лимита запуска не было");
+
+// Сессия в worktree, /new во время ожидания его замка — запуск идёт новой сессией в проекте
+var projW = Directory.CreateDirectory(Path.Combine(root, "projW")).FullName;
+var t6 = new TelegramChatId(100, 12);
+var t7 = new TelegramChatId(100, 13);
+store.For(t6).SetProjectPath(projB);
+store.For(t6).RegisterSession(projB, "w", "w-sess");
+store.RecordWorkingDirectory("w-sess", projW);
+store.For(t7).SetProjectPath(projW);
+Check(ProjectCatalog.Same(store.SessionFolder(projB, "w-sess"), projW), "сессия темы 6 — в worktree");
+worker.Enqueue(t7, user, "w-сосед");
+await Until(() => backend.Running.ContainsKey("w-сосед"), "сосед держит worktree");
+worker.Enqueue(t6, user, "w-ждёт");
+await Until(() => channel.Sent.Any(s => s.Chat == t6 && s.Text.Contains("В проекте идёт другой запуск")), "тема 6 ждёт замок worktree");
+store.For(t6).SetSessionId(null);
+backend.Release("w-сосед");
+await Until(() => backend.Running.ContainsKey("w-ждёт"), "тема 6 запустилась");
+Check(backend.Requests.Last(r => r.Prompt == "w-ждёт").ResumeSessionId is null, "после /new — новая сессия, а не старая из worktree");
+backend.Release("w-ждёт");
+await Until(() => !worker.IsBusy(t6), "тема 6 закончила");
 
 // Удалённая тема: статус не дошёл — запуска нет, очередь темы снята, «внутренней ошибки» нет
 backend.Hold = false;
@@ -336,9 +401,35 @@ sealed class FakeChannel : IChatChannel
     public Task<MessageRef> SendPhotoAsync(ChatId chat, string fileName, Stream content, string? caption, MessageRef? replyTo, CancellationToken ct) => SendAsync(chat, new(fileName), ct);
     public Task DownloadAttachmentAsync(IncomingAttachment attachment, Stream destination, CancellationToken ct) => throw new NotSupportedException();
     public Task EditAsync(MessageRef message, OutgoingMessage content, CancellationToken ct) => Task.CompletedTask;
-    public Task DeleteAsync(MessageRef message, CancellationToken ct) => Task.CompletedTask;
+    public volatile bool FailDelete;
+    public Task DeleteAsync(MessageRef message, CancellationToken ct) =>
+        FailDelete ? Task.FromException(new HttpRequestException("сеть")) : Task.CompletedTask;
     public Task AcknowledgeAsync(ButtonPress press, string? toast, CancellationToken ct) => Task.CompletedTask;
     public Task IndicateTypingAsync(ChatId chat, CancellationToken ct) => Task.CompletedTask;
+}
+
+sealed class FakeLimits : IAgentLimits
+{
+    private readonly NoAgentLimits _none = new();
+
+    /// <summary>Не null — проверка лимита ждёт, пока харнес её не отпустит.</summary>
+    public volatile TaskCompletionSource? Gate;
+    public volatile bool Entered;
+
+    public async Task<string?> RefusalAsync(string? model, CancellationToken ct)
+    {
+        if (Gate is { } gate)
+        {
+            Entered = true;
+            await gate.Task;
+        }
+
+        return null;
+    }
+
+    public Task<LimitsSnapshot> GetAsync(CancellationToken ct) => _none.GetAsync(ct);
+    public Task<string> ShortSummaryAsync(string? model, CancellationToken ct) => _none.ShortSummaryAsync(model, ct);
+    public Task<LimitsView> ViewAsync(string? model, CancellationToken ct) => _none.ViewAsync(model, ct);
 }
 
 sealed class NullAudit : IAuditLog

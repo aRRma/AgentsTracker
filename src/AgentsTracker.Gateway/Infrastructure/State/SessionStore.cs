@@ -96,7 +96,22 @@ public sealed class SessionStore
             get { lock (_store._gate) return Selection()?.Model ?? (IsTalkLocked() ? _store._options.Question.Model : _store._options.Model); }
         }
 
-        public string? PermissionMode => Read(s => s.PermissionMode);
+        /// <summary>
+        /// Режим, выбранный из чата. У беседы — всегда null, то есть из конфига: там /mode получает
+        /// отказ, и снять режим, оставшийся в записи прошлой версии, было бы нечем. У новой темы —
+        /// сохранённый: он пойдёт в дело, если тему привяжут к проекту, а выбор беседы его стирает.
+        /// </summary>
+        public string? PermissionMode
+        {
+            get
+            {
+                lock (_store._gate)
+                {
+                    var selection = Selection();
+                    return IsTalkLocked() && selection is TopicState { Untyped: not true } ? null : selection?.PermissionMode;
+                }
+            }
+        }
 
         /// <summary>Режим работы следующего запуска: выбранный из чата, иначе из конфига.</summary>
         public string EffectivePermissionMode => PermissionMode ?? _store._options.PermissionMode;
@@ -125,7 +140,14 @@ public sealed class SessionStore
                 ? ProjectCatalog.Normalize(path)
                 : null;
 
-            Write(s => s.ProjectPath = value, typed: true);
+            Write(s =>
+            {
+                s.ProjectPath = value;
+
+                // Беседа режим не читает, а сохранённый до неё (/mode plan в новой теме) молча ожил
+                // бы, когда тему потом привяжут к проекту.
+                if (IsTopic && value is null) s.PermissionMode = null;
+            }, typed: true);
         }
 
         public void SetModel(string? model) => Write(s => s.Model = model);

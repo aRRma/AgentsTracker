@@ -284,6 +284,9 @@ public sealed class ChatWorker(
             }
 
             if (admitted) break;
+
+            // Доверие — заново к проекту, который выбран сейчас: прежний мог смениться через /project.
+            project = scope.ProjectPath;
         }
 
         if (question) Arm();
@@ -593,16 +596,33 @@ public sealed class ChatWorker(
             }
             catch (OperationCanceledException) when (!stopping.IsCancellationRequested)
             {
+                await ForgetNoticeAsync(notice, stopping);
                 return null;
             }
-            finally
-            {
-                // Ожидание кончилось — стартом или /stop: висящее «⏳» обещало бы запуск, которого не будет.
-                if (notice is not null) await DeleteQuietlyAsync(notice, stopping);
-            }
+
+            await ForgetNoticeAsync(notice, stopping);
         }
 
         return new FolderLock(gate);
+    }
+
+    /// <summary>
+    /// Снимает «⏳», когда ожидание кончилось — стартом или /stop: висящее сообщение обещало бы запуск,
+    /// которого не будет. Не бросает ничего: замок к этому моменту уже взят, и сбой сети здесь
+    /// оставил бы папку занятой до перезапуска шлюза.
+    /// </summary>
+    private async Task ForgetNoticeAsync(MessageRef? notice, CancellationToken ct)
+    {
+        if (notice is null) return;
+
+        try
+        {
+            await channel.DeleteAsync(notice, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Не удалось удалить сообщение об ожидании замка");
+        }
     }
 
     /// <summary>Отпускает папку ровно один раз: явно перед ответом и ещё раз на выходе из метода.</summary>

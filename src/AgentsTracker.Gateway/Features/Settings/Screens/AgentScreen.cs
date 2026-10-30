@@ -98,8 +98,8 @@ public sealed class AgentScreen(
     }
 
     /// <summary>
-    /// Отказ на смену режима в беседе: агент её режим не читает, и «Режим: auto» молча делал бы
-    /// вид, что что-то поменялось.
+    /// Отказ на смену режима в беседе: её режим — всегда из конфига, а поиск и сайты разрешены в
+    /// любом режиме, и «Режим: auto» молча делал бы вид, что что-то поменялось.
     /// </summary>
     public const string TalkModeRefusal = "В беседе режим не меняется: поиск и сайты идут без карточек всегда";
 
@@ -159,6 +159,8 @@ public sealed class AgentScreen(
                 break;
 
             case "mode":
+                // В беседе смена режима получит отказ — спрашивать про кэш ради отказа незачем.
+                if (scope is { IsTalk: true, IsNewTopic: false }) return null;
                 var mode = IsReset(value) ? options.Value.PermissionMode : caps.PermissionMode.Resolve(value);
                 if (mode is null) return null;
                 toMode = CacheGuard.ModeScope(caps, mode);
