@@ -43,8 +43,9 @@ is registered by its module the same way — `TopicScreen` in `Topics`.
 - Every screen renders for a chat (`RenderAsync(ChatId)`, `Open(ChatId)`) and reads the selection
   through `store.For(chat)`: a topic has its own project, session, model and mode.
 - A new topic has no type yet (`IsNewTopic`). A model, effort or mode change there keeps it new
-  (`TopicState.Untyped`); only `SetProjectPath` types it. Anything that starts a run refuses in a new
-  topic, as `SkillLauncher` does: «Сначала выберите тип темы: /topic».
+  (`TopicState.Untyped`); only `SetProjectPath` types it. Its text opens «Тип темы» (`TopicHandler`),
+  a skill there is refused (`SkillLauncher`: «Сначала выберите тип темы: /topic»), and `/context` and
+  `/compact` find no session. A new command that starts a task needs the same refusal.
 - The list position lives in `ScreenNavigation` per chat: screens are singletons, and each topic is
   a chat of its own.
 - An irreversible button asks first through `PendingConfirmations` (per chat: action and session);

@@ -233,10 +233,19 @@ one session.
 A беседа runs in its own folder `SessionStore.TalkRoot\<chat key>` (`%TEMP%\AgentsTracker-talk`),
 emptied before each run, before the trust check, like the вопрос folder; `--resume` finds the session
 by the folder path, not its contents. The run carries `AgentRunRequest.WebOnly`: the backend gives it
-the вопрос's tools (`--tools WebSearch,WebFetch --strict-mcp-config`), for `/context` and `/compact`
-too, but keeps the session. No `--add-dir`, pictures are refused before download. The default model
-and effort are `Gateway:Question`. Whether a run is a беседа is decided by its final folder
-(`IsTalkFolder`), not by the topic at enqueue time: the topic may get a project while the task waits.
+the вопрос's set — `--tools WebSearch,WebFetch --strict-mcp-config`, search and sites in
+`--allowedTools` with no card, `--append-system-prompt` (`cli-contract.md`, "A question") — for
+`/context` and `/compact` too, but keeps the session. No `--add-dir`, pictures are refused before
+download. The default model and effort are `Gateway:Question`; the mode is always the config's
+(`ChatScope.PermissionMode` is null in a беседа, `/mode` there is refused). Whether a run is a беседа
+is decided by its final folder (`IsTalkFolder`), not by the topic at enqueue time: the topic may get
+a project while the task waits.
+
+A deleted topic is learned of only from a send: Telegram answers «message thread not found», the
+channel gives `CannotReach`. The run's status message is the first send, so `ProcessAsync` does not
+start the run and drops the topic's queue; `run.start` is written only after the status went out. A
+429 on the status is waited out once, like an answer part. The deleted topic's records stay in
+`state.json`, and its active sessions stay marked «🔒» on «Сессии».
 
 ### Context and run kinds
 

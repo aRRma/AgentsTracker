@@ -182,8 +182,8 @@ removed — rejected by API»: настоящие скриншоты прохо�
 `ClaudeBackend.BuildArguments` всегда передаёт `-p <промпт>`, `--output-format stream-json
 --verbose` (без `--verbose` `-p` не пишет поток), `--permission-prompt-tool`, `--permission-mode`,
 `--mcp-config` и `--allowedTools mcp__tg__send_file`. По условию: `--resume <id>` или
-`--session-id <uuid>`, `--add-dir` (только если папка чата есть), `--model`, `--effort`. У вопроса
-свой набор — «Вопрос без сессии» ниже.
+`--session-id <uuid>`, `--add-dir` (только если папка чата есть), `--model`, `--effort`. У вопроса и
+беседы свой набор, и `--allowedTools` у них длиннее — «Вопрос без сессии» ниже.
 
 `ClaudeBackend.StreamCollector` разбирает stdout построчно (`ClaudeStreamEvent.Classify`): вызовы
 инструментов → `IAgentRunObserver.Activity`, остальное отбрасывается — в долгом запуске это

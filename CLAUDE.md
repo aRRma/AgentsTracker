@@ -160,7 +160,9 @@ A card finds its chat by the **run id**, not by a "current chat": each run gets 
   data directory, and its `SessionId` never reaches `SessionStore`. Its model is `Gateway:Question`,
   not the chat selection. A вопрос and a беседа (`WebOnly`) also get an `--append-system-prompt`
   saying there is no computer access — the user's `CLAUDE.md` still loads
-  and promises a shell. The permission tool, the `tg` server and `send_file` (checked against the
+  and promises a shell. A беседа's mode is always the config's (`ChatScope.PermissionMode` is null
+  there, `/mode` is refused): a `/mode plan` saved before the type was chosen would otherwise stick
+  with no way to undo it. The permission tool, the `tg` server and `send_file` (checked against the
   chat's project) stay. Details — `docs/en/cli-contract.md`, "A question".
 - CLI arguments go through `ProcessStartInfo.ArgumentList`, do not concatenate a string.
 - The CLI's output is read until it ends or `DrainGrace` (5 s) after the exit, never by a bare

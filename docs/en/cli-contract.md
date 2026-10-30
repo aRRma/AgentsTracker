@@ -185,7 +185,8 @@ removed — rejected by API»: real screenshots go through, an artificial one in
 --verbose` (without `--verbose` `-p` writes no stream), `--permission-prompt-tool`,
 `--permission-mode`, `--mcp-config` and `--allowedTools mcp__tg__send_file`. Conditionally:
 `--resume <id>` or `--session-id <uuid>`, `--add-dir` (only if the chat folder exists), `--model`,
-`--effort`. A вопрос gets its own set — "A question with no session" below.
+`--effort`. A вопрос and a беседа get their own set, with a longer `--allowedTools` — "A question
+with no session" below.
 
 `ClaudeBackend.StreamCollector` parses stdout line by line (`ClaudeStreamEvent.Classify`): tool
 calls → `IAgentRunObserver.Activity`, everything else is discarded — in a long run that's
