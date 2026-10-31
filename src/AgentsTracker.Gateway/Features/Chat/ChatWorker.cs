@@ -596,33 +596,28 @@ public sealed class ChatWorker(
             }
             catch (OperationCanceledException) when (!stopping.IsCancellationRequested)
             {
-                await ForgetNoticeAsync(notice, stopping);
+                await DeleteQuietlyAsync(notice, stopping);
                 return null;
             }
 
-            await ForgetNoticeAsync(notice, stopping);
+            // Ожидание кончилось — стартом или /stop: висящее «⏳» обещало бы запуск, которого не
+            // будет. Замок уже взят: удаление не бросает ничего, кроме отмены при остановке шлюза, а
+            // на неё папку отпускаем — иначе она осталась бы занятой.
+            var held = new FolderLock(gate);
+            try
+            {
+                await DeleteQuietlyAsync(notice, stopping);
+            }
+            catch
+            {
+                held.Dispose();
+                throw;
+            }
+
+            return held;
         }
 
         return new FolderLock(gate);
-    }
-
-    /// <summary>
-    /// Снимает «⏳», когда ожидание кончилось — стартом или /stop: висящее сообщение обещало бы запуск,
-    /// которого не будет. Не бросает ничего: замок к этому моменту уже взят, и сбой сети здесь
-    /// оставил бы папку занятой до перезапуска шлюза.
-    /// </summary>
-    private async Task ForgetNoticeAsync(MessageRef? notice, CancellationToken ct)
-    {
-        if (notice is null) return;
-
-        try
-        {
-            await channel.DeleteAsync(notice, ct);
-        }
-        catch (Exception ex)
-        {
-            logger.LogDebug(ex, "Не удалось удалить сообщение об ожидании замка");
-        }
     }
 
     /// <summary>Отпускает папку ровно один раз: явно перед ответом и ещё раз на выходе из метода.</summary>
@@ -879,15 +874,22 @@ public sealed class ChatWorker(
         }
     }
 
-    private async Task DeleteQuietlyAsync(MessageRef message, CancellationToken ct)
+    /// <summary>
+    /// Удаляет служебное сообщение (статус, «⏳») и не бросает ничего, кроме отмены при остановке
+    /// шлюза. Канал переводит в <see cref="ChannelRequestException"/> не всё: таймаут или обрыв сети
+    /// вылетел бы из finally запуска, и ответ агента не дошёл бы до чата.
+    /// </summary>
+    private async Task DeleteQuietlyAsync(MessageRef? message, CancellationToken ct)
     {
+        if (message is null) return;
+
         try
         {
             await channel.DeleteAsync(message, ct);
         }
-        catch (ChannelRequestException ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
-            logger.LogDebug(ex, "Не удалось удалить статусное сообщение");
+            logger.LogDebug(ex, "Не удалось удалить служебное сообщение");
         }
     }
 

@@ -243,6 +243,7 @@ await Until(() => worker.IsBusy(t4) && !backend.Running.ContainsKey("del-ждё�
 channel.FailDelete = true;
 backend.Release("del-сосед");
 await Until(() => backend.Running.ContainsKey("del-ждёт"), "после сбоя удаления «⏳» тема запустилась");
+await Until(() => channel.Sent.Any(s => s.Chat == t3 && s.Text.Contains("ответ на «del-сосед»")), "сбой удаления статуса не теряет ответ");
 backend.Release("del-ждёт");
 channel.FailDelete = false;
 worker.Enqueue(t3, user, "del-после");
@@ -309,6 +310,17 @@ Check(backend.Requests.Count() == requestsBefore, "в удалённую тем�
 Check(channel.DeadAttempts == 1, "в удалённую тему — одна попытка: ни «внутренней ошибки», ни второй задачи");
 channel.Dead = null;
 Check(monitor.Current.Queue.Count == 0, "очередь монитора пуста, когда все полосы разобраны");
+
+// Вторая карточка доверия: её время вышло, но доверие уже дали по соседней — запуск идёт
+var projT = Directory.CreateDirectory(Path.Combine(root, "projT")).FullName;
+Directory.CreateDirectory(Path.Combine(projT, ".claude"));
+File.WriteAllText(Path.Combine(projT, ".claude", "settings.json"), "{}");
+var quickOptions = Options.Create(new GatewayOptions { ProjectPath = projA, PermissionMode = "default", ApprovalTimeoutMinutes = 0 });
+var quickChannel = new FakeChannel { OnSend = text => { if (text.Contains("Доверять проекту")) store.TrustProject(projT, "fp000000"); } };
+var quickBroker = new ApprovalBroker(quickChannel, quickOptions, NullLogger<ApprovalBroker>.Instance);
+var quickTrust = new ProjectTrustGate(backend, store, quickBroker, quickChannel, audit, NullLogger<ProjectTrustGate>.Instance);
+Check(await quickTrust.EnsureAsync(t1, null, projT, CancellationToken.None) == ProjectTrustGate.Outcome.Trusted,
+    "время второй карточки вышло, но доверие уже дали по соседней — проект доверен");
 
 await cts.CancelAsync();
 try { await worker.StopAsync(CancellationToken.None); } catch { }
@@ -388,10 +400,12 @@ sealed class FakeChannel : IChatChannel
 
     public ChatId? Dead;
     public int DeadAttempts;
+    public Action<string>? OnSend;
 
     public Task<MessageRef> SendAsync(ChatId chat, OutgoingMessage message, CancellationToken ct)
     {
         if (chat == Dead && Interlocked.Increment(ref DeadAttempts) > 0) throw new ChannelRequestException("message thread not found", ChannelFailure.CannotReach);
+        OnSend?.Invoke(message.Text);
         SentQueue.Enqueue((chat, message.Text));
         return Task.FromResult(new MessageRef(chat, Interlocked.Increment(ref _id).ToString()));
     }
