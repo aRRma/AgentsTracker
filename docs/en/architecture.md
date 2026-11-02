@@ -247,11 +247,11 @@ start the run and drops the topic's queue; `run.start` is written only after the
 429 on the status is waited out once, like an answer part. The deleted topic's records stay in
 `state.json`, and its active sessions stay marked «🔒» on «Сессии».
 
-With topics on, the лента is mostly a place for service messages: Telegram Desktop moves any text
-typed there into a new topic, and only a command picked from «Меню» reaches the лента itself
-(checked live 02.11.2026). So «Шлюз запущен» goes to the лента, the лента's own selection still
-works for the «Меню» screens, and `/stop` in the лента — «stop everything» — is reached only from
-«Меню».
+With topics on, the лента is a place for service messages: the client moves what is typed there
+into a new topic (checked live 02.11.2026). Telegram Desktop lets only a command picked from «Меню»
+reach the лента itself; the mobile client moves even those. So «Шлюз запущен» goes to the лента,
+and `/stop` in the лента — «stop everything» — is reached only from «Меню» on Desktop; elsewhere
+`/stop` is given in each topic.
 
 ### Context and run kinds
 
