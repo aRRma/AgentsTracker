@@ -291,6 +291,9 @@ time — `DisplayFormat`; the renderer's quirks — `docs/en/architecture.md`.
 - `claude` is not on PATH in a session: call `~/.local/bin/claude.exe` directly.
 - Passing a slash command to `claude -p` from Bash needs `MSYS_NO_PATHCONV=1` — MSYS rewrites a
   leading `/context` into a Windows path.
+- `CLAUDE_CODE_SKIP_PROMPT_HISTORY=1` in `~/.claude/settings.json` stops the CLI from writing
+  session transcripts: every `--resume` then fails with «No conversation found» and the session is
+  reset on each second message. Check it first when `~/.claude/projects/<folder-key>/` stays empty.
 
 ## Как работать
 
