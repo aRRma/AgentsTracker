@@ -22,7 +22,7 @@ by frequency. `/new /model /effort /mode` work as text but stay out of the list:
 typed right after the command, `/stop` because a run must be stopped fast. `RootScreen` has buttons
 for the screens only. With topics on, a command picked from «Меню» goes to the topic it was picked
 in; from the лента Telegram Desktop sends it to the лента, while the mobile client opens a new topic,
-as it does for anything typed there (checked live 02.11.2026).
+as it does for anything typed there.
 
 An unknown slash command goes to the CLI as-is: it is Claude Code's own. So «Контекст» has no
 `/context` command: it would shadow Claude Code's.
@@ -44,14 +44,14 @@ is registered by its module the same way — `TopicScreen` in `Topics`.
   the answer goes to whoever pressed the button. A changed setting is written to the journal with
   `IAuditLog.Changed` (`SettingsAudit`).
 - Every screen renders for a chat (`RenderAsync(ChatId)`, `Open(ChatId)`) and reads the selection
-  through `store.For(chat)`: a topic has its own project, session, model and mode.
+  through `store.For(chat)`: a topic has its own project, session, model, effort and mode.
 - A new topic has no type yet (`IsNewTopic`). A model, effort or mode change there keeps it new
   (`TopicState.Untyped`); only `SetProjectPath` types it. Its text opens «Тип темы» (`TopicHandler`),
-  a skill there is refused (`SkillLauncher`: «Сначала выберите тип темы: /topic»), and `/context` and
-  `/compact` find no session. A new command that starts a task needs the same refusal.
-- The list position lives in `ScreenNavigation` per chat: screens are singletons, and each topic is
-  a chat of its own.
-- An irreversible button asks first through `PendingConfirmations` (per chat: action and session);
+  and a skill there is refused (`SkillLauncher`: «Сначала выберите тип темы: /topic»). A new command
+  that starts a task needs the same refusal.
+- The list position lives in `ScreenNavigation` per `ChatId`: screens are singletons, and each topic
+  has its own `ChatId`.
+- An irreversible button asks first through `PendingConfirmations` (per `ChatId`: action and session);
   «Да» carries the argument `yes:<action>`, and `Open` drops the pending question. Example —
   `ContextScreen`.
 - Pages and callback_data keys — `SettingsKeyboard.Page`/`Key12`. The one-letter prefix of a
@@ -127,8 +127,9 @@ A class with `[McpServerToolType]` in `Agents.Claude/Mcp/`, the name as a consta
 `IOperatorConsole` (implemented in `OperatorConsole`, `Features/Approvals/`).
 
 A tool without an approval card goes into `--allowedTools` in `ClaudeBackend.BuildArguments`, and
-its whole policy becomes the gateway's. Only `mcp__tg__send_file` is there: the host checks the
-folder, the type and the size itself. Nothing else belongs there — it bypasses the cards.
+its whole policy becomes the gateway's. `mcp__tg__send_file` is there: the host checks the folder,
+the type and the size itself. A вопрос and a беседа also get `WebSearch,WebFetch` there — they have
+no files or commands. Nothing else belongs there — it bypasses the cards.
 
 The `send_file` type whitelist lives in several places — the map in `OperatorConsole`, the tool
 description in `ClaudeSendFileTool` (the CLI sees the description of the **running** gateway),

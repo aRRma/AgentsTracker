@@ -26,10 +26,10 @@ English (`IAgentLimits`, `ProjectPath`, `audit\`) — the glossary is about text
 | The start of a session the model keeps on its side and reads cheaper than anew (prompt cache) | **кэш** («кэш до 15:42», «кэш остыл») | кеш, память, буфер |
 | A run that leaves no turn in the session, only to keep the cache from going cold | **подогрев** | прогрев, пинг, keep-alive |
 | A one-off request with no session and no project (`/ask`) | **вопрос** | запрос, режим ASK, режим вопроса |
-| A Telegram topic in the private chat with the bot: its own session, project, model and mode | **тема** | тред, топик, ветка, чат |
+| A Telegram topic in the private chat with the bot: its own session, project, model, effort and mode | **тема** | тред, топик, ветка, чат |
 | The private chat outside any topic | **лента** («лента без темы») | общий чат, главная тема, General |
 | A topic with no project: web search only, a session of its own (`ProjectPath = null`) | **беседа** | чат, диалог, разговор, вопрос |
-| What a topic works with: a project or a беседа («Тип темы?») | **тип темы** | режим темы, вид темы |
+| What a topic works with: a project or a беседа (the «Тип темы» screen) | **тип темы** | режим темы, вид темы |
 | The agent asking about an action | **подтверждение** | согласование, запрос разрешения, апрув |
 | The message with the decision buttons | **карточка подтверждения** | карточка согласования, запрос |
 | What the «Всегда» button writes down | **правило «всегда»** | разрешение, allow-правило |
@@ -100,9 +100,8 @@ runs in parallel with a задача and is answered as a reply to the message t
 «режим»: that word belongs to `--permission-mode`. When the agent itself asks, that is a «вопрос
 агента» — a card with options, not the user's вопрос.
 
-**вопрос / беседа.** A вопрос is one answer and leaves nothing behind. A беседа is a тема without a
-project: it keeps its own сессия, so the next message continues it, and it runs in parallel with
-the other темы. Both see only web search, not files.
+**вопрос / беседа.** A беседа is a тема without a project; unlike a вопрос, it keeps its own
+сессия, so the next message continues it. Both see only web search, not files.
 
 **лимит / предел.** A лимит belongs to the subscription: «Лимит тарифа исчерпан», the windows,
 the bars. A предел is technical and has nothing to do with money: a file size, a message length,

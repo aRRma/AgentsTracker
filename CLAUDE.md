@@ -92,8 +92,8 @@ kills startup.
 `ChatDispatcher` admits only `IChatChannel.AllowedUsers` in private chats. Slash commands
 (`IChatCommandHandler.Commands`) match **before** the text handlers — otherwise `/stop` would feed a
 waiting answer and nothing could interrupt a stuck run. Then the `IChatTextHandler` chain in module
-order: card answer → skill arguments → вопрос text after a bare `/ask` → the agent's queue (always
-`true`, so `ChatModule` is last). Unknown slash commands are Claude Code's own and go to the CLI.
+order: card answer → skill arguments → вопрос text after a bare `/ask` → «Тип темы» for a new topic
+(`TopicHandler`) → the agent's queue (always `true`, so `ChatModule` is last). Unknown slash commands are Claude Code's own and go to the CLI.
 Buttons: `cfg:` — the menu, anything else — approvals.
 
 `ChatWorker` has a task lane per chat (the лента and every тема) plus one shared вопрос lane: a
@@ -108,14 +108,18 @@ answered as a reply to the user's message (`OutgoingMessage.ReplyTo`) and stays 
 A Telegram topic is its own `ChatId` (`telegram:123/42`) with its own selection: **every place that
 has a chat reads it through `store.For(chat)`** (`SessionStore.ChatScope`); `store.Feed` only where
 there is no chat (startup, the monitor) — otherwise a topic shows and changes the лента's project. A
-topic's active session is `ActiveSessions["<chat key>|<project>"]`. A topic without a project is a
+topic's active session is `ActiveSessions["<chat key>|<project>"]`; a session active in another chat
+cannot be picked (`ChatScope.IsActiveElsewhere`, «🔒» on «Сессии») — two topics would continue one
+session. A topic without a project is a
 «беседа»: its own folder under `SessionStore.TalkRoot`, emptied before every run, `AgentRunRequest.WebOnly`
 (the вопрос's tools, but a session). A new topic (no `TopicState`, or one with `Untyped` left by
 `/model`, `/effort`, `/mode`) shows «Тип темы» instead of running, and a skill there is refused; only
-`SetProjectPath` gives a topic its type. Details — `docs/en/architecture.md`, "Topics".
+`SetProjectPath` gives a topic its type. A deleted topic is learned of only from a failed send
+(`ChannelFailure.CannotReach`): `ChatWorker.ConsumeAsync` drops that chat's queue. Details —
+`docs/en/architecture.md`, "Topics".
 
-Pictures go through `AttachmentInbox` into `<data directory>\inbox\<chat>\<project>\`; the run gets
-the chat folder in `--add-dir`. A command wins over a picture: `/stop` works with one attached, the
+Pictures go through `AttachmentInbox` into `<data directory>\inbox\<chat>\<project>\`; a task run gets
+the chat folder in `--add-dir` (a вопрос and a беседа get none, a беседа refuses pictures). A command wins over a picture: `/stop` works with one attached, the
 picture is dropped and the user is told so. Details — `docs/en/architecture.md`.
 
 ### The gateway → CLI → gateway loop
@@ -147,9 +151,9 @@ A card finds its chat by the **run id**, not by a "current chat": each run gets 
 - `--bare` is not allowed: it does not read `~/.claude` and breaks the subscription OAuth login.
 - `--allowedTools` holds only `mcp__tg__send_file`: its policy belongs to the gateway. Do not add
   other tools there — that bypasses the cards past the machine's config. The one exception: a вопрос
-  and a беседа also get `WebSearch,WebFetch` there (the user's decision of 28.10.2026 — they have no
-  files and no commands, and a card per search took a fifth of the answer time; the accepted risk is a
-  page talking the model into opening an address with the conversation in it).
+  and a беседа also get `WebSearch,WebFetch` there: they have no files and no commands, and a card
+  per search only slowed the answer. Accepted risk: a page talking the model into opening an address
+  with the conversation in it.
 - `--add-dir` carries exactly one folder — the chat's `inbox`. Never the data directory itself
   (`state.json`, `appsettings.Local.json` with the secrets, the MCP token) and never the project
   subfolder: `/project` may change while the message waits in the queue. A вопрос (`/ask`) and a
@@ -158,12 +162,14 @@ A card finds its chat by the **run id**, not by a "current chat": each run gets 
   and `--strict-mcp-config` in an empty `%TEMP%\AgentsTracker-question`, recreated before every
   вопрос (a task could plant a hook there, and the trust gate skips вопросы) — never in the project or the
   data directory, and its `SessionId` never reaches `SessionStore`. Its model is `Gateway:Question`,
-  not the chat selection. A вопрос and a беседа (`WebOnly`) also get an `--append-system-prompt`
-  saying there is no computer access — the user's `CLAUDE.md` still loads
-  and promises a shell. A беседа's mode is always the config's (`ChatScope.PermissionMode` is null
-  there, `/mode` is refused): a `/mode plan` saved before the type was chosen would otherwise stick
-  with no way to undo it. The permission tool, the `tg` server and `send_file` (checked against the
-  chat's project) stay. Details — `docs/en/cli-contract.md`, "A question".
+  not the chat selection. It also gets an `--append-system-prompt` saying there is no computer
+  access — the user's `CLAUDE.md` still loads and promises a shell. The permission tool, the `tg`
+  server and `send_file` (checked against the chat's project) stay. Details —
+  `docs/en/cli-contract.md`, "A question with no session".
+- A беседа (`AgentRunRequest.WebOnly`) gets the вопрос's tools and prompt line but keeps its session,
+  in its own folder under `SessionStore.TalkRoot`. Its mode is always the config's: choosing a беседа
+  clears the saved mode (`SetProjectPath`) and `/mode` is refused — otherwise a `/mode plan` saved
+  before the type was chosen would stick with no way to undo it.
 - CLI arguments go through `ProcessStartInfo.ArgumentList`, do not concatenate a string.
 - The CLI's output is read until it ends or `DrainGrace` (5 s) after the exit, never by a bare
   `await` on the reader: a background process that escaped the CLI keeps the pipe open, and the task

@@ -39,7 +39,8 @@ src/AgentsTracker.Gateway/
   Infrastructure/       GatewayInfrastructure.cs (config layers, DI, Kestrel, ValidateStartup, MapFeatures), AppPaths, Modules/IFeatureModule,
                         Configuration (GatewayOptions, ProjectCatalog), State (SessionStore, CacheGuard), Git, Audit, Monitoring (RunMonitor, RingBufferLog),
                         Chat (ChatGatewayService, ChatDispatcher, DisplayFormat, MarkdownRenderer,
-                        StartupNotice — «запущен»/«прерван» after a restart, Dispatch/ — handler contracts),
+                        StartupNotice — «запущен»/«прерван» after a restart, ChatCommandCatalog — the «Меню» command list,
+                        Dispatch/ — handler contracts),
                         Security (DPAPI secrets, ProtectSecretsCommand, DataDirectoryAcl), Cli/ (ConsoleCommands routes install, uninstall, protect-secrets),
                         Autostart/ (a Task Scheduler task via schtasks),
                         Container.Detected (in a container `install` refuses, and startup warns if `MonitorBind` does not fit: there it must be `any`)
@@ -89,9 +90,11 @@ Buttons: the `IChatButtonHandler` chain (`Dispatch/`), each recognizing its own 
 
 Before a task's run `ChatWorker` asks `ProjectTrustGate`: if `IAgentBackend.InspectProject` finds the
 agent's settings in the project and their fingerprint is not trusted yet, a «Доверять проекту?» card
-goes through `ApprovalBroker` under its own short-lived `RunScope` (so `/stop` withdraws it).
+goes through `ApprovalBroker` under its own short-lived `RunScope` (so `/stop` withdraws it). The
+same check covers the session's folder when the agent moved the session into a worktree.
 «❌ Отклонить», silence and `/stop` all mean no run; the first two also drop the task queue. The
-project is re-read after the card: if `/project` changed meanwhile, the new one is checked too. Why —
+project and the session are re-read after the card: if `/project` or `/new` changed them meanwhile,
+the new ones are checked too. Why —
 `cli-contract.md`, "Project settings and the trust dialog".
 
 ### Lanes: chats, topics and a вопрос in parallel
@@ -108,8 +111,8 @@ number of agent processes is not capped.
   agent edits. The lock is taken right after the trust loop — the card waits outside it, up to a
   quarter of an hour — and before the model, the limit and the session refresh: a long wait would
   make them stale, and on a limit exhausted meanwhile the CLI would go to credits. A waiting run
-  says «⏳ В проекте идёт другой запуск…», and the message is deleted when the wait ends. The
-  lane's token is set before the wait, so `/stop` interrupts the wait too. Under the lock the run
+  says «⏳ В проекте идёт другой запуск…», and the message is deleted when the wait ends; `/stop`
+  interrupts the wait too ("Details worth knowing", `Lane.RunCts`). Under the lock the run
   checks again, without a card, that the folders are still trusted and the project and session are
   the same: a neighbour's run in the folder could have planted a hook, and `/new` could have moved
   the session to another folder. If anything changed, the lock is released and the trust loop runs
@@ -128,10 +131,11 @@ number of agent processes is not capped.
   shared, so every chat whose вопросы were dropped is told.
 - A вопрос stays out of `RunMonitor` (the current run and the queue there are tasks') but is in
   the run history and the journal. The monitor shows one run — the first of those in progress
-  (`RunStarted` returns whether it took the slot); the queue there is approximate. `state.json` keeps
-  tasks in `ActiveRuns` (by chat key; the old single `ActiveRun` is still read once after an update)
-  and the вопрос in `ActiveQuestion`; after a restart `StartupNotice` reports them all, a topic gets
-  only its «прервано», «запущен» goes to the лента.
+  (`RunStarted` returns whether it took the slot); its queue holds every chat's tasks.
+- `state.json` keeps tasks in `ActiveRuns` (by chat key; the single `ActiveRun` of a previous version
+  is still read once after an update) and the вопрос in `ActiveQuestion`. After a restart
+  `StartupNotice` reports every interrupted run; a topic gets only its «прерван», «запущен» goes to
+  the лента.
 - A вопрос is answered as a **reply** to the user's message: «Вопрос принят», the status, every part
   of the answer, its cards and files. The path: `IncomingMessage.Message` → `QueuedPrompt.ReplyTo` →
   `OutgoingMessage.ReplyTo` and the `replyTo` parameter of the channel's file methods. Telegram sends
@@ -190,9 +194,9 @@ Object) must happen exactly once, when the singleton is created.
 
 ## Sessions and chat-side selection
 
-Sessions are keyed by the **normalized project path** (`ProjectCatalog.Normalize`); the gateway
-issues the id of a new one (`--session-id`) and resets it only on `SessionLost` from the CLI
-(`cli-contract.md`).
+Session records belong to the **normalized project path** (`ProjectCatalog.Normalize`), the active
+session to the chat (a topic's slot is `<chat key>|<project>`, see "Topics"); the gateway issues the
+id of a new one (`--session-id`) and resets it only on `SessionLost` from the CLI (`cli-contract.md`).
 
 The chat-side selection sits on top of the config and belongs to a chat: `store.For(chat)` returns a
 `SessionStore.ChatScope` with `EffectiveModel`, `EffectivePermissionMode`, `EffectiveEffort`,
@@ -223,8 +227,10 @@ path: `null` there means «беседа», not «the config project». A topic w
 text opens «Тип темы» (`TopicHandler`) instead of a run, and a command in it works as in a беседа,
 so it cannot touch somebody else's project. Only a type (the «Тип темы» screen or `/project`) makes a
 topic typed; `/model`, `/effort` or `/mode` before that create a record with `Untyped = true`, and the
-topic stays new — otherwise the next text would silently run as a беседа. A topic's active session lives in `ActiveSessions` under `<chat key>|<project>`: two
-topics on one project keep different sessions, and switching a topic's project back returns to its
+topic stays new — otherwise the next text would silently run as a беседа.
+
+A topic's active session lives in `ActiveSessions` under `<chat key>|<project>`: two topics on one
+project keep different sessions, and switching a topic's project back returns to its
 session there. «Очистить» on «Сессии» drops the project's records except those active in other chats.
 The list on «Сессии» is per project, so it shows the other chats' sessions too; one active in another
 chat is marked «🔒» and cannot be picked (`ChatScope.IsActiveElsewhere`) — two topics would continue
@@ -233,23 +239,23 @@ one session.
 A беседа runs in its own folder `SessionStore.TalkRoot\<chat key>` (`%TEMP%\AgentsTracker-talk`),
 emptied before each run, before the trust check, like the вопрос folder; `--resume` finds the session
 by the folder path, not its contents. The run carries `AgentRunRequest.WebOnly`: the backend gives it
-the вопрос's set — `--tools WebSearch,WebFetch --strict-mcp-config`, search and sites in
-`--allowedTools` with no card, `--append-system-prompt` (`cli-contract.md`, "A question") — for
-`/context` and `/compact` too, but keeps the session. No `--add-dir`, pictures are refused before
-download, and the refusal goes to the journal as `file.receive` `refused`, like any other. The default model and effort are `Gateway:Question`; the mode is always the config's
-(`ChatScope.PermissionMode` is null in a беседа, `/mode` there is refused). Whether a run is a беседа
-is decided by its final folder (`IsTalkFolder`), not by the topic at enqueue time: the topic may get
-a project while the task waits.
+the вопрос's tool set (`cli-contract.md`, "A question with no session") but keeps the session, also
+for `/context` and `/compact`. Pictures are refused before download, and the refusal goes to the
+journal as `file.receive` `refused`. The default model and effort are `Gateway:Question`; the mode
+is always the config's (choosing a беседа clears the saved one, `/mode` there is refused). Whether a
+run is a беседа is decided by its final folder (`IsTalkFolder`), not by the topic at enqueue time:
+the topic may get a project while the task waits.
 
 A deleted topic is learned of only from a send: Telegram answers «message thread not found», the
-channel gives `CannotReach`. The run's status message is the first send, so `ProcessAsync` does not
-start the run and drops the topic's queue; `run.start` is written only after the status went out. A
-429 on the status is waited out once, like an answer part. The deleted topic's records stay in
-`state.json`, and its active sessions stay marked «🔒» on «Сессии».
+channel gives `CannotReach`. The first send of a run is the «Доверять проекту?» card (when it is
+asked) or the status message; `ConsumeAsync` catches the failure, does not start the run and drops
+that topic's task queue (not the вопрос lane). `run.start` is written only after the status went
+out. A 429 on the status is waited out once, like an answer part. The deleted topic's records stay
+in `state.json`, and its active sessions stay marked «🔒» on «Сессии».
 
 With topics on, the лента is a place for service messages: the client moves what is typed there
-into a new topic (checked live 02.11.2026). Telegram Desktop lets only a command picked from «Меню»
-reach the лента itself; the mobile client moves even those. So «Шлюз запущен» goes to the лента,
+into a new topic. Telegram Desktop lets only a command picked from «Меню» reach the лента itself;
+the mobile client moves even those. So «Шлюз запущен» goes to the лента,
 and `/stop` in the лента — «stop everything» — is reached only from «Меню» on Desktop; elsewhere
 `/stop` is given in each topic.
 
@@ -306,7 +312,7 @@ the `.git` files itself, with no `git` process: the caption is needed on every t
 Everything about a run reads the branch of the **session's folder** (`SessionStore.SessionFolder`),
 not of the project folder. The agent can move its session into a worktree itself (`EnterWorktree`),
 and the CLI resumes it there although the process starts in the project — the details are in
-`docs/en/cli-contract.md`, "A session in a worktree". `ChatWorker.RunObserver` takes the folder from
+`cli-contract.md`, "A session in a worktree". `ChatWorker.RunObserver` takes the folder from
 `IAgentRunObserver.WorkingDirectoryChanged`, the run status re-reads it every tick, and a change is
 written to `SessionRecord.WorkingDirectory` at once (an interrupted run moves the session too).
 «Статус» shows such a session as «🌳 сессия в worktree <folder> · 🌿 <branch>». A move through

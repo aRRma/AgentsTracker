@@ -40,8 +40,8 @@ callback as `RunStatusMessage`) and finish; `OperatorConsole` reports waiting fo
 snapshot are a list: the CLI calls tools in parallel within one turn, and a вопрос's cards land
 there too. `run`, `queue` and `isBusy` describe tasks only; a parallel вопрос shows as
 `isAnswering` and in the run history, never as the current run. With topics several tasks run at
-once: `isBusy` is true while any of them runs, `run` is the first of them, the `queue` is approximate,
-and `project`, `session`, `model` are the лента's selection. 300 steps are kept, `DroppedSteps`
+once: `isBusy` is true while any of them runs, `run` is the first of them, the `queue` holds every
+chat's tasks, and `project`, `session`, `model`, `permissionMode`, `effort` are the лента's selection. 300 steps are kept, `DroppedSteps`
 is the difference against the counter. `Changes()` is a channel with capacity 1 and eviction: a slow
 browser gets the latest state, not a queue of stale ones. `/api/events` pings every 5 s between
 snapshots — without it the page couldn't tell silence from a crashed gateway.
