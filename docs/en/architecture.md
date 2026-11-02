@@ -384,6 +384,22 @@ The kinds are in `AuditKinds`: `access.rejected`, `message`, `run.start`/`run.en
 `limit.refused`, `gateway`. Menu screens write through `SettingsAudit.Changed`. The journal gets what
 a human is answerable for, `ILogger` gets what is needed for debugging.
 
+What a run leaves, numbers first — the 200-character limit cuts the tail and `/audit` shows 160:
+
+- `run.start` — the kind (`вопрос`, `контекст`, `сжатие`, `беседа`), model, mode, effort, branch, and
+  `замок N` when the folder lock took more than a second. The queue wait is the gap between
+  `message` and `run.start` of the same chat.
+- `run.end` — time, turns, tokens in/out and the model that answered; for `error` and `rate-limit`
+  the start of the error text, for `cancel` `/stop` or `таймаут`. The timeout lives in the backend and
+  does not touch the run's token, so a cancellation without `/stop` is the timeout. The outcome
+  stays `ok`/`error`/`rate-limit`/`cancel`: the monitor's run history keys on it.
+- A soft gateway stop (`docker stop`, Ctrl+C) in the middle of a run writes no `run.end` and leaves the
+  run in `state.json`: the next start says «прервано» and writes `run.end interrupted`, the same path as
+  a killed process. Removing it would leave the user with no answer and no notice.
+- `gateway` `внутренняя ошибка: <type>: <message>` (`error`) — an exception in a lane; `gateway`
+  `старт` — the gateway and CLI versions, `pid` and `container` in the outcome.
+- `limit.refused` — the model and the first paragraph of the refusal (the window and the reset).
+
 ## Chat output
 
 `MarkdownRenderer` converts markdown into `ChatHtml` and cuts it to `IChatChannel.Limits`

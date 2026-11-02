@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading.Channels;
 using AgentsTracker.Gateway.Features.Approvals;
 using AgentsTracker.Gateway.Infrastructure.Audit;
@@ -202,6 +203,10 @@ public sealed class ChatWorker(
             catch (Exception ex)
             {
                 logger.LogError(ex, "Ошибка при обработке сообщения");
+                // В журнал тоже: иначе там остался бы run.start без конца или сообщение без запуска.
+                // Сбой самой записи не должен выйти из catch — он убил бы полосу чата.
+                try { Audit(prompt, AuditKinds.Gateway, $"внутренняя ошибка: {ex.GetType().Name}: {ex.Message}", outcome: "error"); }
+                catch (Exception auditEx) { logger.LogError(auditEx, "Внутренняя ошибка не записана в журнал"); }
                 await SendPlainAsync(prompt.Chat, $"Внутренняя ошибка шлюза: {ex.Message}", prompt.ReplyTo, stoppingToken);
             }
             finally
@@ -238,6 +243,7 @@ public sealed class ChatWorker(
         var sessionFolder = project;
         using var runCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
         IDisposable? folderLock = null;
+        var lockWait = TimeSpan.Zero;
 
         // Чат — раньше токена: /stop читает их в этом порядке и иначе мог бы снять чужой вопрос.
         void Arm()
@@ -279,7 +285,9 @@ public sealed class ChatWorker(
             // доверия — снаружи: она ждёт до четверти часа и держала бы чужую тему. Вопрос идёт в
             // своей пустой папке и ни с кем её не делит. Замок — на папку сессии, а не проекта: агент
             // правит worktree, куда увёл сессию, и этот же worktree может быть проектом другой темы.
+            var lockStarted = Stopwatch.GetTimestamp();
             folderLock = await LockFolderAsync(sessionFolder, prompt, runCts.Token, stoppingToken);
+            lockWait += Stopwatch.GetElapsedTime(lockStarted);
             if (folderLock is null) return;
 
             // Пока ждали замок, запуск соседней темы в этой папке мог положить в неё хук, а /new или
@@ -320,7 +328,10 @@ public sealed class ChatWorker(
         // не помеха, и как раз на исчерпанном тарифе полезно понять, чем забит контекст.
         if (kind != AgentRunKind.ContextReport && await limits.RefusalAsync(model, stoppingToken) is { } exhausted)
         {
-            Audit(prompt, AuditKinds.LimitRefused, "лимит тарифа");
+            // Первый абзац отказа — окно и сброс; дальше совет про кредиты, журналу он не нужен.
+            // Без окна ложный отказ не разобрать: «лимит тарифа» одинаков для любого окна.
+            var refusal = exhausted.Split("\n\n", 2)[0];
+            Audit(prompt, AuditKinds.LimitRefused, $"{modelLabel ?? "модель по умолчанию"}: {refusal}");
             await SendPlainAsync(prompt.Chat, exhausted, prompt.ReplyTo, stoppingToken);
             await DropQueueAsync(lane, AfterLimitReset, stoppingToken);
             return;
@@ -396,9 +407,19 @@ public sealed class ChatWorker(
         var startedUtc = DateTimeOffset.UtcNow;
 
         // После статуса: не ушёл он — запуска не было, и «начат» без конца в журнале соврал бы.
+        // Вид запуска — здесь, а не в run.end: иначе /context и /compact в журнале не отличить от задачи.
+        // Замок — только заметный: без него не видно, почему задача стартовала через минуты после сообщения.
+        var runKind = kind switch
+        {
+            AgentRunKind.Question => "вопрос, ",
+            AgentRunKind.ContextReport => "контекст, ",
+            AgentRunKind.Compact => "сжатие, ",
+            _ => "",
+        } + (talk ? "беседа, " : "");
         Audit(prompt, AuditKinds.RunStart,
-            $"{(question ? "вопрос, " : talk ? "беседа, " : "")}{modelLabel ?? "модель по умолчанию"}, {scope.EffectivePermissionMode}, effort {effort ?? "—"}"
-            + (startBranch is null ? "" : $", ветка {startBranch.Label}"),
+            $"{runKind}{modelLabel ?? "модель по умолчанию"}, {scope.EffectivePermissionMode}, effort {effort ?? "—"}"
+            + (startBranch is null ? "" : $", ветка {startBranch.Label}")
+            + (lockWait >= TimeSpan.FromSeconds(1) ? $", замок {lockWait.Elapsed}" : ""),
             session);
 
         // Всё, что после статусного сообщения, — внутри try: сбой записи state.json или монитора
@@ -418,6 +439,7 @@ public sealed class ChatWorker(
             Question = question,
         };
         AgentRunResult result;
+        var stopped = false;
         try
         {
             // Монитор показывает один запуск — первый из идущих; шаги и конец чужого его не трогают.
@@ -437,11 +459,17 @@ public sealed class ChatWorker(
 
             result = await agent.RunAsync(
                 request, new RunObserver(store, scope, watched ? monitor : null, request, runSessionId, folder, status), runCts.Token);
+
+            // Шлюз останавливают мягко (docker stop, Ctrl+C): ответа уже не отправить — канал
+            // отменён. Запуск остаётся в state.json, и следующий старт сам скажет «прервано» и
+            // допишет run.end, как после убитого процесса. Снять его здесь — и пользователь не узнал
+            // бы ни о чём, а в журнале остался бы run.start без конца.
+            stopped = result.Cancelled && stoppingToken.IsCancellationRequested;
         }
         finally
         {
             lane.RunCts = null;
-            store.EndRun(active);
+            if (!stopped) store.EndRun(active);
             if (watched) monitor.RunFinished();
             // Процесс завершён — отвечать на его карточки уже некому. Карточки другого запуска
             // остаются: тот ещё идёт. До сетевых вызовов ниже: их сбой оставил бы запуск
@@ -450,6 +478,8 @@ public sealed class ChatWorker(
             await status.DisposeAsync();
             await DeleteQuietlyAsync(status.Message, stoppingToken);
         }
+
+        if (stopped) return;
 
         // Неудачный запуск тоже расходует тариф, поэтому пишем и его — если агент успел сказать.
         // Разбивка контекста модель не звала: в статистике она была бы запуском без расхода.
@@ -489,7 +519,19 @@ public sealed class ChatWorker(
             _ => "error",
         };
 
-        Audit(prompt, AuditKinds.RunEnd, $"{result.Duration.Elapsed}, ходов {result.Usage?.Turns ?? 0}", result.SessionId, outcome);
+        // Цифры — первыми: предел записи режет хвост, а /audit показывает 160 знаков. Прерванный
+        // запуск расхода не сообщает — у него только выбранная модель. Таймаут живёт в бэкенде и
+        // runCts не трогает, поэтому отмена без /stop — это он; остановку шлюза отсеяли выше.
+        var spent = result.Usage is { } used
+            ? $", ходов {used.Turns}, токенов {used.InputTokens.Tokens}/{used.OutputTokens.Tokens}, {used.PrimaryModel ?? modelLabel}"
+            : $", {modelLabel ?? "модель по умолчанию"}";
+        var reason = result switch
+        {
+            { Cancelled: true } => runCts.IsCancellationRequested ? ", /stop" : ", таймаут",
+            { Ok: false } => ", " + Text.Preview(result.Text),
+            _ => "",
+        };
+        Audit(prompt, AuditKinds.RunEnd, result.Duration.Elapsed + spent + reason, result.SessionId, outcome);
 
         store.RecordRunOutcome(new RunRecord
         {

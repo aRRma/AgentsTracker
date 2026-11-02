@@ -308,7 +308,8 @@ public sealed class OperatorConsole(
     private FileSendResult Refuse(RunScope? run, string path, string reason)
     {
         logger.LogWarning("Отказ в отправке файла {Path}: {Reason}", path, reason);
-        Audit(run, AuditKinds.FileSend, $"{Text.Preview(path, 120)}: {reason}", "refused");
+        // Причина — первой: длинный путь впереди съедал предел записи, и причина обрывалась.
+        Audit(run, AuditKinds.FileSend, $"{reason}: {Text.Preview(path, 80)}", "refused");
         return FileSendResult.Refused(reason);
     }
 

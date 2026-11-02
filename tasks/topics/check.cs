@@ -197,9 +197,16 @@ Check(worker.Stop(t3), "/stop в теме вернул true");
 await Until(() => backend.Running.Count == 1, "остановилась только тема 3");
 Check(backend.Running.ContainsKey(t1.Key), "тема 1 идёт дальше");
 
-// Конец темы 1 отпускает замок — лента стартует
+await Until(() => audit.Entries.Any(e => e.Kind == AuditKinds.RunEnd && e.ChatKey == t3.Key), "run.end темы 3 записан");
+Check(audit.Entries.Last(e => e.Kind == AuditKinds.RunEnd && e.ChatKey == t3.Key) is { Outcome: "cancel" } stopEnd && stopEnd.Summary.EndsWith(", /stop"),
+    "run.end после /stop: причина — /stop");
+
+// Конец темы 1 отпускает замок — лента стартует; ждала дольше секунды — замок в run.start
+await Task.Delay(1100);
 backend.Release(t1.Key);
 await Until(() => backend.Running.ContainsKey(feed.Key), "после темы 1 стартовала лента");
+Check(audit.Entries.Last(e => e.Kind == AuditKinds.RunStart && e.ChatKey == feed.Key).Summary.Contains(", замок "), "run.start ленты: ожидание замка записано");
+Check(!audit.Entries.Last(e => e.Kind == AuditKinds.RunStart && e.ChatKey == t1.Key).Summary.Contains("замок"), "run.start без ожидания: замка нет");
 backend.Release(feed.Key);
 await Until(() => backend.Running.IsEmpty && !worker.IsBusy(feed), "лента закончилась");
 
@@ -374,8 +381,47 @@ var quickTrust = new ProjectTrustGate(backend, store, quickBroker, quickChannel,
 Check(await quickTrust.EnsureAsync(t1, null, projT, CancellationToken.None) == ProjectTrustGate.Outcome.Trusted,
     "время второй карточки вышло, но доверие уже дали по соседней — проект доверен");
 
+// run.end: расход, причина ошибки и отмены; внутренняя ошибка и лимит — в журнал
+backend.Hold = false;
+AuditEvent LastOf(string kind, string prompt) => audit.Entries.Last(e => e.Kind == kind && e.ChatKey == t1.Key);
+async Task<AuditEvent> EndOf(string prompt)
+{
+    var ends = audit.Entries.Count(e => e.Kind == AuditKinds.RunEnd && e.ChatKey == t1.Key);
+    worker.Enqueue(t1, user, prompt);
+    await Until(() => audit.Entries.Count(e => e.Kind == AuditKinds.RunEnd && e.ChatKey == t1.Key) > ends, $"run.end «{prompt}» записан");
+    return LastOf(AuditKinds.RunEnd, prompt);
+}
+var spentEnd = await EndOf("с расходом");
+Check(spentEnd.Outcome == "ok" && spentEnd.Summary.Contains("ходов 5, токенов 12.3k/1.8k, opus-5-5"), "run.end: ходы, токены и ответившая модель");
+var timeoutEnd = await EndOf("таймаут");
+Check(timeoutEnd.Outcome == "cancel" && timeoutEnd.Summary.EndsWith(", таймаут"), "run.end: отмена без /stop — таймаут");
+var errorEnd = await EndOf("ошибка");
+Check(errorEnd.Outcome == "error" && errorEnd.Summary.Contains("claude завершился с кодом 1") && !errorEnd.Summary.Contains("abc12345secret"),
+    "run.end: причина ошибки, секрет замаскирован");
+var gatewayErrors = audit.Entries.Count(e => e.Kind == AuditKinds.Gateway && e.Outcome == "error");
+worker.Enqueue(t1, user, "бросок");
+await Until(() => audit.Entries.Count(e => e.Kind == AuditKinds.Gateway && e.Outcome == "error") > gatewayErrors, "внутренняя ошибка — в журнал");
+Check(audit.Entries.Last(e => e.Kind == AuditKinds.Gateway && e.Outcome == "error").Summary.Contains("InvalidOperationException: сломалось"), "внутренняя ошибка: тип и сообщение");
+limits.Refusal = "🚦 Лимит тарифа исчерпан: окно «5 часов» выбрано полностью. Сброс в 18:00.\n\nЗадача не запущена — кредиты шлюз не тратит.";
+var refusals = audit.Entries.Count(e => e.Kind == AuditKinds.LimitRefused);
+worker.Enqueue(t1, user, "на лимите");
+await Until(() => audit.Entries.Count(e => e.Kind == AuditKinds.LimitRefused) > refusals, "отказ по лимиту записан");
+limits.Refusal = null;
+var refusal = audit.Entries.Last(e => e.Kind == AuditKinds.LimitRefused).Summary;
+Check(refusal.Contains("fable") && refusal.Contains("окно «5 часов»") && !refusal.Contains("кредиты"), "limit.refused: модель и окно, без абзаца про кредиты");
+await Until(() => !worker.IsBusy(t1), "тема 1 свободна");
+
+// Остановка шлюза посреди запуска (docker stop, Ctrl+C): запуск остаётся в state.json — следующий
+// старт скажет «прервано» и допишет run.end; своего run.end нет, второго не будет
+backend.Hold = true;
+worker.Enqueue(t1, user, "стоп-шлюза");
+await Until(() => backend.Running.ContainsKey("стоп-шлюза"), "запуск идёт перед остановкой шлюза");
+var runEndsBefore = audit.Entries.Count(e => e.Kind == AuditKinds.RunEnd);
 await cts.CancelAsync();
 try { await worker.StopAsync(CancellationToken.None); } catch { }
+Check(store.Snapshot().ActiveRuns.ContainsKey(t1.Key), "остановка шлюза: запуск остался в state.json для «прервано»");
+Check(audit.Entries.Count(e => e.Kind == AuditKinds.RunEnd) == runEndsBefore, "остановка шлюза: своего run.end нет — его напишет следующий старт");
+Check(new SessionStore(options, NullLogger<SessionStore>.Instance).TakeInterruptedRuns().Any(r => r.Prompt == "стоп-шлюза"), "остановка шлюза: следующий экземпляр видит прерванный запуск");
 
 Console.WriteLine(failures == 0 ? "ВСЁ ХОРОШО" : $"ОШИБОК: {failures}");
 return failures == 0 ? 0 : 1;
@@ -407,6 +453,18 @@ sealed class FakeBackend : IAgentBackend
     {
         RequestQueue.Enqueue(request);
         observer.SessionStarted(request.ResumeSessionId ?? request.NewSessionId);
+        switch (request.Prompt)
+        {
+            case "таймаут": return new AgentRunResult { Ok = false, Cancelled = true, Text = "Превышен предел" };
+            case "ошибка": return new AgentRunResult { Ok = false, Text = "claude завершился с кодом 1: token=abc12345secret" };
+            case "бросок": throw new InvalidOperationException("сломалось");
+            case "с расходом":
+                return new AgentRunResult
+                {
+                    Ok = true, Text = "готово", SessionId = request.ResumeSessionId ?? request.NewSessionId,
+                    Usage = new RunUsage { Turns = 5, InputTokens = 12_300, OutputTokens = 1_800, PrimaryModel = "opus-5-5" },
+                };
+        }
         var key = ChatKeyOf(request);
         if (Hold)
         {
@@ -468,8 +526,10 @@ sealed class FakeChannel : IChatChannel
     public Task DownloadAttachmentAsync(IncomingAttachment attachment, Stream destination, CancellationToken ct) => throw new NotSupportedException();
     public Task EditAsync(MessageRef message, OutgoingMessage content, CancellationToken ct) => Task.CompletedTask;
     public volatile bool FailDelete;
+    // Отменённый токен — отмена, как у HttpClient под Telegram.Bot: так ведёт себя остановка шлюза.
     public Task DeleteAsync(MessageRef message, CancellationToken ct) =>
-        FailDelete ? Task.FromException(new HttpRequestException("сеть")) : Task.CompletedTask;
+        ct.IsCancellationRequested ? Task.FromCanceled(ct)
+        : FailDelete ? Task.FromException(new HttpRequestException("сеть")) : Task.CompletedTask;
     public Task AcknowledgeAsync(ButtonPress press, string? toast, CancellationToken ct) => Task.CompletedTask;
     public Task IndicateTypingAsync(ChatId chat, CancellationToken ct) => Task.CompletedTask;
 }
@@ -481,6 +541,7 @@ sealed class FakeLimits : IAgentLimits
     /// <summary>Не null — проверка лимита ждёт, пока харнес её не отпустит.</summary>
     public volatile TaskCompletionSource? Gate;
     public volatile bool Entered;
+    public volatile string? Refusal;
 
     public async Task<string?> RefusalAsync(string? model, CancellationToken ct)
     {
@@ -490,7 +551,7 @@ sealed class FakeLimits : IAgentLimits
             await gate.Task;
         }
 
-        return null;
+        return Refusal;
     }
 
     public Task<LimitsSnapshot> GetAsync(CancellationToken ct) => _none.GetAsync(ct);

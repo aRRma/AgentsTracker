@@ -227,8 +227,8 @@ What the agent really did is in the CLI transcript `~/.claude/projects/<folder-k
 every line carries `cwd` and `gitBranch`. After `EnterWorktree` the file moves under the
 worktree's key — look it up with `ls ~/.claude/projects/*/<session>*.jsonl`.
 
-A false refusal is diagnosed from the outside: `limit.refused` in `audit\audit-<YYYY-MM>.jsonl` (when
-and how many times) and `monitor-api.ps1 "api/limits"` (the parsed windows with `resetsAt`). The
+A false refusal is diagnosed from the outside: `limit.refused` in `audit\audit-<YYYY-MM>.jsonl` (when,
+how many times, for which model and window) and `monitor-api.ps1 "api/limits"` (the parsed windows with `resetsAt`). The
 endpoint's raw answer is out of reach from a session — a direct HTTP call, reading
 `~/.claude/.credentials.json` and grepping `claude.exe` are all denied; reason from the parsed
 numbers instead, remembering that usage inside one window never falls until the reset.
