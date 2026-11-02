@@ -236,7 +236,7 @@ by the folder path, not its contents. The run carries `AgentRunRequest.WebOnly`:
 the вопрос's set — `--tools WebSearch,WebFetch --strict-mcp-config`, search and sites in
 `--allowedTools` with no card, `--append-system-prompt` (`cli-contract.md`, "A question") — for
 `/context` and `/compact` too, but keeps the session. No `--add-dir`, pictures are refused before
-download. The default model and effort are `Gateway:Question`; the mode is always the config's
+download, and the refusal goes to the journal as `file.receive` `refused`, like any other. The default model and effort are `Gateway:Question`; the mode is always the config's
 (`ChatScope.PermissionMode` is null in a беседа, `/mode` there is refused). Whether a run is a беседа
 is decided by its final folder (`IsTalkFolder`), not by the topic at enqueue time: the topic may get
 a project while the task waits.

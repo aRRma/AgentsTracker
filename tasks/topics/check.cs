@@ -203,6 +203,15 @@ Check(!projRun.WebOnly && projRun.AttachmentsPath is not null && projRun.Model =
 // Ответы ушли в свои темы
 await Until(() => channel.Sent.Any(s => s.Chat == t2 && s.Text.Contains("ответ на «привет, беседа»")), "ответ беседы — в её тему");
 
+// Картинка без подписи в беседе: отказ в чат и в журнал, запуска нет
+var enqueue = new ChatEnqueueTextHandler(channel, worker, inbox, store, audit);
+var talkRuns = backend.Requests.Count();
+await enqueue.TryHandleAsync(new IncomingMessage(t2, user, "", ChatKind.Direct, [new IncomingAttachment("f1", AttachmentKind.Photo, null, null, 10)]), CancellationToken.None);
+Check(channel.Sent.Any(s => s.Chat == t2 && s.Text.Contains("Беседа не принимает картинки")), "беседа: отказ картинке — в чат");
+Check(audit.Entries.Any(e => e.Kind == AuditKinds.FileReceive && e.ChatKey == t2.Key && e.Outcome == "refused"), "беседа: отказ картинке — в журнал");
+await Task.Delay(200);
+Check(backend.Requests.Count() == talkRuns, "беседа: картинка без подписи не запускает агента");
+
 // Хук, положенный соседом, пока тема ждала замок, — снова карточка доверия, а не запуск
 var t4 = new TelegramChatId(100, 10);
 store.For(t4).SetProjectPath(projB);
@@ -448,6 +457,7 @@ sealed class FakeLimits : IAgentLimits
 
 sealed class NullAudit : IAuditLog
 {
-    public void Write(AuditEvent entry) { }
+    public readonly ConcurrentQueue<AuditEvent> Entries = new();
+    public void Write(AuditEvent entry) => Entries.Enqueue(entry);
     public IReadOnlyList<AuditEvent> Tail(int count) => [];
 }

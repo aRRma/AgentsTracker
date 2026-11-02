@@ -231,7 +231,8 @@ src/AgentsTracker.Gateway/
 пути папки, а не по её содержимому. Запуск несёт `AgentRunRequest.WebOnly`: бэкенд даёт ему
 набор вопроса — `--tools WebSearch,WebFetch --strict-mcp-config`, поиск и сайты в `--allowedTools`
 без карточки, `--append-system-prompt` (`cli-contract.md`, «Вопрос без сессии»), — в том числе для
-`/context` и `/compact`, но сохраняет сессию. `--add-dir` нет, картинки отказываются до скачивания.
+`/context` и `/compact`, но сохраняет сессию. `--add-dir` нет, картинки отказываются до скачивания,
+и отказ пишется в журнал как `file.receive` `refused`, как любой другой.
 Модель и effort по умолчанию — `Gateway:Question`; режим — всегда из конфига (`ChatScope.PermissionMode`
 у беседы — null, `/mode` в ней получает отказ). Беседа ли это, решает итоговая папка запуска
 (`IsTalkFolder`), а не тема на момент постановки в очередь: пока задача ждёт, у темы может появиться

@@ -21,6 +21,10 @@ public sealed class ChatEnqueueTextHandler(
         var talk = scope.IsTalk;
         if (talk && message.Attachments.Count > 0)
         {
+            // В журнал — как любой отказ картинке в AttachmentInbox: иначе от картинки без подписи
+            // не осталось бы ни следа, и по журналу не понять, почему агент её не видел.
+            audit.Write(AuditEvent.Now(AuditKinds.FileReceive, $"беседа не принимает картинки ({message.Attachments.Count} шт.)",
+                user, chat, scope.ProjectPath, scope.SessionId, "refused"));
             await channel.SendAsync(chat, new OutgoingMessage(
                 "⚠️ Беседа не принимает картинки — только текст. Картинку можно прислать в теме с проектом.", Rich: false), ct);
         }
