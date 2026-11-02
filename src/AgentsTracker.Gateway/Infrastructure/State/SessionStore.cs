@@ -48,9 +48,10 @@ public sealed class SessionStore
     /// <summary>Корень папок бесед: удалять перед запуском можно только внутри него.</summary>
     public static string TalkRoot => ProjectCatalog.Normalize(Path.Combine(Path.GetTempPath(), "AgentsTracker-talk"));
 
-    /// <summary>Папка беседы внутри <see cref="TalkRoot"/>: своя у каждой темы — по ней CLI находит её сессии.</summary>
+    /// <summary>Путь внутри <see cref="TalkRoot"/> — папка беседы: её чистят перед запуском, а запуск идёт только с поиском.</summary>
     public static bool IsTalkFolder(string path) => ProjectCatalog.IsInside(ProjectCatalog.Normalize(path), TalkRoot);
 
+    /// <summary>Своя папка у каждой темы: по пути папки CLI находит сессии беседы.</summary>
     private static string TalkFolder(ChatId chat) =>
         Path.Combine(TalkRoot, string.Concat(chat.Key.Select(c => char.IsAsciiLetterOrDigit(c) ? c : '_')));
 
@@ -70,10 +71,16 @@ public sealed class SessionStore
         /// <summary>Чат выбора; null — <see cref="SessionStore.Feed"/>, у которого чата нет.</summary>
         public ChatId? Chat => _chat;
 
-        /// <summary>Тема, где ещё ничего не выбирали: шлюз сначала спросит её тип.</summary>
+        /// <summary>Тема без выбранного типа: шлюз сначала спросит его.</summary>
         public bool IsNewTopic
         {
-            get { lock (_store._gate) return IsTopic && _store._state.Topics.GetValueOrDefault(_chat!.Key) is null or { Untyped: true }; }
+            get { lock (_store._gate) return IsNewTopicLocked(); }
+        }
+
+        /// <summary>Тема, которой выбрали беседу. У новой темы <see cref="IsTalk"/> тоже true, но тип не выбран.</summary>
+        public bool IsChosenTalk
+        {
+            get { lock (_store._gate) return IsTalkLocked() && !IsNewTopicLocked(); }
         }
 
         /// <summary>Беседа: тема без проекта. Идёт в своей пустой папке, только с поиском в сети.</summary>
@@ -97,21 +104,10 @@ public sealed class SessionStore
         }
 
         /// <summary>
-        /// Режим, выбранный из чата. У беседы — всегда null, то есть из конфига: там /mode получает
-        /// отказ, и снять режим, оставшийся в записи прошлой версии, было бы нечем. У новой темы —
-        /// сохранённый: он пойдёт в дело, если тему привяжут к проекту, а выбор беседы его стирает.
+        /// Режим, выбранный из чата. У беседы его нет: выбор беседы стирает сохранённый, а /mode в ней
+        /// получает отказ — иначе /mode plan, данный до выбора типа, остался бы без способа снять.
         /// </summary>
-        public string? PermissionMode
-        {
-            get
-            {
-                lock (_store._gate)
-                {
-                    var selection = Selection();
-                    return IsTalkLocked() && selection is TopicState { Untyped: not true } ? null : selection?.PermissionMode;
-                }
-            }
-        }
+        public string? PermissionMode => Read(s => s.PermissionMode);
 
         /// <summary>Режим работы следующего запуска: выбранный из чата, иначе из конфига.</summary>
         public string EffectivePermissionMode => PermissionMode ?? _store._options.PermissionMode;
@@ -285,6 +281,8 @@ public sealed class SessionStore
             IsTopic ? _store._state.Topics.GetValueOrDefault(_chat!.Key) : _store._state;
 
         private bool IsTalkLocked() => IsTopic && Selection()?.ProjectPath is not { Length: > 0 };
+
+        private bool IsNewTopicLocked() => IsTopic && _store._state.Topics.GetValueOrDefault(_chat!.Key) is null or { Untyped: true };
 
         private string? Read(Func<IChatSelection, string?> field)
         {

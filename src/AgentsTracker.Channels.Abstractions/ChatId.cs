@@ -8,7 +8,7 @@ namespace AgentsTracker.Channels;
 /// </summary>
 public abstract record ChatId
 {
-    /// <summary>Строковая форма «канал:значение», например «telegram:123456789».</summary>
+    /// <summary>Строковая форма «канал:значение», например «telegram:123456789» или тема «telegram:123456789/42».</summary>
     public abstract string Key { get; }
 
     /// <summary>

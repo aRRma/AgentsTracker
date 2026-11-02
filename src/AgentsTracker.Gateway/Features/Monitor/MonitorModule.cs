@@ -118,7 +118,7 @@ public sealed class MonitorModule : IFeatureModule
         live.GatewayStartedUtc,
         Agent = agent.DisplayName,
         live.CliVersion,
-        // Выбор ленты: у тем свой, а монитор показывает один чат.
+        // Выбор ленты, а не идущего запуска: у монитора нет чата, а у каждой темы выбор свой.
         Project = store.Feed.ProjectPath,
         Session = store.Feed.SessionId,
         Model = store.ModelLabel(store.Feed.EffectiveModel, agent.Capabilities.Model),

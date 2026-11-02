@@ -105,7 +105,7 @@ public sealed class AgentScreen(
 
     private string ApplyMode(string value, UserId user, ChatId chat, SessionStore.ChatScope scope)
     {
-        if (scope is { IsTalk: true, IsNewTopic: false }) return TalkModeRefusal;
+        if (scope.IsChosenTalk) return TalkModeRefusal;
 
         var previous = scope.EffectivePermissionMode;
 
@@ -160,7 +160,7 @@ public sealed class AgentScreen(
 
             case "mode":
                 // В беседе смена режима получит отказ — спрашивать про кэш ради отказа незачем.
-                if (scope is { IsTalk: true, IsNewTopic: false }) return null;
+                if (scope.IsChosenTalk) return null;
                 var mode = IsReset(value) ? options.Value.PermissionMode : caps.PermissionMode.Resolve(value);
                 if (mode is null) return null;
                 toMode = CacheGuard.ModeScope(caps, mode);

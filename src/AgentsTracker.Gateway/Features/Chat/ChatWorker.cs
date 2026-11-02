@@ -55,9 +55,9 @@ public sealed class ChatWorker(
         public ChatId? Chat { get; set; }
 
         /// <summary>
-        /// Взят из очереди и ещё не закончен — шире <see cref="RunCts"/>, который ставится
-        /// только перед самим процессом. Без этого вопрос, ждущий отправки статуса, не
-        /// считался бы идущим, и следующему обещали бы «отвечу, не дожидаясь».
+        /// Взят из очереди и ещё не закончен — шире <see cref="RunCts"/>, который ставится только
+        /// после проверки доверия. Без этого вопрос, ждущий отправки статуса, не считался бы
+        /// идущим, и следующему обещали бы «отвечу, не дожидаясь».
         /// </summary>
         public int InFlight;
 
@@ -104,7 +104,10 @@ public sealed class ChatWorker(
     /// Идёт вопрос, который этот чат может остановить: в теме — только свой, в ленте — любой, как
     /// и у /stop. Иначе тема показывала бы чужой вопрос и «Остановить», которое ничего не делает.
     /// </summary>
-    public bool IsAnsweringFor(ChatId chat) => IsAnswering && (!chat.IsTopic || _questions.Chat == chat);
+    public bool IsAnsweringFor(ChatId chat) => IsAnswering && StopsQuestionOf(chat);
+
+    /// <summary>Чей вопрос снимает /stop этого чата: из ленты — любой, из темы — только свой.</summary>
+    private bool StopsQuestionOf(ChatId chat) => !chat.IsTopic || _questions.Chat == chat;
 
     /// <summary>Вопросы, ждущие своей очереди за идущим вопросом.</summary>
     public int QuestionQueueLength => _questions.Queue.Reader.Count;
@@ -139,19 +142,20 @@ public sealed class ChatWorker(
     /// </summary>
     public bool Stop(ChatId chat)
     {
-        var all = !chat.IsTopic;
+        // null — все чаты: /stop из ленты.
+        var only = chat.IsTopic ? chat : null;
 
         // Карточка доверия висит до запуска, когда прерывать ещё нечего: без неё в ответе
         // /stop сказал бы «ничего не выполняется», сняв её.
-        var cards = broker.HasPending(all ? null : chat);
-        broker.Cancel(all ? null : chat);
+        var cards = broker.HasPending(only);
+        broker.Cancel(only);
 
         // Не «||»: короткое замыкание оставило бы вопрос идти после остановленной задачи.
         var stopped = cards;
         foreach (var (key, lane) in _tasks)
-            if (all || key == chat.Key) stopped |= lane.Cancel();
+            if (only is null || key == chat.Key) stopped |= lane.Cancel();
 
-        if (all || _questions.Chat == chat) stopped |= _questions.Cancel();
+        if (StopsQuestionOf(chat)) stopped |= _questions.Cancel();
         return stopped;
     }
 
@@ -185,6 +189,14 @@ public sealed class ChatWorker(
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;
+            }
+            catch (ChannelRequestException ex) when (ex.Kind == ChannelFailure.CannotReach)
+            {
+                // Тему удалили в клиенте: Telegram об этом не сообщает, узнаём по отказу — на статусе
+                // или карточке доверия. Туда не дойдёт ничего, и очередь чата туда же: иначе каждая
+                // задача из неё ждала бы ту же ошибку. Полоса вопросов общая — чужие вопросы не трогаем.
+                var dropped = lane == _questions ? 0 : DrainTasks(lane).Count;
+                logger.LogWarning("Чат {Chat} недоступен (тема удалена?): задача брошена, снято из очереди: {Dropped}", prompt.Chat.Key, dropped);
             }
             catch (Exception ex)
             {
@@ -371,25 +383,13 @@ public sealed class ChatWorker(
 
         // Статус — первое, что уходит в чат: все темы лички делят один предел отправки, и 429 здесь
         // ждём, как у частей ответа.
+        // Недоступный чат (тема удалена) отсюда уходит исключением — его разбирает ConsumeAsync.
         RunStatusMessage? started = null;
-        try
-        {
-            await RateLimitRetry.OnceAsync(
-                async () => started = await RunStatusMessage.StartAsync(
-                    channel, prompt.Chat, thread, folder is null ? null : () => git.Head(folder.Path)?.Label, prompt.ReplyTo, logger, stoppingToken),
-                wait => logger.LogWarning("Канал просит подождать {Wait}, статус запуска будет отправлен повторно", wait),
-                stoppingToken);
-        }
-        catch (ChannelRequestException ex) when (ex.Kind == ChannelFailure.CannotReach)
-        {
-            // Тему удалили в клиенте: Telegram об этом не сообщает, узнаём по отказу. Ни статус, ни
-            // ответ туда не дойдут — не запускаем, и очередь темы туда же: иначе каждая задача из
-            // неё жгла бы запуск впустую. Полоса вопросов общая — её чужие вопросы не трогаем.
-            List<QueuedPrompt> dropped = question ? [] : lane.Drain();
-            foreach (var queued in dropped) monitor.Dequeued(Text.Preview(queued.Text));
-            logger.LogWarning("Чат {Chat} недоступен: запуск не начат, снято из очереди: {Dropped}", prompt.Chat.Key, dropped.Count);
-            return;
-        }
+        await RateLimitRetry.OnceAsync(
+            async () => started = await RunStatusMessage.StartAsync(
+                channel, prompt.Chat, thread, folder is null ? null : () => git.Head(folder.Path)?.Label, prompt.ReplyTo, logger, stoppingToken),
+            wait => logger.LogWarning("Канал просит подождать {Wait}, статус запуска будет отправлен повторно", wait),
+            stoppingToken);
 
         var status = started!;
         var startedUtc = DateTimeOffset.UtcNow;
@@ -798,11 +798,8 @@ public sealed class ChatWorker(
     /// <param name="when">Когда прислать снова: «после сброса лимита».</param>
     private async Task DropQueueAsync(Lane lane, string when, CancellationToken ct)
     {
-        var dropped = lane.Drain();
         var question = lane == _questions;
-
-        // Очередь монитора общая для всех полос задач: снимаем столько, сколько снято здесь.
-        if (!question) foreach (var queued in dropped) monitor.Dequeued(Text.Preview(queued.Text));
+        var dropped = question ? lane.Drain() : DrainTasks(lane);
 
         if (dropped.Count == 0) return;
 
@@ -814,6 +811,14 @@ public sealed class ChatWorker(
             var what = question ? count.Count("вопрос", "вопроса", "вопросов") : $"{count} задач(и)";
             await SendPlainAsync(chat.Key, $"Очередь снята, не запущено: {what} — пришлите их снова {when}.", null, ct);
         }
+    }
+
+    /// <summary>Снимает очередь полосы задач и её превью в мониторе: очередь монитора общая для всех полос.</summary>
+    private List<QueuedPrompt> DrainTasks(Lane lane)
+    {
+        var dropped = lane.Drain();
+        foreach (var queued in dropped) monitor.Dequeued(Text.Preview(queued.Text));
+        return dropped;
     }
 
     private const string AfterLimitReset = "после сброса лимита";

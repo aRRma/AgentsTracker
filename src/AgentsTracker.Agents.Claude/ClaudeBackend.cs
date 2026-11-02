@@ -478,7 +478,8 @@ public sealed class ClaudeBackend(
 
         // Картинки из чата лежат вне рабочей папки: без этого Read до них не дотянется.
         // Проверка существования обязательна — у чата без вложений папки нет.
-        if (request.AttachmentsPath is { Length: > 0 } attachments && Directory.Exists(attachments))
+        // Вопросу и беседе — никогда, даже если путь передан: файлов у них быть не должно.
+        if (!webOnly && request.AttachmentsPath is { Length: > 0 } attachments && Directory.Exists(attachments))
         {
             yield return "--add-dir";
             yield return attachments;

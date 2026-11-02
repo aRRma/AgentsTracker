@@ -25,7 +25,7 @@ public sealed class TopicState : IChatSelection
 
     /// <summary>
     /// true — запись завели /model, /effort или /mode, а тип ещё не выбран: тема остаётся новой.
-    /// null, а не false, — у записей прошлых версий поля нет, и их тип уже выбран.
+    /// null, а не false, — у выбранной темы поле не пишется в state.json.
     /// </summary>
     public bool? Untyped { get; set; }
 }

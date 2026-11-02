@@ -320,6 +320,22 @@ Check(channel.DeadAttempts == 1, "в удалённую тему — одна п
 channel.Dead = null;
 Check(monitor.Current.Queue.Count == 0, "очередь монитора пуста, когда все полосы разобраны");
 
+// Удалённая тема с недоверенным проектом: отказ на карточке доверия — тоже одна попытка, очередь снята
+var projX = Directory.CreateDirectory(Path.Combine(root, "projX")).FullName;
+Directory.CreateDirectory(Path.Combine(projX, ".claude"));
+File.WriteAllText(Path.Combine(projX, ".claude", "settings.json"), "{}");
+var t8 = new TelegramChatId(100, 14);
+store.For(t8).SetProjectPath(projX);
+channel.Dead = t8;
+channel.DeadAttempts = 0;
+worker.Enqueue(t8, user, "в удалённую с карточкой 1");
+worker.Enqueue(t8, user, "в удалённую с карточкой 2");
+await Until(() => worker.QueueLength(t8) == 0 && !worker.IsBusy(t8), "удалённая тема с карточкой разобрана");
+await Task.Delay(200);
+Check(channel.DeadAttempts == 1 && !backend.Requests.Any(r => r.Prompt.StartsWith("в удалённую с карточкой")),
+    "карточка доверия в удалённую тему: одна попытка, запусков нет");
+channel.Dead = null;
+
 // Вторая карточка доверия: её время вышло, но доверие уже дали по соседней — запуск идёт
 var projT = Directory.CreateDirectory(Path.Combine(root, "projT")).FullName;
 Directory.CreateDirectory(Path.Combine(projT, ".claude"));

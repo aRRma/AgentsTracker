@@ -21,7 +21,7 @@ public sealed class TopicScreen(SessionStore store, IAuditLog audit, IOptions<Ga
     {
         var scope = store.For(chat);
         if (argument != Talk || !scope.IsTopic) return null;
-        if (scope.IsTalk && !scope.IsNewTopic) return "Тема уже беседа";
+        if (scope.IsChosenTalk) return "Тема уже беседа";
 
         var previous = scope.IsNewTopic ? null : Path.GetFileName(scope.ProjectPath);
         scope.SetProjectPath(null);
@@ -58,7 +58,7 @@ public sealed class TopicScreen(SessionStore store, IAuditLog audit, IOptions<Ga
             💬 <b>Беседа</b> — тема без проекта: только поиск в сети, файлов нет. Модель — {E(options.Value.Question.Model ?? "по умолчанию")}.{hint}
             """;
 
-        var talk = scope.IsTalk && !scope.IsNewTopic;
+        var talk = scope.IsChosenTalk;
         return (html, new Keyboard(
         [
             [Button("📁 Проект", "proj"), Button($"{(talk ? "▶ " : "")}💬 Беседа", $"{ScreenKey}:{Talk}")],
