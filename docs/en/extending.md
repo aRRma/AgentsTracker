@@ -16,10 +16,13 @@ Taken: `/start /help` (Help), `/new /stop` (Chat), `/ask` (Question), `/rules` (
 /usage` (Settings), `/topic` (Topics). **A duplicate across two features kills startup** (`ChatDispatcher` builds a
 dictionary of commands).
 
-The «Меню» list holds `/menu`, the screens, `/ask`, `/rules`, `/audit` and `/help`, ordered by
-frequency. `/new /stop /model /effort /mode` work as text but stay out of the list: buttons on
+The «Меню» list holds `/menu`, `/stop`, the screens, `/ask`, `/rules`, `/audit` and `/help`, ordered
+by frequency. `/new /model /effort /mode` work as text but stay out of the list: buttons on
 «Сессии» and «Агент» do the same, and a long list reads worse. `/ask` is in because the question is
-typed right after the command. `RootScreen` has buttons for the screens only.
+typed right after the command, `/stop` because a run must be stopped fast. `RootScreen` has buttons
+for the screens only. With topics on, Telegram Desktop sends a command picked from «Меню» to the
+topic it was picked in, and from the лента to the лента; anything else typed in the лента opens a
+new topic (checked live 02.11.2026).
 
 An unknown slash command goes to the CLI as-is: it is Claude Code's own. So «Контекст» has no
 `/context` command: it would shadow Claude Code's.
