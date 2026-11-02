@@ -47,6 +47,7 @@ English (`IAgentLimits`, `ProjectPath`, `audit\`) — the glossary is about text
 | What the agent sends into the chat | **файл** | вложение |
 | The action journal (`/audit`) | **журнал** | аудит (in a UI text), лог |
 | The technical log | **лог** | журнал |
+| A message reaching the chat (or not: «не дошло») | **доставка** | отправка, получение |
 | The user's decision on a card | **отклонить** | отказать, запретить |
 | A card withdrawn by anything but the user | **отменено** | отклонено |
 | The gateway refusing by a rule (file type, size) | **отказ** | запрет, ошибка |

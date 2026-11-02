@@ -381,7 +381,7 @@ masked at its call site as well.
 
 The kinds are in `AuditKinds`: `access.rejected`, `message`, `run.start`/`run.end`, `approval`,
 `question`, `file.send`, `file.receive`, `settings`, `rules`, `trust`, `session.reset`,
-`limit.refused`, `gateway`. Menu screens write through `SettingsAudit.Changed`. The journal gets what
+`limit.refused`, `gateway`, `delivery`. Menu screens write through `SettingsAudit.Changed`. The journal gets what
 a human is answerable for, `ILogger` gets what is needed for debugging.
 
 What a run leaves, numbers first — the 200-character limit cuts the tail and `/audit` shows 160:
@@ -399,6 +399,10 @@ What a run leaves, numbers first — the 200-character limit cuts the tail and `
 - `gateway` `внутренняя ошибка: <type>: <message>` (`error`) — an exception in a lane; `gateway`
   `старт` — the gateway and CLI versions, `pid` and `container` in the outcome.
 - `limit.refused` — the model and the first paragraph of the refusal (the window and the reset).
+- `delivery` — written only on a failure: `partial`/`lost` when parts of the answer did not reach the
+  chat, `unreachable` when the chat itself is gone (a deleted topic, a blocked bot) and its queue was
+  dropped. A kind of its own rather than a `run.end` outcome: `run.end` is the truth about the run and
+  is written before the send on purpose — the folder is released first.
 
 ## Chat output
 

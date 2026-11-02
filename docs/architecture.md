@@ -373,7 +373,7 @@ Slack, JWT), `Authorization`/`Bearer`, пароль в адресе и знач�
 
 Виды перечислены в `AuditKinds`: `access.rejected`, `message`, `run.start`/`run.end`, `approval`,
 `question`, `file.send`, `file.receive`, `settings`, `rules`, `trust`, `session.reset`,
-`limit.refused`, `gateway`. Экраны меню пишут через `SettingsAudit.Changed`. В журнал идёт то, за что
+`limit.refused`, `gateway`, `delivery`. Экраны меню пишут через `SettingsAudit.Changed`. В журнал идёт то, за что
 отвечает человек, в `ILogger` — то, что нужно для разбирательства.
 
 Что оставляет запуск, цифры — первыми: предел в 200 знаков режет хвост, а `/audit` показывает 160:
@@ -391,6 +391,9 @@ Slack, JWT), `Authorization`/`Bearer`, пароль в адресе и знач�
 - `gateway` `внутренняя ошибка: <тип>: <сообщение>` (`error`) — исключение в полосе; `gateway`
   `старт` — версии шлюза и CLI, в исходе `pid` и `container`.
 - `limit.refused` — модель и первый абзац отказа (окно и сброс).
+- `delivery` — только при сбое: `partial`/`lost`, если части ответа не дошли до чата, `unreachable`,
+  если самого чата нет (тему удалили, бота заблокировали) и его очередь снята. Отдельный вид, а не
+  исход `run.end`: `run.end` — правда о запуске и пишется до отправки намеренно, папку отпускают раньше.
 
 ## Вывод в чат
 

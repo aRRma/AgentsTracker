@@ -199,6 +199,8 @@ public sealed class ChatWorker(
                 // задача из неё ждала бы ту же ошибку. Полоса вопросов общая — чужие вопросы не трогаем.
                 var dropped = lane == _questions ? 0 : DrainTasks(lane).Count;
                 logger.LogWarning("Чат {Chat} недоступен (тема удалена?): задача брошена, снято из очереди: {Dropped}", prompt.Chat.Key, dropped);
+                try { Audit(prompt, AuditKinds.Delivery, $"чат недоступен, задача брошена, снято из очереди: {dropped}", outcome: "unreachable"); }
+                catch (Exception auditEx) { logger.LogError(auditEx, "Недоступный чат не записан в журнал"); }
             }
             catch (Exception ex)
             {
@@ -555,10 +557,16 @@ public sealed class ChatWorker(
         // Сессия и расход записаны — папку можно отдать следующему, не дожидаясь отправки ответа.
         heldLock?.Dispose();
 
-        await SendRenderedAsync(
+        var (failed, total) = await SendRenderedAsync(
             prompt.Chat,
             Answer(kind, result) + note + Footer(kind, result, modelLabel, effort, cacheUntil, branch),
             prompt.ReplyTo, stoppingToken);
+
+        // run.end уже сказал «ok», а пользователь мог не получить ничего: без этой записи журнал
+        // не отличает дошедший ответ от потерянного.
+        if (failed > 0)
+            Audit(prompt, AuditKinds.Delivery, $"ответ: частей не дошло {failed} из {total}", result.SessionId,
+                failed == total ? "lost" : "partial");
 
         // Упёрлись в лимит — следующие задачи упрутся в него же; очередь чистим,
         // чтобы не жечь её на отказах.
@@ -870,11 +878,15 @@ public sealed class ChatWorker(
     /// Ответ агента: markdown переводится в формат канала и режется под его лимит.
     /// Не влезающая порция уходит документом. <paramref name="replyTo"/> ставится на каждую
     /// часть, а не на первую: между частями может вклиниться ответ другого запуска.
+    /// Возвращает, сколько частей не дошло и сколько их было.
     /// </summary>
-    private async Task SendRenderedAsync(ChatId chat, string markdown, MessageRef? replyTo, CancellationToken ct)
+    private async Task<(int Failed, int Total)> SendRenderedAsync(ChatId chat, string markdown, MessageRef? replyTo, CancellationToken ct)
     {
+        var failed = 0;
+        var total = 0;
         foreach (var part in MarkdownRenderer.Render(markdown, channel.Limits.MessageLength))
         {
+            total++;
             try
             {
                 await SendPartAsync(chat, part, replyTo, ct);
@@ -883,9 +895,12 @@ public sealed class ChatWorker(
             {
                 // Следующие порции всё равно пробуем: отказ бывает и на одной, а выход
                 // из цикла молча оставил бы пользователя с началом ответа.
+                failed++;
                 logger.LogError(ex, "Не удалось отправить часть ответа в чат {Chat}", chat.Key);
             }
         }
+
+        return (failed, total);
     }
 
     /// <summary>

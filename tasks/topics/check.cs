@@ -351,6 +351,8 @@ await Until(() => worker.QueueLength(t5) == 0 && !worker.IsBusy(t5), "удалё
 await Task.Delay(200);
 Check(backend.Requests.Count() == requestsBefore, "в удалённую тему запусков не было");
 Check(channel.DeadAttempts == 1, "в удалённую тему — одна попытка: ни «внутренней ошибки», ни второй задачи");
+Check(audit.Entries.Any(e => e.Kind == AuditKinds.Delivery && e.ChatKey == t5.Key && e.Outcome == "unreachable" && e.Summary.EndsWith("снято из очереди: 1")),
+    "удалённая тема — в журнал: delivery unreachable и сколько снято");
 channel.Dead = null;
 Check(monitor.Current.Queue.Count == 0, "очередь монитора пуста, когда все полосы разобраны");
 
@@ -410,6 +412,17 @@ limits.Refusal = null;
 var refusal = audit.Entries.Last(e => e.Kind == AuditKinds.LimitRefused).Summary;
 Check(refusal.Contains("fable") && refusal.Contains("окно «5 часов»") && !refusal.Contains("кредиты"), "limit.refused: модель и окно, без абзаца про кредиты");
 await Until(() => !worker.IsBusy(t1), "тема 1 свободна");
+
+// Ответ не дошёл до чата — run.end «ok», но в журнале есть delivery
+channel.FailText = "ответ на «не-дойдёт»";
+await EndOf("не-дойдёт");
+await Until(() => audit.Entries.Any(e => e.Kind == AuditKinds.Delivery && e.ChatKey == t1.Key), "недоставка ответа — в журнал");
+channel.FailText = null;
+Check(audit.Entries.Last(e => e.Kind == AuditKinds.Delivery && e.ChatKey == t1.Key) is { Outcome: "lost" } lost && lost.Summary == "ответ: частей не дошло 1 из 1",
+    "delivery: сколько частей не дошло, исход lost");
+await EndOf("дойдёт");
+await Task.Delay(100);
+Check(audit.Entries.Count(e => e.Kind == AuditKinds.Delivery && e.ChatKey == t1.Key) == 1, "дошедший ответ delivery не пишет");
 
 // Остановка шлюза посреди запуска (docker stop, Ctrl+C): запуск остаётся в state.json — следующий
 // старт скажет «прервано» и допишет run.end; своего run.end нет, второго не будет
@@ -512,9 +525,12 @@ sealed class FakeChannel : IChatChannel
     public int DeadAttempts;
     public Action<string>? OnSend;
 
+    public volatile string? FailText;
+
     public Task<MessageRef> SendAsync(ChatId chat, OutgoingMessage message, CancellationToken ct)
     {
         if (chat == Dead && Interlocked.Increment(ref DeadAttempts) > 0) throw new ChannelRequestException("message thread not found", ChannelFailure.CannotReach);
+        if (FailText is { } fail && message.Text.Contains(fail)) throw new ChannelRequestException("Bad Request", ChannelFailure.Unknown);
         OnSend?.Invoke(message.Text);
         SentQueue.Enqueue((chat, message.Text));
         return Task.FromResult(new MessageRef(chat, Interlocked.Increment(ref _id).ToString()));
