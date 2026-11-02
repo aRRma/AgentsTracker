@@ -37,7 +37,7 @@ src/AgentsTracker.Gateway/
   Program.cs            data directory, service commands, lists of agents (Gateway:Agent), channels (Gateway:Channel:Type) and features
   Domain/               pure models: GatewayState (state.json), AuditEvent and AuditKinds
   Infrastructure/       GatewayInfrastructure.cs (config layers, DI, Kestrel, ValidateStartup, MapFeatures), AppPaths, Modules/IFeatureModule,
-                        Configuration (GatewayOptions, ProjectCatalog), State (SessionStore, CacheGuard), Git, Audit, Monitoring (RunMonitor, RingBufferLog),
+                        Configuration (GatewayOptions, ProjectCatalog), State (SessionStore, CacheGuard), Git, Audit, Monitoring (RunMonitor, RingBufferLog, LogFile),
                         Chat (ChatGatewayService, ChatDispatcher, DisplayFormat, MarkdownRenderer,
                         StartupNotice — «запущен»/«прерван» after a restart, ChatCommandCatalog — the «Меню» command list,
                         Dispatch/ — handler contracts),
@@ -333,7 +333,8 @@ of the run and shows `master → feature` if the agent switched it itself.
 
 `AppPaths.DataDirectory` is `%LOCALAPPDATA%\AgentsTracker\` (ACL — the owner and SYSTEM), or
 `Gateway:DataDirectory` when set. It holds `state.json` (atomic), `mcp-gateway-<pid>-<run>.json` while
-a run lives, `appsettings.Local.json` with the secrets, `inbox\` and `audit\audit-<YYYY-MM>.jsonl`.
+a run lives, `appsettings.Local.json` with the secrets, `inbox\`, `audit\audit-<YYYY-MM>.jsonl` and
+`logs\gateway-<YYYY-MM-DD>.log`.
 
 `SessionStore.Save` writes `state.json.tmp` with `Flush(true)` and swaps it in with `File.Replace`,
 leaving the previous version in `state.json.bak`: without the flush, NTFS after a power cut keeps the
@@ -368,6 +369,15 @@ command itself, a command carries a bot token from an environment variable or a 
 easily, and the monitor serves the journal without a password. `Text.Redact` knows token shapes
 (Telegram, `sk-`, GitHub, AWS, Slack, JWT), `Authorization`/`Bearer`, a password in a URL and the
 values of `token=`/`--password`-like keys; `Text.Preview` masks too (log, monitor, run status).
+
+The log is masked once, at the sink: `RingBufferLoggerProvider` builds one masked `LogEntry` and hands
+it to both the monitor's ring and `LogFile` (`logs\gateway-<YYYY-MM-DD>.log`, Information and above,
+14 days by the date in the name). Masking at the hundred call sites would miss the next one, and the
+ring is served by the monitor without a password. The file is written synchronously with a flush per
+line — a background queue would lose the `LogCritical` written right before the process exits — and a
+write failure is swallowed: reporting it to `ILogger` would loop back. The console is not masked: it
+is the framework's own provider, so the rawest text (CLI output, the limits endpoint's error body) is
+masked at its call site as well.
 
 The kinds are in `AuditKinds`: `access.rejected`, `message`, `run.start`/`run.end`, `approval`,
 `question`, `file.send`, `file.receive`, `settings`, `rules`, `trust`, `session.reset`,

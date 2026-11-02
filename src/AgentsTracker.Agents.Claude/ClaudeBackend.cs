@@ -511,8 +511,9 @@ public sealed class ClaudeBackend(
             }
             catch (JsonException ex)
             {
-                // Целиком — только на Debug: в строке может быть ответ с содержимым файлов.
-                logger.LogWarning(ex, "Итог CLI не разобран как JSON: {Line}", Truncate(resultLine, ErrorDetailsLimit));
+                // Целиком — только на Debug: в строке может быть ответ с содержимым файлов. Маска —
+                // здесь: консоль и docker logs приёмник лога не маскирует.
+                logger.LogWarning(ex, "Итог CLI не разобран как JSON: {Line}", Text.ClipRedacted(resultLine, ErrorDetailsLimit));
                 logger.LogDebug("итог целиком: {Line}", Truncate(resultLine, 2000));
             }
         }
@@ -520,7 +521,7 @@ public sealed class ClaudeBackend(
         if (payload is null)
         {
             var details = string.IsNullOrWhiteSpace(stderr) ? Truncate(output.Noise, 3000) : Truncate(stderr, 3000);
-            logger.LogError("claude завершился с кодом {Code}: {Details}", exitCode, Truncate(details, ErrorDetailsLimit));
+            logger.LogError("claude завершился с кодом {Code}: {Details}", exitCode, Text.ClipRedacted(details, ErrorDetailsLimit));
             logger.LogDebug("вывод целиком: {Details}", details);
 
             // Потерянной сессию объявляем только если CLI прямо сказал, что --resume её

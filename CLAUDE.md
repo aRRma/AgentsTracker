@@ -193,15 +193,17 @@ Sessions are keyed by the **normalized project path** (a topic's — by `<chat k
 **project** equal to the config is stored as `null` (`ChatScope.SetProjectPath`), or a config edit
 would be silently overridden — a topic always stores the full path, its `null` is a беседа;
 model, effort and mode are stored as picked until «по умолчанию»/«из конфига» or `reset` clears them.
-State, secrets and
-the `audit\` journal live in `%LOCALAPPDATA%\AgentsTracker\`; config layers end with the `Gateway__*`
+State, secrets, the `audit\` journal and the `logs\` log live in `%LOCALAPPDATA%\AgentsTracker\`;
+config layers end with the `Gateway__*`
 environment variables. The audit is what a human answers for (who, where, what — no secrets, no full
 texts, addresses as `channel:value`, kinds in `AuditKinds`); the log is for debugging. Secrets are
 masked in one place, `Text.Redact` (via `Text.ClipRedacted`, used by `AuditEvent.NowByKeys` and
 `Text.Preview`): an approval
-writes the whole command, tokens included, so anything new that reaches the journal, the log or the
-monitor goes through it. Details — `docs/en/architecture.md`, the user-facing config —
-`docs/en/deployment.md`.
+writes the whole command, tokens included, so anything new that reaches the journal or the monitor
+goes through it. The log file and the monitor's ring are masked at the sink
+(`RingBufferLoggerProvider`), the console is not — raw CLI or HTTP text logged at Information or above
+still goes through `Text.ClipRedacted` at its call site. Details — `docs/en/architecture.md`, the
+user-facing config — `docs/en/deployment.md`.
 
 Context fill lives on `SessionRecord` (`ContextTokens`/`ContextWindow`), taken from the last
 main-thread turn of a run — `usage` of the `result` line is a sum over turns, not the context.

@@ -131,6 +131,33 @@ Check(!SessionStore.IsTalkFolder(Path.Combine(SessionStore.TalkRoot, "..")), "в
 Check(!SessionStore.IsTalkFolder(SessionStore.TalkRoot + "-evil"), "соседняя папка — не папка беседы");
 Check(SessionStore.IsTalkFolder(Path.Combine(SessionStore.TalkRoot, "x")), "папка внутри корня — беседа");
 
+// --- лог: файл и маска ---
+var logDir = Path.Combine(root, "logs");
+Directory.CreateDirectory(logDir);
+var today = DateOnly.FromDateTime(DateTime.Now);
+var oldLog = Path.Combine(logDir, $"gateway-{today.AddDays(-LogFile.KeptDays - 1):yyyy-MM-dd}.log");
+var freshLog = Path.Combine(logDir, $"gateway-{today.AddDays(-3):yyyy-MM-dd}.log");
+var foreignLog = Path.Combine(logDir, "gateway-old.log");
+foreach (var f in new[] { oldLog, freshLog, foreignLog }) File.WriteAllText(f, "x");
+var ring = new RingBufferLog();
+using (var logProvider = new RingBufferLoggerProvider(ring, new LogFile(logDir)))
+{
+    var log = logProvider.CreateLogger("AgentsTracker.Gateway.Harness");
+    const string botToken = "123456789:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    log.LogWarning("вывод CLI: token=supersecret42\nвторая строка");
+    log.LogError(new InvalidOperationException($"сбой {botToken}"), "с исключением");
+    log.LogDebug("отладка {Secret}", "debug-only");
+}
+var todayLog = Path.Combine(logDir, $"gateway-{today:yyyy-MM-dd}.log");
+var logText = File.Exists(todayLog) ? File.ReadAllText(todayLog) : "";
+var ringText = string.Join("\n", ring.Tail(10, LogLevel.Information).Select(e => e.Message + e.Exception));
+Check(logText.Contains("WRN Harness: вывод CLI") && logText.Contains("ERR Harness: с исключением"), "лог: записи в файле дня, категория без префикса");
+Check(!logText.Contains("supersecret42") && !logText.Contains("AAAAAAAAAAAAAAAAAAAA") && logText.Contains("***"), "лог: секрет в тексте и в исключении замаскирован в файле");
+Check(!ringText.Contains("supersecret42") && !ringText.Contains("AAAAAAAAAAAAAAAAAAAA"), "лог: секрет замаскирован в кольце монитора");
+Check(!logText.Contains("debug-only") && !ringText.Contains("debug-only"), "лог: Debug не пишется");
+Check(logText.Contains("\n    вторая строка") && logText.Contains("\n    System.InvalidOperationException"), "лог: продолжение записи — с отступом");
+Check(!File.Exists(oldLog) && File.Exists(freshLog) && File.Exists(foreignLog), "лог: старше срока удалён, свежий и чужой остались");
+
 // --- воркер ---
 store.TakeInterruptedRuns();
 var channel = new FakeChannel();

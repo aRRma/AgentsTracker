@@ -52,7 +52,7 @@ DNS rebinding, когда чужой сайт направляет своё им
 `/api/stats.csv` — `;`, BOM и десятичная запятая, иначе Excel на русской локали читает дробные как
 текст. Лимиты — `IAgentLimits.GetAsync` (Claude кэширует на 3 мин; страница опрашивает раз в
 минуту, журнал и лог — раз в 30 с); лог — `RingBufferLog` (500 записей, Information+,
-`ILoggerProvider`).
+маскирует `RingBufferLoggerProvider`; те же записи уходят в файл лога).
 
 ## Как смотреть страницу
 

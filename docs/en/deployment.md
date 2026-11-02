@@ -226,15 +226,17 @@ The data directory is the gateway's whole state. On Windows only the owner and S
 | `appsettings.Local.json` | config; on Windows secrets are encrypted |
 | `state.json` | sessions per project, project, model, mode and effort selection (the лента's and each topic's), the runs in progress per chat, the versions the model aliases answered with, "Always" rules and trusted projects per project, statistics, run history |
 | `audit\audit-YYYY-MM.jsonl` | the "who did what, when" journal, one file per month |
+| `logs\gateway-YYYY-MM-DD.log` | the technical log, one file per day, Information and above, secrets masked; files older than 14 days are deleted |
 | `inbox\<chat>\<project>\` | pictures from the chat; swept after `Attachments:RetentionHours` (24 by default) |
 | `mcp-gateway-<pid>-<run>.json` | temporary, one per agent run: created at its start, removed at its end |
 
 Back up `state.json` and `audit\`. Back up the config only if you remember that `dpapi:…`
-restores only on this machine under this account.
+restores only on this machine under this account. The log needs no backup.
 
-There is no log file. The Task Scheduler task writes to a console that doesn't exist: watch the
-log in the monitor (the «Лог» section) or `GET /api/log?count=&level=`. In the container use
-`docker compose logs -f`.
+The Task Scheduler task writes to a console that doesn't exist, so the log is read from the file
+(`Get-Content -Encoding utf8 -Tail 50 <file>`), in the monitor (the «Лог» section, the last 500
+entries) or with `GET /api/log?count=&level=`. In the container the file is on the `data` volume,
+and `docker compose logs -f` still works — the console is not masked, the file and the monitor are.
 
 ## Multiple instances
 

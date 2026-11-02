@@ -35,13 +35,21 @@ public sealed class RingBufferLog
         Enum.TryParse<LogLevel>(name, ignoreCase: true, out var level) ? level : LogLevel.Information;
 }
 
-public sealed class RingBufferLoggerProvider(RingBufferLog buffer) : ILoggerProvider
+/// <summary>
+/// Один приёмник на кольцо монитора и файл лога: маска и пол Information — в одном месте.
+/// Маска здесь, а не в точках вызова: их сотня, и новая забыла бы её, а монитор без пароля
+/// отдаёт кольцо, и в хвосте вывода CLI или в тексте исключения бывает токен.
+/// </summary>
+public sealed class RingBufferLoggerProvider(RingBufferLog buffer, LogFile file) : ILoggerProvider
 {
-    public ILogger CreateLogger(string categoryName) => new RingLogger(buffer, categoryName);
+    /// <summary>Предел текста записи: стек исключения на десятки килобайт регулярки маски не ускорит.</summary>
+    private const int TextLimit = 16_000;
+
+    public ILogger CreateLogger(string categoryName) => new RingLogger(buffer, file, categoryName);
 
     public void Dispose() { }
 
-    private sealed class RingLogger(RingBufferLog buffer, string category) : ILogger
+    private sealed class RingLogger(RingBufferLog buffer, LogFile file, string category) : ILogger
     {
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
@@ -52,12 +60,15 @@ public sealed class RingBufferLoggerProvider(RingBufferLog buffer) : ILoggerProv
         {
             if (!IsEnabled(logLevel)) return;
 
-            buffer.Add(new LogEntry(
+            var entry = new LogEntry(
                 DateTimeOffset.UtcNow,
                 logLevel.ToString(),
                 category.StartsWith("AgentsTracker.Gateway.", StringComparison.Ordinal) ? category["AgentsTracker.Gateway.".Length..] : category,
-                formatter(state, exception),
-                exception?.ToString()));
+                Text.ClipRedacted(formatter(state, exception), TextLimit),
+                exception is null ? null : Text.ClipRedacted(exception.ToString(), TextLimit));
+
+            buffer.Add(entry);
+            file.Write(entry);
         }
     }
 }

@@ -38,7 +38,7 @@ src/AgentsTracker.Gateway/
   Program.cs            папка данных, служебные команды, списки агентов (Gateway:Agent), каналов (Gateway:Channel:Type) и фич
   Domain/               чистые модели: GatewayState (state.json), AuditEvent и AuditKinds
   Infrastructure/       GatewayInfrastructure.cs (слои конфигурации, DI, Kestrel, ValidateStartup, MapFeatures), AppPaths, Modules/IFeatureModule,
-                        Configuration (GatewayOptions, ProjectCatalog), State (SessionStore, CacheGuard), Git, Audit, Monitoring (RunMonitor, RingBufferLog),
+                        Configuration (GatewayOptions, ProjectCatalog), State (SessionStore, CacheGuard), Git, Audit, Monitoring (RunMonitor, RingBufferLog, LogFile),
                         Chat (ChatGatewayService, ChatDispatcher, DisplayFormat, MarkdownRenderer,
                         StartupNotice — «запущен»/«прерван» после перезапуска, ChatCommandCatalog — список команд «Меню»,
                         Dispatch/ — контракты обработчиков),
@@ -327,8 +327,8 @@ Telegram Desktop до самой ленты доходит только кома
 
 `AppPaths.DataDirectory` — это `%LOCALAPPDATA%\AgentsTracker\` (ACL — владелец и SYSTEM) или
 `Gateway:DataDirectory`, если он задан. Там лежат `state.json` (атомарно),
-`mcp-gateway-<pid>-<запуск>.json`, пока идёт запуск, `appsettings.Local.json` с секретами, `inbox\` и
-`audit\audit-ГГГГ-ММ.jsonl`.
+`mcp-gateway-<pid>-<запуск>.json`, пока идёт запуск, `appsettings.Local.json` с секретами, `inbox\`,
+`audit\audit-ГГГГ-ММ.jsonl` и `logs\gateway-ГГГГ-ММ-ДД.log`.
 
 `SessionStore.Save` пишет `state.json.tmp` с `Flush(true)` и подменяет файл через `File.Replace`,
 оставляя прежнюю версию в `state.json.bak`: без сброса NTFS после отключения питания сохраняет
@@ -362,6 +362,14 @@ Telegram Desktop до самой ленты доходит только кома
 журнал монитор отдаёт без пароля. `Text.Redact` узнаёт токены по форме (Telegram, `sk-`, GitHub, AWS,
 Slack, JWT), `Authorization`/`Bearer`, пароль в адресе и значения ключей вроде `token=`/`--password`;
 `Text.Preview` тоже маскирует (лог, монитор, статус запуска).
+
+Лог маскируется один раз, в приёмнике: `RingBufferLoggerProvider` собирает одну замаскированную запись
+`LogEntry` и отдаёт её и кольцу монитора, и `LogFile` (`logs\gateway-ГГГГ-ММ-ДД.log`, Information и
+выше, 14 дней по дате в имени). Маска в сотне точек вызова пропустила бы следующую, а кольцо монитор
+отдаёт без пароля. Файл пишется синхронно, со сбросом на каждую строку: фоновая очередь потеряла бы
+`LogCritical` прямо перед выходом процесса. Сбой записи глотается: сообщение о нём в `ILogger`
+вернулось бы в тот же файл. Консоль не маскируется — это провайдер самого .NET, поэтому самый сырой
+текст (вывод CLI, тело ошибки эндпоинта лимитов) маскируется ещё и в месте записи.
 
 Виды перечислены в `AuditKinds`: `access.rejected`, `message`, `run.start`/`run.end`, `approval`,
 `question`, `file.send`, `file.receive`, `settings`, `rules`, `trust`, `session.reset`,

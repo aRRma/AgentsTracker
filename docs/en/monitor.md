@@ -53,7 +53,7 @@ History is `GatewayState.RecentRuns` (200 entries, `SessionStore.RecordRunOutcom
 `/api/stats.csv` uses `;`, a BOM and a decimal comma, or Excel under the Russian locale reads
 fractions as text. Limits come from `IAgentLimits.GetAsync` (Claude caches 3 min; the page polls
 once a minute, the journal and the log every 30 s); the log is `RingBufferLog` (500 entries,
-Information+, an `ILoggerProvider`).
+Information+, masked by `RingBufferLoggerProvider` — the same entries go to the log file).
 
 ## How to look at the page
 
