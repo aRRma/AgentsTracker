@@ -115,7 +115,7 @@ session. A topic without a project is a
 (the вопрос's tools, but a session). A new topic (no `TopicState`, or one with `Untyped` left by
 `/model`, `/effort`, `/mode`) shows «Тип темы» instead of running, and a skill there is refused; only
 `SetProjectPath` gives a topic its type. A deleted topic is learned of only from a failed send
-(`ChannelFailure.CannotReach`): `ChatWorker.ConsumeAsync` drops that chat's queue. Details —
+(`ChannelFailure.CannotReach`): `ChatWorker.ConsumeAsync` drops that chat's task queue. Details —
 `docs/en/architecture.md`, "Topics".
 
 Pictures go through `AttachmentInbox` into `<data directory>\inbox\<chat>\<project>\`; a task run gets
