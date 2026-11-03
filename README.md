@@ -255,7 +255,7 @@ schtasks //Run //TN "AgentsTracker Gateway"
 | `Model`, `Effort` | модель и effort по умолчанию |
 | `PermissionMode` | что можно без спроса. Из чата переключаются `plan`, `default`, `acceptEdits`, `auto`; `dontAsk` и `bypassPermissions` — только здесь, в файле |
 | `McpPort`, `MonitorPort`, `MonitorBind` | порт, по которому `claude` спрашивает разрешения (5099) · порт монитора (5100, `0` — выключить) · где слушать монитор: `loopback` или `any` для контейнера |
-| `DataDirectory` | где хранить состояние и журнал. Задаётся в `appsettings.json` рядом с exe или переменной `Gateway__DataDirectory` |
+| `DataDirectory` | где хранить состояние, журнал и лог. Задаётся в `appsettings.json` рядом с exe или переменной `Gateway__DataDirectory` |
 | `ApprovalTimeoutMinutes`, `RunTimeoutMinutes` | сколько минут ждать ответа на карточку (15) и весь запуск (60) |
 | `Attachments:Enabled`, `:MaxBytes`, `:RetentionHours` | картинки из чата: принимать ли (да), предел размера (10 МБ; Telegram отдаёт боту не больше 20 МБ), сколько часов хранить (24) |
 | `Question:Model`, `Question:Effort` | модель и effort для `/ask` и беседы: по умолчанию `sonnet` и как решит Claude Code. У `/ask` из чата не меняются, в беседе их меняют `/model` и `/effort` |
@@ -327,7 +327,7 @@ schtasks //Run //TN "AgentsTracker Gateway"
 | Агент просит войти в аккаунт | запустите `claude` в PowerShell и войдите; бот использует этот вход |
 | Сборка падает с `MSB3021` | шлюз запущен и держит файлы. Установленный — `AgentsTracker.Gateway.exe uninstall` (снимает и останавливает), запущенный вручную — `Get-Process AgentsTracker.Gateway \| Stop-Process -Force` (в bash `taskkill //F //IM AgentsTracker.Gateway.exe`) |
 | Кнопки не приходят | `PermissionMode` стоит `auto` — поставьте `default` |
-| В логе кракозябры | консоль в cp866; откройте файл лога `logs\gateway-ГГГГ-ММ-ДД.log` в папке данных — он в UTF-8 |
+| В логе кракозябры | консоль в cp866; откройте файл лога `%LOCALAPPDATA%\AgentsTracker\logs\gateway-ГГГГ-ММ-ДД.log` — он в UTF-8 (в контейнере — на томе `data`) |
 | Монитор из контейнера не открывается | порт опубликован? внутри нужен `Gateway__MonitorBind=any` |
 
 </details>

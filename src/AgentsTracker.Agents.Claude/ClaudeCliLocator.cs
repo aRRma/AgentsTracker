@@ -76,7 +76,11 @@ public sealed class ClaudeCliLocator(IOptions<ClaudeOptions> options, ILogger<Cl
             var output = stdout.GetAwaiter().GetResult();
             stderr.GetAwaiter().GetResult();
 
-            return process.ExitCode == 0 && output.Trim() is { Length: > 0 } version ? version : null;
+            // Только номер: CLI дописывает «(Claude Code)», и рядом с именем агента в «старт» и
+            // «🔌 Шлюз запущен» имя вышло бы дважды.
+            return process.ExitCode == 0 && output.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) is [var version, ..]
+                ? version
+                : null;
         }
         catch (Exception ex)
         {

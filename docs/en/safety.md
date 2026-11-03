@@ -126,8 +126,7 @@ history and the journal to anyone logged into this computer.
   `localhost`;
 - tokens and passwords in commands reach the journal, the log file and the monitor as `***`. The
   gateway recognizes known token shapes and the values of keys like `token` and `password`. The
-  console (and `docker compose logs`) is masked only for the agent's output: an error text from the
-  network can still show there as is;
+  console and `docker compose logs` are barely masked — do not show them to others;
 - after `install` (or `protect-secrets`) the bot token on disk is encrypted (DPAPI), and only your
   account on this machine can decrypt it. A container has no DPAPI, so keep its `.env` to yourself.
 

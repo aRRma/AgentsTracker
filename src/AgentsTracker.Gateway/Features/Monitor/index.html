@@ -346,8 +346,7 @@
     last = s;
     $('version').textContent = s.version || '—';
     $('agent').textContent = s.agent || 'Агент';
-    const version = (s.cliVersion || '?').replace(` (${s.agent})`, '');
-    $('cli').textContent = version; $('cli').title = s.cliVersion || '';
+    $('cli').textContent = s.cliVersion || '?';
     $('project').textContent = shortPath(s.project); $('project').title = s.project || '';
     $('model').textContent = s.model || 'по умолчанию';
     $('mode').textContent = s.permissionMode || '—';

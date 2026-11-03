@@ -236,7 +236,8 @@ restores only on this machine under this account. The log needs no backup.
 The Task Scheduler task writes to a console that doesn't exist, so the log is read from the file
 (`Get-Content -Encoding utf8 -Tail 50 <file>`), in the monitor (the «Лог» section, the last 500
 entries) or with `GET /api/log?count=&level=`. In the container the file is on the `data` volume,
-and `docker compose logs -f` still works — the console is not masked, the file and the monitor are.
+and `docker compose logs -f` still works. If the gateway crashed past every handler, the cause is the
+last `CRT` entry in the file.
 
 ## Multiple instances
 

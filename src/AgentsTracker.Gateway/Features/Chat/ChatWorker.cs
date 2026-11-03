@@ -198,18 +198,15 @@ public sealed class ChatWorker(
                 // или карточке доверия. Туда не дойдёт ничего, и очередь чата туда же: иначе каждая
                 // задача из неё ждала бы ту же ошибку. Полоса вопросов общая — чужие вопросы не трогаем.
                 var dropped = lane == _questions ? 0 : DrainTasks(lane).Count;
-                logger.LogWarning("Чат {Chat} недоступен (тема удалена?): задача брошена, снято из очереди: {Dropped}", prompt.Chat.Key, dropped);
-                try { Audit(prompt, AuditKinds.Delivery, $"чат недоступен, задача брошена, снято из очереди: {dropped}", outcome: "unreachable"); }
-                catch (Exception auditEx) { logger.LogError(auditEx, "Недоступный чат не записан в журнал"); }
+                logger.LogWarning("Чат {Chat} недоступен (тема удалена?): запуск брошен, снято из очереди: {Dropped}", prompt.Chat.Key, dropped);
+                AuditQuietly(prompt, AuditKinds.Delivery, $"чат недоступен, снято из очереди: {dropped}", "unreachable");
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Ошибка при обработке сообщения");
                 // В журнал тоже: иначе там остался бы run.start без конца или сообщение без запуска.
-                // Сбой самой записи не должен выйти из catch — он убил бы полосу чата.
-                try { Audit(prompt, AuditKinds.Gateway, $"внутренняя ошибка: {ex.GetType().Name}: {ex.Message}", outcome: "error"); }
-                catch (Exception auditEx) { logger.LogError(auditEx, "Внутренняя ошибка не записана в журнал"); }
-                await SendPlainAsync(prompt.Chat, $"Внутренняя ошибка шлюза: {ex.Message}", prompt.ReplyTo, stoppingToken);
+                AuditQuietly(prompt, AuditKinds.Gateway, $"внутренняя ошибка: {ex.GetType().Name}: {ex.Message}", "error");
+                await SendPlainAsync(prompt.Chat, $"Внутренняя ошибка шлюза: {Text.Redact(ex.Message)}", prompt.ReplyTo, stoppingToken);
             }
             finally
             {
@@ -410,7 +407,7 @@ public sealed class ChatWorker(
 
         // После статуса: не ушёл он — запуска не было, и «начат» без конца в журнале соврал бы.
         // Вид запуска — здесь, а не в run.end: иначе /context и /compact в журнале не отличить от задачи.
-        // Замок — только заметный: без него не видно, почему задача стартовала через минуты после сообщения.
+        // Ожидание замка — только заметное: без него не видно, почему задача стартовала через минуты после сообщения.
         var runKind = kind switch
         {
             AgentRunKind.Question => "вопрос, ",
@@ -421,7 +418,7 @@ public sealed class ChatWorker(
         Audit(prompt, AuditKinds.RunStart,
             $"{runKind}{modelLabel ?? "модель по умолчанию"}, {scope.EffectivePermissionMode}, effort {effort ?? "—"}"
             + (startBranch is null ? "" : $", ветка {startBranch.Label}")
-            + (lockWait >= TimeSpan.FromSeconds(1) ? $", замок {lockWait.Elapsed}" : ""),
+            + (lockWait >= TimeSpan.FromSeconds(1) ? $", ждал другой запуск {lockWait.Elapsed}" : ""),
             session);
 
         // Всё, что после статусного сообщения, — внутри try: сбой записи state.json или монитора
@@ -481,6 +478,8 @@ public sealed class ChatWorker(
             await DeleteQuietlyAsync(status.Message, stoppingToken);
         }
 
+        // Удаление статуса на отменённом токене обычно уже бросило; канал, который не бросает, довёл
+        // бы сюда — а ответ слать уже некуда.
         if (stopped) return;
 
         // Неудачный запуск тоже расходует тариф, поэтому пишем и его — если агент успел сказать.
@@ -522,14 +521,14 @@ public sealed class ChatWorker(
         };
 
         // Цифры — первыми: предел записи режет хвост, а /audit показывает 160 знаков. Прерванный
-        // запуск расхода не сообщает — у него только выбранная модель. Таймаут живёт в бэкенде и
-        // runCts не трогает, поэтому отмена без /stop — это он; остановку шлюза отсеяли выше.
+        // запуск расхода не сообщает — у него только выбранная модель. Предел времени живёт в бэкенде
+        // и runCts не трогает, поэтому отмена без /stop — это он; остановку шлюза отсеяли выше.
         var spent = result.Usage is { } used
-            ? $", ходов {used.Turns}, токенов {used.InputTokens.Tokens}/{used.OutputTokens.Tokens}, {used.PrimaryModel ?? modelLabel}"
+            ? $", ходов {used.Turns}, токенов {used.InputTokens.Tokens}/{used.OutputTokens.Tokens}, {used.PrimaryModel ?? modelLabel ?? "модель по умолчанию"}"
             : $", {modelLabel ?? "модель по умолчанию"}";
         var reason = result switch
         {
-            { Cancelled: true } => runCts.IsCancellationRequested ? ", /stop" : ", таймаут",
+            { Cancelled: true } => runCts.IsCancellationRequested ? ", /stop" : ", предел времени",
             { Ok: false } => ", " + Text.Preview(result.Text),
             _ => "",
         };
@@ -786,6 +785,13 @@ public sealed class ChatWorker(
 
     private void Audit(QueuedPrompt prompt, string kind, string summary, string? session = null, string? outcome = null) =>
         audit.Write(AuditEvent.Now(kind, summary, prompt.User, prompt.Chat, store.For(prompt.Chat).ProjectPath, session, outcome));
+
+    // Для catch в ConsumeAsync: сбой самой записи не должен выйти наружу — он убил бы полосу чата.
+    private void AuditQuietly(QueuedPrompt prompt, string kind, string summary, string outcome)
+    {
+        try { Audit(prompt, kind, summary, outcome: outcome); }
+        catch (Exception ex) { logger.LogError(ex, "Запись {Kind} не попала в журнал", kind); }
+    }
 
     /// <summary>
     /// Подпись под ответом: id сессии, которой отвечал агент. По нему ответ находится

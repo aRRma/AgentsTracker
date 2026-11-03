@@ -161,6 +161,18 @@ Debug не пишется, старый файл удалён.
   он начнёт с .NET 11 (Microsoft Learn, «IHost.RunAsync and IHost.StopAsync throw when a
   BackgroundService fails»). Сейчас это не дыра: оба сервиса ловят свои исключения.
 
+## Как сделано — отличия от плана
+
+Ревью 03.11.2026 (`sources/review-runs.md`, `sources/review-docs.md`). Код главнее плана:
+
+- Причины `остановка шлюза` в `run.end` нет: при остановке `run.end` не пишется вовсе (этап 2.3).
+- `UnhandledException` подписан в `GatewayInfrastructure.ValidateStartup`, а не в `Program.cs`.
+- Слова по глоссарию: `предел времени` вместо «таймаут», `ждал другой запуск N` вместо «замок N с»
+  (формат `DisplayFormat.Elapsed`, порог — секунда и больше).
+- Тексты `delivery`: `ответ: частей не дошло N из M` и `чат недоступен, снято из очереди: N`.
+- Версия CLI — только номер (`ClaudeCliLocator.TryGetVersion`): иначе «Claude Code 2.1.316 (Claude
+  Code)» в «старт» и «🔌 Шлюз запущен».
+
 ## Перед слиянием
 
 Обе задачи сливаются вместе — этап D `plan-rework.md` после этой задачи. Папка `tasks/topics/`

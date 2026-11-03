@@ -47,7 +47,7 @@ English (`IAgentLimits`, `ProjectPath`, `audit\`) — the glossary is about text
 | What the agent sends into the chat | **файл** | вложение |
 | The action journal (`/audit`) | **журнал** | аудит (in a UI text), лог |
 | The technical log | **лог** | журнал |
-| A message reaching the chat (or not: «не дошло») | **доставка** | отправка, получение |
+| The outcome of sending an answer to the chat (reached it, or «не дошло») | **доставка** | — |
 | The user's decision on a card | **отклонить** | отказать, запретить |
 | A card withdrawn by anything but the user | **отменено** | отклонено |
 | The gateway refusing by a rule (file type, size) | **отказ** | запрет, ошибка |
@@ -110,7 +110,7 @@ a run timeout («предел канала», «Превышен предел в
 
 **журнал / лог.** The журнал is what a human is answerable for — `/audit`, the monitor's
 «Журнал», `audit\audit-<YYYY-MM>.jsonl`. The лог is for debugging — the monitor's «Лог»,
-`ILogger`. The mechanism keeps its English name (`audit`), the text says «журнал».
+`ILogger`, the file `logs\gateway-<YYYY-MM-DD>.log`. The mechanism keeps its English name (`audit`), the text says «журнал».
 
 **отклонить / отменено / отказ.** The user pressed «❌ Отклонить» — отклонено. The card went away
 for another reason (`/stop`, a gateway restart) — отменено. The gateway itself did not let

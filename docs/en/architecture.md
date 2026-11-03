@@ -368,16 +368,13 @@ excerpt of 80. `NowByKeys` masks every summary through `Text.ClipRedacted`: an a
 command itself, a command carries a bot token from an environment variable or a curl header just as
 easily, and the monitor serves the journal without a password. `Text.Redact` knows token shapes
 (Telegram, `sk-`, GitHub, AWS, Slack, JWT), `Authorization`/`Bearer`, a password in a URL and the
-values of `token=`/`--password`-like keys; `Text.Preview` masks too (log, monitor, run status).
+values of `token=`/`--password`-like keys; `Text.Preview` masks too (journal, monitor, run status).
 
-The log is masked once, at the sink: `RingBufferLoggerProvider` builds one masked `LogEntry` and hands
-it to both the monitor's ring and `LogFile` (`logs\gateway-<YYYY-MM-DD>.log`, Information and above,
-14 days by the date in the name). Masking at the hundred call sites would miss the next one, and the
-ring is served by the monitor without a password. The file is written synchronously with a flush per
-line — a background queue would lose the `LogCritical` written right before the process exits — and a
-write failure is swallowed: reporting it to `ILogger` would loop back. The console is not masked: it
-is the framework's own provider, so the rawest text (CLI output, the limits endpoint's error body) is
-masked at its call site as well.
+The log is masked once, at the sink: `RingBufferLoggerProvider` builds one masked `LogEntry` for both
+the monitor's ring and `LogFile` (`logs\gateway-<YYYY-MM-DD>.log`, Information and above, 14 days by
+the date in the name). The file is written synchronously, so the `CRT` entry of an unhandled exception
+lands before the process exits; a write failure is swallowed. The console is not masked, so the
+rawest text (CLI output, the limits endpoint's error body) is also masked at its call site.
 
 The kinds are in `AuditKinds`: `access.rejected`, `message`, `run.start`/`run.end`, `approval`,
 `question`, `file.send`, `file.receive`, `settings`, `rules`, `trust`, `session.reset`,
@@ -387,22 +384,20 @@ a human is answerable for, `ILogger` gets what is needed for debugging.
 What a run leaves, numbers first — the 200-character limit cuts the tail and `/audit` shows 160:
 
 - `run.start` — the kind (`вопрос`, `контекст`, `сжатие`, `беседа`), model, mode, effort, branch, and
-  `замок N` when the folder lock took more than a second. The queue wait is the gap between
-  `message` and `run.start` of the same chat.
-- `run.end` — time, turns, tokens in/out and the model that answered; for `error` and `rate-limit`
-  the start of the error text, for `cancel` `/stop` or `таймаут`. The timeout lives in the backend and
-  does not touch the run's token, so a cancellation without `/stop` is the timeout. The outcome
-  stays `ok`/`error`/`rate-limit`/`cancel`: the monitor's run history keys on it.
-- A soft gateway stop (`docker stop`, Ctrl+C) in the middle of a run writes no `run.end` and leaves the
-  run in `state.json`: the next start says «прервано» and writes `run.end interrupted`, the same path as
-  a killed process. Removing it would leave the user with no answer and no notice.
+  `ждал другой запуск N` when the folder lock took a second or more. The queue wait is the gap
+  between `message` and `run.start` of the same chat.
+- `run.end` — time, turns, tokens in/out and the model that answered (a run without usage — only the
+  selected model); for `error` and `rate-limit` the start of the error text, for `cancel` `/stop` or
+  `предел времени` (the backend's timeout does not touch the run's token). The outcome stays
+  `ok`/`error`/`rate-limit`/`cancel`: the monitor's run history keys on it.
+- A soft gateway stop (`docker stop`, Ctrl+C) writes no `run.end` and leaves the run in `state.json`:
+  the next start says «прервано» and writes `run.end interrupted`, as after a killed process.
 - `gateway` `внутренняя ошибка: <type>: <message>` (`error`) — an exception in a lane; `gateway`
   `старт` — the gateway and CLI versions, `pid` and `container` in the outcome.
 - `limit.refused` — the model and the first paragraph of the refusal (the window and the reset).
-- `delivery` — written only on a failure: `partial`/`lost` when parts of the answer did not reach the
-  chat, `unreachable` when the chat itself is gone (a deleted topic, a blocked bot) and its queue was
-  dropped. A kind of its own rather than a `run.end` outcome: `run.end` is the truth about the run and
-  is written before the send on purpose — the folder is released first.
+- `delivery` — only on a failure: `partial`/`lost` when parts of the answer did not reach the chat,
+  `unreachable` when the chat is gone (a deleted topic) and its queue was dropped. Not a `run.end`
+  outcome: `run.end` is written before the send.
 
 ## Chat output
 

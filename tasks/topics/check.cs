@@ -205,8 +205,8 @@ Check(audit.Entries.Last(e => e.Kind == AuditKinds.RunEnd && e.ChatKey == t3.Key
 await Task.Delay(1100);
 backend.Release(t1.Key);
 await Until(() => backend.Running.ContainsKey(feed.Key), "после темы 1 стартовала лента");
-Check(audit.Entries.Last(e => e.Kind == AuditKinds.RunStart && e.ChatKey == feed.Key).Summary.Contains(", замок "), "run.start ленты: ожидание замка записано");
-Check(!audit.Entries.Last(e => e.Kind == AuditKinds.RunStart && e.ChatKey == t1.Key).Summary.Contains("замок"), "run.start без ожидания: замка нет");
+Check(audit.Entries.Last(e => e.Kind == AuditKinds.RunStart && e.ChatKey == feed.Key).Summary.Contains(", ждал другой запуск 1 с"), "run.start ленты: ожидание замка записано");
+Check(!audit.Entries.Last(e => e.Kind == AuditKinds.RunStart && e.ChatKey == t1.Key).Summary.Contains("ждал"), "run.start без ожидания: ожидания нет");
 backend.Release(feed.Key);
 await Until(() => backend.Running.IsEmpty && !worker.IsBusy(feed), "лента закончилась");
 
@@ -385,18 +385,17 @@ Check(await quickTrust.EnsureAsync(t1, null, projT, CancellationToken.None) == P
 
 // run.end: расход, причина ошибки и отмены; внутренняя ошибка и лимит — в журнал
 backend.Hold = false;
-AuditEvent LastOf(string kind, string prompt) => audit.Entries.Last(e => e.Kind == kind && e.ChatKey == t1.Key);
 async Task<AuditEvent> EndOf(string prompt)
 {
     var ends = audit.Entries.Count(e => e.Kind == AuditKinds.RunEnd && e.ChatKey == t1.Key);
     worker.Enqueue(t1, user, prompt);
     await Until(() => audit.Entries.Count(e => e.Kind == AuditKinds.RunEnd && e.ChatKey == t1.Key) > ends, $"run.end «{prompt}» записан");
-    return LastOf(AuditKinds.RunEnd, prompt);
+    return audit.Entries.Last(e => e.Kind == AuditKinds.RunEnd && e.ChatKey == t1.Key);
 }
 var spentEnd = await EndOf("с расходом");
 Check(spentEnd.Outcome == "ok" && spentEnd.Summary.Contains("ходов 5, токенов 12.3k/1.8k, opus-5-5"), "run.end: ходы, токены и ответившая модель");
 var timeoutEnd = await EndOf("таймаут");
-Check(timeoutEnd.Outcome == "cancel" && timeoutEnd.Summary.EndsWith(", таймаут"), "run.end: отмена без /stop — таймаут");
+Check(timeoutEnd.Outcome == "cancel" && timeoutEnd.Summary.EndsWith(", предел времени"), "run.end: отмена без /stop — предел времени");
 var errorEnd = await EndOf("ошибка");
 Check(errorEnd.Outcome == "error" && errorEnd.Summary.Contains("claude завершился с кодом 1") && !errorEnd.Summary.Contains("abc12345secret"),
     "run.end: причина ошибки, секрет замаскирован");
@@ -404,6 +403,8 @@ var gatewayErrors = audit.Entries.Count(e => e.Kind == AuditKinds.Gateway && e.O
 worker.Enqueue(t1, user, "бросок");
 await Until(() => audit.Entries.Count(e => e.Kind == AuditKinds.Gateway && e.Outcome == "error") > gatewayErrors, "внутренняя ошибка — в журнал");
 Check(audit.Entries.Last(e => e.Kind == AuditKinds.Gateway && e.Outcome == "error").Summary.Contains("InvalidOperationException: сломалось"), "внутренняя ошибка: тип и сообщение");
+await Until(() => channel.Sent.Any(s => s.Chat == t1 && s.Text.StartsWith("Внутренняя ошибка шлюза")), "внутренняя ошибка — в чат");
+Check(!channel.Sent.Last(s => s.Chat == t1 && s.Text.StartsWith("Внутренняя ошибка шлюза")).Text.Contains("abc12345secret"), "внутренняя ошибка в чате: секрет замаскирован");
 limits.Refusal = "🚦 Лимит тарифа исчерпан: окно «5 часов» выбрано полностью. Сброс в 18:00.\n\nЗадача не запущена — кредиты шлюз не тратит.";
 var refusals = audit.Entries.Count(e => e.Kind == AuditKinds.LimitRefused);
 worker.Enqueue(t1, user, "на лимите");
@@ -470,7 +471,7 @@ sealed class FakeBackend : IAgentBackend
         {
             case "таймаут": return new AgentRunResult { Ok = false, Cancelled = true, Text = "Превышен предел" };
             case "ошибка": return new AgentRunResult { Ok = false, Text = "claude завершился с кодом 1: token=abc12345secret" };
-            case "бросок": throw new InvalidOperationException("сломалось");
+            case "бросок": throw new InvalidOperationException("сломалось token=abc12345secret");
             case "с расходом":
                 return new AgentRunResult
                 {
