@@ -85,8 +85,11 @@ which will come later. Until then Docker is what is left there.
    folder in place of the old one.
 3. `AgentsTracker.Gateway.exe install --start`.
 
-The config, sessions and audit journal in the data directory stay. If the update lands on a
-running task, its chat gets «⚠️ Предыдущий запуск прерван перезапуском шлюза» (the previous run
+The config, sessions and audit journal in the data directory stay. Do not put your own
+`appsettings.Local.json` next to the new exe: with a config already in the data directory,
+`install` deletes that file without applying it.
+
+If the update lands on a running task, its chat gets «⚠️ Предыдущий запуск прерван перезапуском шлюза» (the previous run
 was interrupted by the gateway restart) with a hint to write «продолжай» ("continue"); an
 interrupted вопрос is asked again with `/ask`.
 
@@ -149,6 +152,47 @@ The data directory is `%LOCALAPPDATA%\AgentsTracker` (on Linux and macOS
 `~/.local/share/AgentsTracker`); `Gateway:DataDirectory` relocates it. The config file itself
 lives there, so this key is read earlier than the rest: only from `appsettings.json` next to the
 exe or from the `Gateway__DataDirectory` variable.
+
+### Main keys
+
+The `Gateway` section of `appsettings.Local.json`. The full list with defaults is `appsettings.json`
+next to the exe.
+
+| Key | What for |
+|---|---|
+| `Channel:Type` | which channel; only `telegram` so far |
+| `Channel:Settings:BotToken` | the token from @BotFather |
+| `Channel:Settings:AllowedUserIds` | who may control the bot |
+| `Proxy`, `Channel:Settings:Proxy` | the machine-wide proxy · a proxy for the channel only (if absent, the common one is used) |
+| `ProjectPath` | the default project folder |
+| `Projects` / `ProjectsRoot` | which folders the project menu shows. If neither is set — the folders next to `ProjectPath` that have `.git`, `*.sln`, `*.slnx`, `package.json` or `pyproject.toml` |
+| `Claude:Executable` | path to `claude.exe` if the auto-search did not find it |
+| `Claude:BuiltInSkills` | built-in skills for `/skills`, lines `"/command \| description \| argument hint"` |
+| `Model`, `Effort` | the default model and effort |
+| `PermissionMode` | what is allowed without asking. The chat switches `plan`, `default`, `acceptEdits`, `auto`; `dontAsk` and `bypassPermissions` only here, in the file |
+| `McpPort`, `MonitorPort`, `MonitorBind` | the port `claude` asks for approvals on (5099) · the monitor port (5100, `0` turns it off) · where the monitor listens: `loopback`, or `any` for a container |
+| `DataDirectory` | where state, the audit journal and the log live; see above |
+| `ApprovalTimeoutMinutes`, `RunTimeoutMinutes` | how many minutes to wait for a card answer (15) and for the whole run (60) |
+| `Attachments:Enabled`, `:MaxBytes`, `:RetentionHours` | pictures from the chat: accept them (yes), the size ceiling (10 MB; Telegram gives a bot at most 20 MB), how many hours to keep them (24) |
+| `Question:Model`, `Question:Effort` | model and effort for `/ask` and a беседа: `sonnet` and whatever Claude Code decides by default. Not changeable from the chat for `/ask`; in a беседа `/model` and `/effort` change them |
+
+### Restart
+
+The config is read once at startup: change it, restart.
+
+```powershell
+Stop-ScheduledTask -TaskName 'AgentsTracker Gateway'
+Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
+```
+
+```bash
+schtasks //End //TN "AgentsTracker Gateway"
+schtasks //Run //TN "AgentsTracker Gateway"
+```
+
+In a container — `docker compose restart`; a gateway from source — see [operations.md](operations.md).
+If the restart cut off the agent's work, a warning comes into the chat: what was done is kept,
+write «продолжай». Ask an interrupted вопрос again with `/ask`.
 
 ## Ports
 
@@ -238,6 +282,22 @@ The Task Scheduler task writes to a console that doesn't exist, so the log is re
 entries) or with `GET /api/log?count=&level=`. In the container the file is on the `data` volume,
 and `docker compose logs -f` still works. If the gateway crashed past every handler, the cause is the
 last `CRT` entry in the file.
+
+## If something is wrong
+
+| Symptom | Cause |
+|---|---|
+| The downloaded exe does not start and asks to install .NET | the `…-win-x64.zip` archive works only with ASP.NET Core Runtime 10 — install it or take `…-self-contained.zip` |
+| `dotnet` not found, or it cannot find SDK 10 | no .NET 10 SDK; it is needed only to build from source |
+| The bot is silent | your id is not in `Channel:Settings:AllowedUserIds` (the journal has the rejected message), the token is wrong, or Telegram is unreachable without a proxy |
+| `Gateway:BotToken больше не читается` | the channel settings moved to `Gateway:Channel:Settings`; move them with `pwsh -File scripts\migrate-channel-settings.ps1` from the gateway's sources (a `.backup` stays next to it) |
+| Not all projects in the menu | `ProjectsRoot` is not set; the list pages with `◀ ▶` |
+| `claude` not found | the CLI is not installed or no new window was opened; last resort — `Claude:Executable` |
+| The agent asks to log in | run `claude` and log in; the gateway uses that login |
+| The build fails with `MSB3021` | the gateway is running and holds the files. Installed — `AgentsTracker.Gateway.exe uninstall` (removes and stops it), started by hand — `Get-Process AgentsTracker.Gateway \| Stop-Process -Force` (in bash `taskkill //F //IM AgentsTracker.Gateway.exe`) |
+| Approval cards do not come | the mode is `auto` — picked from the chat or set in `PermissionMode`. Go back with `/mode default` or `"PermissionMode": "default"` in the file |
+| Mojibake in the log | the console is in cp866; open the log file `logs\gateway-YYYY-MM-DD.log` in the data directory — it is UTF-8 (in a container — on the `data` volume) |
+| The monitor in a container does not open | the port is not published as `127.0.0.1:5100:5100`, or `Gateway__MonitorBind` is overridden: the image sets `any` itself |
 
 ## Multiple instances
 

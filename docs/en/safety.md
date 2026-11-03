@@ -47,9 +47,17 @@ your task and the pieces of files the agent read go to Anthropic, otherwise it c
 - deny reading what must never travel anywhere (`.env`, `~/.ssh`, the password manager) with a
   one-time `deny` rule. «Всегда» cannot get around it. A secret inside the project is not covered
   by the send limit: `appsettings.Local.json` is a `.json`, and a copy of `.env` named `.txt` passes
-  too. Keep secrets outside the project;
+  too. Keep secrets outside the project. A ban for one project goes into its
+  `.claude/settings.local.json`:
+
+  ```json
+  { "permissions": { "deny": ["Read(./.env)"] } }
+  ```
 - read a "pack it and send it" request carefully. The gateway checks the archive itself, not what
   is packed inside;
+- a picture from the chat lands in `inbox` of the data folder, and the agent sees only that chat's
+  folder. Only PNG and JPEG are accepted, the type is checked by content. `/new` deletes the
+  session's pictures, the rest are deleted after `RetentionHours` (24 hours);
 - a беседа and `/ask` search the web and open sites with no card. They have no files and no
   commands, but a page can talk the model into opening an address with the conversation in it. Don't
   write in a беседа what must not leave the chat.
@@ -68,6 +76,9 @@ command". In the `auto` mode cards almost never arrive.
 - keep the `default` mode, where cards arrive. Use `auto` only while you watch the chat. Switching
   confirmations off entirely (`dontAsk`, `bypassPermissions`) is impossible from the chat, only by
   editing a file on the machine;
+- if a command or an edit does not fit into the card, a file with the full text comes before it —
+  don't allow without looking;
+- «Плагины» in `/skills` edit your `~/.claude/settings.json` — the same as `/plugin` in Claude Code;
 - `/audit` shows the latest actions: who allowed what, and what was run. A card left without an
   answer for 15 minutes (`ApprovalTimeoutMinutes`) is refused, and the agent is told not to repeat
   the action: a forgotten card cannot grant permission later.
@@ -124,6 +135,8 @@ history and the journal to anyone logged into this computer.
   `127.0.0.1:5100:5100`, not outward;
 - a site open in your browser cannot read it: the gateway answers only to `127.0.0.1` or
   `localhost`;
+- the port `claude` asks for approvals on (`McpPort`, 5099) is also open only on `127.0.0.1` and
+  closed with a secret token;
 - tokens and passwords in commands reach the journal, the log file and the monitor as `***`. The
   gateway recognizes known token shapes and the values of keys like `token` and `password`. The
   console and `docker compose logs` are barely masked — do not show them to others;

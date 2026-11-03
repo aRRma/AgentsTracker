@@ -84,8 +84,10 @@ systemd, они появятся отдельно. До тех пор там о�
    старой.
 3. Выполните `AgentsTracker.Gateway.exe install --start`.
 
-Конфиг, сессии и журнал в папке данных остаются. Если обновление пришлось на работающую задачу, в
-её чат уйдёт «⚠️ Предыдущий запуск прерван перезапуском шлюза» с подсказкой написать «продолжай»;
+Конфиг, сессии и журнал в папке данных остаются. Свой `appsettings.Local.json` рядом с новым exe не
+кладите: раз конфиг в папке данных уже есть, `install` удалит этот файл, не применив его.
+
+Если обновление пришлось на работающую задачу, в её чат уйдёт «⚠️ Предыдущий запуск прерван перезапуском шлюза» с подсказкой написать «продолжай»;
 прерванный вопрос задают заново через `/ask`.
 
 ### Проверка после установки
@@ -146,6 +148,47 @@ DPAPI расшифровывает только **та же учётная за�
 переносит её `Gateway:DataDirectory`. В папке лежит сам файл конфига, поэтому этот ключ читается
 раньше остального: только из `appsettings.json` рядом с exe или из переменной
 `Gateway__DataDirectory`.
+
+### Основные ключи
+
+Секция `Gateway` файла `appsettings.Local.json`. Полный список с умолчаниями — `appsettings.json`
+рядом с exe.
+
+| Ключ | Зачем |
+|---|---|
+| `Channel:Type` | какой канал связи; пока только `telegram` |
+| `Channel:Settings:BotToken` | токен от @BotFather |
+| `Channel:Settings:AllowedUserIds` | кому можно управлять ботом |
+| `Proxy`, `Channel:Settings:Proxy` | общий прокси машины · прокси только для канала (если нет — берётся общий) |
+| `ProjectPath` | папка проекта по умолчанию |
+| `Projects` / `ProjectsRoot` | какие папки показывать в меню выбора проекта. Если не задано ни то ни другое — соседние с `ProjectPath` папки, где есть `.git`, `*.sln`, `*.slnx`, `package.json` или `pyproject.toml` |
+| `Claude:Executable` | путь к `claude.exe`, если автопоиск не нашёл |
+| `Claude:BuiltInSkills` | встроенные скиллы для `/skills`, строки `"/команда \| описание \| подсказка аргументов"` |
+| `Model`, `Effort` | модель и effort по умолчанию |
+| `PermissionMode` | что можно без спроса. Из чата переключаются `plan`, `default`, `acceptEdits`, `auto`; `dontAsk` и `bypassPermissions` — только здесь, в файле |
+| `McpPort`, `MonitorPort`, `MonitorBind` | порт, по которому `claude` спрашивает подтверждения (5099) · порт монитора (5100, `0` — выключить) · где слушать монитор: `loopback` или `any` для контейнера |
+| `DataDirectory` | где хранить состояние, журнал и лог; см. выше |
+| `ApprovalTimeoutMinutes`, `RunTimeoutMinutes` | сколько минут ждать ответа на карточку (15) и весь запуск (60) |
+| `Attachments:Enabled`, `:MaxBytes`, `:RetentionHours` | картинки из чата: принимать ли (да), предел размера (10 МБ; Telegram отдаёт боту не больше 20 МБ), сколько часов хранить (24) |
+| `Question:Model`, `Question:Effort` | модель и effort для `/ask` и беседы: по умолчанию `sonnet` и как решит Claude Code. У `/ask` из чата не меняются, в беседе их меняют `/model` и `/effort` |
+
+### Перезапуск
+
+Конфиг читается один раз при старте: поправили — перезапустите.
+
+```powershell
+Stop-ScheduledTask -TaskName 'AgentsTracker Gateway'
+Start-ScheduledTask -TaskName 'AgentsTracker Gateway'
+```
+
+```bash
+schtasks //End //TN "AgentsTracker Gateway"
+schtasks //Run //TN "AgentsTracker Gateway"
+```
+
+В контейнере — `docker compose restart`, шлюз из исходников — по [operations.md](operations.md).
+Если перезапуск оборвал работу агента, в чат придёт предупреждение: сделанное сохранено, напишите
+«продолжай». Прерванный вопрос задайте заново через `/ask`.
 
 ## Порты
 
@@ -234,6 +277,22 @@ docker compose exec gateway claude      # один раз войти в акка
 (`Get-Content -Encoding utf8 -Tail 50 <файл>`), в мониторе (раздел «Лог», последние 500 записей) или
 через `GET /api/log?count=&level=`. В контейнере файл лежит на томе `data`, а `docker compose logs -f`
 работает как раньше. Если шлюз упал мимо всех ловушек, причина — последняя запись `CRT` в файле.
+
+## Если что-то не так
+
+| Симптом | Причина |
+|---|---|
+| Скачанный exe не запускается, просит установить .NET | архив `…-win-x64.zip` работает только с ASP.NET Core Runtime 10 — поставьте его или возьмите `…-self-contained.zip` |
+| `dotnet` не найден или не находит SDK 10 | нет .NET 10 SDK; он нужен только при сборке из исходников |
+| Бот молчит | в `Channel:Settings:AllowedUserIds` нет вашего id (в журнале — отклонённое сообщение), неверный токен или Telegram недоступен без прокси |
+| `Gateway:BotToken больше не читается` | настройки канала переехали в `Gateway:Channel:Settings`; перенести — `pwsh -File scripts\migrate-channel-settings.ps1` из исходников шлюза (рядом останется `.backup`) |
+| В меню не все проекты | не задан `ProjectsRoot`; список листается `◀ ▶` |
+| `claude` не найден | не поставлен CLI или не открыто новое окно; крайний случай — `Claude:Executable` |
+| Агент просит войти в аккаунт | запустите `claude` и войдите; шлюз использует этот вход |
+| Сборка падает с `MSB3021` | шлюз запущен и держит файлы. Установленный — `AgentsTracker.Gateway.exe uninstall` (снимает и останавливает), запущенный вручную — `Get-Process AgentsTracker.Gateway \| Stop-Process -Force` (в bash `taskkill //F //IM AgentsTracker.Gateway.exe`) |
+| Карточки подтверждения не приходят | режим `auto` — выбран из чата или стоит в `PermissionMode`. Верните `/mode default` или `"PermissionMode": "default"` в файле |
+| В логе кракозябры | консоль в cp866; откройте файл лога `logs\gateway-ГГГГ-ММ-ДД.log` в папке данных — он в UTF-8 (в контейнере — на томе `data`) |
+| Монитор из контейнера не открывается | порт не опубликован как `127.0.0.1:5100:5100` или переопределён `Gateway__MonitorBind`: образ сам ставит `any` |
 
 ## Несколько экземпляров
 

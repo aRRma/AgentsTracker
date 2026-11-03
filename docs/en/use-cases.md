@@ -121,6 +121,38 @@ photo "as a file" — Telegram compresses photos.
 - **The session remembers the conversation** within a project, so you can follow up without
   repeating the setup.
 
+## Commands
+
+| Command | What it does |
+|---|---|
+| any text | a task for the agent |
+| a picture (PNG, JPEG) | its caption becomes the task; without a caption the agent describes the picture or asks what to do with it |
+| `/menu` | all settings as buttons (same as `/settings`) |
+| `/status` · `/usage` | what is running now: project, branch, context, queue · usage and the plan's limits |
+| `/new` · `/stop` | a new session · interrupt the run — both the task and the вопрос; in a topic only that topic, in the лента everything |
+| `/sessions` | the project's sessions: switch, start a new one, stop; shows how full the context is |
+| `/ask <question>` | a вопрос outside any session and project, on its own model (`Question:Model`, sonnet by default), with web search and no cards. Does not wait for the task and is answered as a reply to your message. Same as «💬 Задать вопрос» in the menu |
+| «📦 Контекст» in `/menu` | what the session's context consists of, compress it or start a new session |
+| `/agent` | model, effort, mode (or `/model`, `/effort`, `/mode` as text) |
+| `/project` | switch the project; its branch is shown next to it, worktrees are marked 🌳 |
+| `/skills` | Claude Code skills and plugins |
+| `/topic` | the topic type: a project or a беседа |
+| `/rules` | the «всегда» rules the gateway keeps; `/rules del <n>` and `/rules clear` remove them |
+| `/audit [n]` · `/help` | the latest actions: each run's usage, why it stopped, answers that did not get through · help (`/start` gives it too) |
+| another `/command` | Claude Code's own command (`/init`, `/plugin:skill`) — goes to the agent as is |
+
+**The line under an answer:** the session (or «💬 вопрос»), the branch, the model that actually
+answered, with effort in brackets (`opus-5-5(H)`: L, M, H, XH, MAX — from low to max), the number
+of turns, the time, and «🧊 кэш до 15:42» or «🧊 кэш остыл». If the agent switched the branch itself,
+it shows from where to where: `master → fix`. If it moved the session into a worktree, the branch
+everywhere is that worktree's, and «Статус» says «🌳 сессия в worktree». The gateway counts no
+money: usage is turns, tokens and time.
+
+**More on topics.** A беседа has no cards, files or pictures, and its mode does not change. If two
+topics work in one project, the second waits with «⏳ В проекте идёт другой запуск». With topics on,
+Telegram moves whatever is typed in the лента into a new topic, while Telegram Desktop keeps only
+the commands from the «Меню» button in the лента.
+
 ## How to Make the Plan's Limit Last
 
 Every step of the agent reads the whole session context again. While you keep answering, the model
