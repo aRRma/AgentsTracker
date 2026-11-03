@@ -57,7 +57,7 @@ public sealed class SettingsCommandHandler(
                 break;
 
             case "/model":
-                var warning = CacheNote(Agent().CacheWarning("model:" + argument));
+                var warning = CacheNote(Agent().CacheWarning("model:" + argument, chat));
                 await ReplyAsync(chat, (Agent().Apply(AgentScreen.Now + "model:" + argument, user, chat) ?? "") + warning, ct);
                 break;
 
@@ -92,9 +92,9 @@ public sealed class SettingsCommandHandler(
 
         // Берём выбранный из чата уровень, а не действующий: после reset он null, и ответ
         // должен говорить про конфиг, а не выдавать его значение за выбор.
-        return store.Effort is { } level
+        return store.For(chat).Effort is { } level
             ? $"🎚 {setting.Describe(level)}. Применится со следующего запуска."
-            : $"🎚 Effort: {options.Value.Effort ?? "по умолчанию"} — как в конфиге.";
+            : $"🎚 Effort: {store.For(chat).EffectiveEffort ?? "по умолчанию"} — как в конфиге.";
     }
 
     /// <summary>
@@ -103,9 +103,11 @@ public sealed class SettingsCommandHandler(
     /// </summary>
     private string ChangeMode(string argument, UserId user, ChatId chat)
     {
+        if (store.For(chat).IsChosenTalk) return AgentScreen.TalkModeRefusal + ".";
+
         if (argument.Equals("reset", StringComparison.OrdinalIgnoreCase))
         {
-            var warning = CacheNote(Agent().CacheWarning("mode:reset"));
+            var warning = CacheNote(Agent().CacheWarning("mode:reset", chat));
             Agent().Apply(AgentScreen.Now + "mode:reset", user, chat);
             return $"🔐 Режим: {options.Value.PermissionMode} — как в конфиге. Применится со следующего запуска.{warning}";
         }
@@ -123,13 +125,13 @@ public sealed class SettingsCommandHandler(
                 """;
         }
 
-        if (mode == store.EffectivePermissionMode) return $"Уже {setting.Describe(mode)}.";
+        if (mode == store.For(chat).EffectivePermissionMode) return $"Уже {setting.Describe(mode)}.";
 
-        var cache = CacheNote(Agent().CacheWarning("mode:" + mode));
+        var cache = CacheNote(Agent().CacheWarning("mode:" + mode, chat));
         Agent().Apply(AgentScreen.Now + "mode:" + mode, user, chat);
 
         // Занятость спрашиваем у воркера, а не угадываем по тосту экрана.
-        var note = worker.IsBusy ? "\nТекущий запуск доигрывает со старым режимом." : "";
+        var note = worker.IsBusy(chat) ? "\nТекущий запуск доигрывает со старым режимом." : "";
         return $"🔐 {setting.Describe(mode)}.\nПрименится со следующего запуска.{note}{cache}";
     }
 }

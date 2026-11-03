@@ -426,14 +426,8 @@ public sealed class ClaudeBackend(
         if (request.Kind == AgentRunKind.Question)
         {
             // Вопрос не пишется на диск: в списке сессий он был бы мусором, который
-            // не продолжить. Встроенные инструменты — только поиск в сети: файлы машины
-            // вопросу ни к чему, а без Bash и Edit ему нечего и спрашивать через карточки.
-            // Чужие MCP-серверы из настроек пользователя не грузим — их описания съели бы
-            // десятки тысяч токенов контекста на каждый вопрос.
+            // не продолжить.
             yield return "--no-session-persistence";
-            yield return "--tools";
-            yield return "WebSearch,WebFetch";
-            yield return "--strict-mcp-config";
         }
         else if (resumedSessionId is not null)
         {
@@ -444,6 +438,23 @@ public sealed class ClaudeBackend(
         {
             yield return "--session-id";
             yield return sessionId;
+        }
+
+        // Встроенные инструменты вопроса и беседы — только поиск в сети: файлы машины им ни к
+        // чему, а без Bash и Edit им нечего и спрашивать через карточки. Чужие MCP-серверы из
+        // настроек пользователя не грузим — их описания съели бы десятки тысяч токенов
+        // контекста на каждый запуск.
+        var webOnly = request.Kind == AgentRunKind.Question || request.WebOnly;
+        if (webOnly)
+        {
+            yield return "--tools";
+            yield return "WebSearch,WebFetch";
+            yield return "--strict-mcp-config";
+
+            // Пользовательский CLAUDE.md грузится и сюда и обещает модели оболочку: без этой
+            // строки она искала, как запустить команды, и обещала их человеку.
+            yield return "--append-system-prompt";
+            yield return "Доступа к компьютеру нет: ни файлов, ни команд. Есть только поиск в сети и чтение страниц. Не обещай запустить команду или создать файл — отвечай текстом.";
         }
 
         yield return "--permission-prompt-tool";
@@ -459,12 +470,16 @@ public sealed class ClaudeBackend(
 
         // Отправка файла без карточки: папку, тип и размер проверяет сам шлюз, а карточка
         // «разрешить tg:send_file?» лишь дублировала бы его же проверку лишним нажатием.
+        // Поиск и чтение страниц у вопроса и беседы — тоже без карточки: файлов и команд у них нет,
+        // а карточка на каждый поиск только замедляла ответ. Риск принят: страница с
+        // внушением может заставить модель открыть адрес с текстом беседы.
         yield return "--allowedTools";
-        yield return McpConfigFile.SendFileToolFullName;
+        yield return webOnly ? $"{McpConfigFile.SendFileToolFullName},WebSearch,WebFetch" : McpConfigFile.SendFileToolFullName;
 
         // Картинки из чата лежат вне рабочей папки: без этого Read до них не дотянется.
         // Проверка существования обязательна — у чата без вложений папки нет.
-        if (request.AttachmentsPath is { Length: > 0 } attachments && Directory.Exists(attachments))
+        // Вопросу и беседе — никогда, даже если путь передан: файлов у них быть не должно.
+        if (!webOnly && request.AttachmentsPath is { Length: > 0 } attachments && Directory.Exists(attachments))
         {
             yield return "--add-dir";
             yield return attachments;
@@ -496,8 +511,9 @@ public sealed class ClaudeBackend(
             }
             catch (JsonException ex)
             {
-                // Целиком — только на Debug: в строке может быть ответ с содержимым файлов.
-                logger.LogWarning(ex, "Итог CLI не разобран как JSON: {Line}", Truncate(resultLine, ErrorDetailsLimit));
+                // Целиком — только на Debug: в строке может быть ответ с содержимым файлов. Маска —
+                // здесь: консоль и docker logs приёмник лога не маскирует.
+                logger.LogWarning(ex, "Итог CLI не разобран как JSON: {Line}", Text.ClipRedacted(resultLine, ErrorDetailsLimit));
                 logger.LogDebug("итог целиком: {Line}", Truncate(resultLine, 2000));
             }
         }
@@ -505,7 +521,7 @@ public sealed class ClaudeBackend(
         if (payload is null)
         {
             var details = string.IsNullOrWhiteSpace(stderr) ? Truncate(output.Noise, 3000) : Truncate(stderr, 3000);
-            logger.LogError("claude завершился с кодом {Code}: {Details}", exitCode, Truncate(details, ErrorDetailsLimit));
+            logger.LogError("claude завершился с кодом {Code}: {Details}", exitCode, Text.ClipRedacted(details, ErrorDetailsLimit));
             logger.LogDebug("вывод целиком: {Details}", details);
 
             // Потерянной сессию объявляем только если CLI прямо сказал, что --resume её

@@ -14,56 +14,60 @@ public sealed class RootScreen(
 {
     public string Key => "root";
 
+    /// <summary>Строка «где» у новой темы: «беседа» там соврала бы — задача до выбора типа не пойдёт.</summary>
+    public const string NewTopic = "🧵 <b>Тип темы не выбран</b> — /topic";
+
     public string? Apply(string argument, UserId user, ChatId chat) => null;
 
     // «Назад» с экрана «Вопрос» ведёт сюда: ожидание вопроса снимаем, иначе следующая
     // задача ушла бы вопросом мимо сессии.
-    public void Open(UserId user) => question.Cancel(user);
+    public void Open(ChatId chat) => question.Cancel(chat);
 
-    public async Task<(string Html, Keyboard Keyboard)> RenderAsync(UserId user, CancellationToken ct)
+    public async Task<(string Html, Keyboard Keyboard)> RenderAsync(ChatId chat, CancellationToken ct)
     {
-        var project = store.ProjectPath;
-        var session = ActiveSession();
+        var scope = store.For(chat);
+        var project = scope.ProjectPath;
+        var session = store.Session(scope.SessionId);
 
         // Остаток тарифа, а не потраченные доллары: на подписке платить не за что,
         // а упереться можно только в окно лимита.
-        var plan = await limits.ShortSummaryAsync(store.EffectiveModel, ct);
+        var plan = await limits.ShortSummaryAsync(scope.EffectiveModel, ct);
 
         // Строку effort показываем только агенту, который его понимает.
         var effort = agent.Capabilities.Effort is not null
-            ? $"\n🎚 Effort: <b>{E(store.EffectiveEffort ?? "по умолчанию")}</b>"
+            ? $"\n🎚 Effort: <b>{E(scope.EffectiveEffort ?? "по умолчанию")}</b>"
             : "";
+
+        var where = scope.IsNewTopic ? NewTopic : scope.IsTalk ? "💬 <b>Беседа</b>" : $"📁 <b>{E(Path.GetFileName(project))}</b>\n<code>{E(project)}</code>";
 
         // Вопрос идёт параллельно задаче: без своей строки «простаивает» при идущем вопросе
         // выглядело бы так, будто ответа не будет.
-        var questions = worker.IsAnswering
+        var questions = worker.IsAnsweringFor(chat)
             ? $"\n💬 Идёт вопрос{(worker.QuestionQueueLength > 0 ? $", ещё в очереди: {worker.QuestionQueueLength}" : "")}"
             : "";
 
         var html = $"""
             ⚙️ <b>Настройки</b> — {E(agent.DisplayName)}
 
-            📁 <b>{E(Path.GetFileName(project))}</b>
-            <code>{E(project)}</code>
-            🧠 Модель: <b>{E(store.ModelLabel(store.EffectiveModel, agent.Capabilities.Model) ?? "по умолчанию")}</b>{effort}
-            🔐 Режим: <b>{E(store.EffectivePermissionMode)}</b>
+            {where}
+            🧠 Модель: <b>{E(store.ModelLabel(scope.EffectiveModel, agent.Capabilities.Model) ?? "по умолчанию")}</b>{effort}
+            🔐 Режим: <b>{E(scope.EffectivePermissionMode)}</b>
             🧵 Сессия: {(session is null ? "<i>новая</i>" : $"<b>{E(session.Title)}</b>")}
             📦 Контекст: {(session is { ContextTokens: > 0, ContextWindow: > 0 } ? ContextScreen.Fill(session, bar: false) : "—")}
             🚦 Осталось: <b>{E(plan.Length > 0 ? plan : "—")}</b>
-            ⚙️ {(worker.IsBusy ? "выполняется" : "простаивает")}, в очереди: {worker.QueueLength}{questions}
+            ⚙️ {(worker.IsBusy(chat) ? "выполняется" : "простаивает")}, в очереди: {worker.QueueLength(chat)}{questions}
             """;
 
+        // «Тип темы» — только в теме: в ленте выбирать нечего.
         var keyboard = new Keyboard(
         [
             [Button("📟 Статус", "status"), Button("🧵 Сессии", "sess")],
             [Button("📦 Контекст", "ctx"), Button("💬 Задать вопрос", "ask")],
-            [Button("🤖 Агент", "agent")],
+            chat.IsTopic ? [Button("🤖 Агент", "agent"), Button("🧵 Тип темы", "topic")] : [Button("🤖 Агент", "agent")],
             [Button("🧩 Скиллы", "skills"), Button("📁 Проект", "proj")],
             [Button("📊 Расход", "usage"), Button("✖️ Закрыть", "close")],
         ]);
 
         return (html, keyboard);
     }
-
-    private SessionRecord? ActiveSession() => store.Session(store.SessionId);
 }

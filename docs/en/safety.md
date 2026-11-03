@@ -49,7 +49,10 @@ your task and the pieces of files the agent read go to Anthropic, otherwise it c
   by the send limit: `appsettings.Local.json` is a `.json`, and a copy of `.env` named `.txt` passes
   too. Keep secrets outside the project;
 - read a "pack it and send it" request carefully. The gateway checks the archive itself, not what
-  is packed inside.
+  is packed inside;
+- a беседа and `/ask` search the web and open sites with no card. They have no files and no
+  commands, but a page can talk the model into opening an address with the conversation in it. Don't
+  write in a беседа what must not leave the chat.
 
 ## 4. Permissions Piled Up and the Questions Stopped
 
@@ -106,7 +109,9 @@ cut off after an hour (`RunTimeoutMinutes`).
 - `/usage` shows what is left in the current window. When the window is used up, the gateway starts
   no new run and drops the queue;
 - ask for big things in parts: "start with the January folder";
-- `/stop` interrupts a task, `/status` shows what is running.
+- `/stop` interrupts a task: in a topic only that topic, in the лента everything. `/status` shows
+  what is running;
+- topics run in parallel, and each one spends the same limit. Keep the heavy tasks in one topic.
 
 ## 8. Someone Else Can See the Computer
 
@@ -119,8 +124,9 @@ history and the journal to anyone logged into this computer.
   `127.0.0.1:5100:5100`, not outward;
 - a site open in your browser cannot read it: the gateway answers only to `127.0.0.1` or
   `localhost`;
-- tokens and passwords in commands reach the journal, the log and the monitor as `***`. The gateway
-  recognizes known token shapes and the values of keys like `token` and `password`;
+- tokens and passwords in commands reach the journal, the log file and the monitor as `***`. The
+  gateway recognizes known token shapes and the values of keys like `token` and `password`. The
+  console and `docker compose logs` are barely masked — do not show them to others;
 - after `install` (or `protect-secrets`) the bot token on disk is encrypted (DPAPI), and only your
   account on this machine can decrypt it. A container has no DPAPI, so keep its `.env` to yourself.
 

@@ -19,7 +19,7 @@ public sealed class SkillArgumentsTextHandler(IChatChannel channel, SkillLaunche
         // остаётся — их пришлют следующим сообщением.
         if (message.Attachments.Count > 0) return false;
 
-        if (!launcher.TryTake(user, out var command)) return false;
+        if (!launcher.TryTake(chat, out var command)) return false;
 
         var trimmed = message.Text.Trim();
 

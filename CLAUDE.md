@@ -71,7 +71,7 @@ src/AgentsTracker.Agents.Claude/         Claude Code behind those contracts, Mcp
 src/AgentsTracker.Channels.Abstractions/ channel contracts, no specific messenger
 src/AgentsTracker.Channels.Telegram/     Telegram behind those contracts
 src/AgentsTracker.Gateway/               Program.cs (agents, channels, features), Domain/, Infrastructure/,
-                                         Features/ — vertical slices: Approvals, Chat, Settings, Question, Help, Audit, Monitor
+                                         Features/ — vertical slices: Approvals, Chat, Settings, Question, Topics, Help, Audit, Monitor
 ```
 
 What each file inside them is for — `docs/en/architecture.md`. Layering rules, and breaking one is
@@ -79,7 +79,7 @@ an architecture error rather than a typo: `Domain` and `Abstractions` do not ope
 go over the network; `Gateway` knows about a specific agent and channel only in `Program.cs`; the
 backend and the channel know nothing about each other or about `GatewayOptions`; `Infrastructure`
 knows nothing about features (except the `Dispatch` contracts); a feature depends on a feature only
-through a public service (`Settings` → `ChatWorker.IsBusy`).
+through a public service (`Settings` → `ChatWorker.IsBusy(chat)`).
 
 **Adding anything** — the checklists in `docs/en/extending.md`, do not do it from memory: a
 half-registered command or screen either kills startup or cannot be reached from the chat. What
@@ -92,17 +92,34 @@ kills startup.
 `ChatDispatcher` admits only `IChatChannel.AllowedUsers` in private chats. Slash commands
 (`IChatCommandHandler.Commands`) match **before** the text handlers — otherwise `/stop` would feed a
 waiting answer and nothing could interrupt a stuck run. Then the `IChatTextHandler` chain in module
-order: card answer → skill arguments → вопрос text after a bare `/ask` → the agent's queue (always
-`true`, so `ChatModule` is last). Unknown slash commands are Claude Code's own and go to the CLI.
+order: card answer → skill arguments → вопрос text after a bare `/ask` → «Тип темы» for a new topic
+(`TopicHandler`) → the agent's queue (always `true`, so `ChatModule` is last). Unknown slash commands are Claude Code's own and go to the CLI.
 Buttons: `cfg:` — the menu, anything else — approvals.
 
-`ChatWorker` has two lanes: tasks one at a time, вопросы one at a time, a task and a вопрос **in
-parallel** (two `claude` processes at most). `IsBusy`/`QueueLength` are about tasks only; `/stop`
-stops both lanes. A вопрос is answered as a reply to the user's message (`OutgoingMessage.ReplyTo`)
-and stays out of `RunMonitor`'s current run. Details — `docs/en/architecture.md`, "Two lanes".
+`ChatWorker` has a task lane per chat (the лента and every тема) plus one shared вопрос lane: a
+chat's tasks go one at a time, lanes of different chats and the вопрос lane run **in parallel**, the
+number of `claude` processes is not capped — but only one run per session folder at a time
+(`LockFolderAsync`, taken after the trust card and before the limit check, «⏳ В проекте идёт другой
+запуск»). `IsBusy(chat)`/`QueueLength(chat)` are about that chat's tasks only; `/stop` in a topic
+stops that topic's task, cards and вопрос, `/stop` in the лента stops everything. A вопрос is
+answered as a reply to the user's message (`OutgoingMessage.ReplyTo`) and stays out of
+`RunMonitor`'s current run. Details — `docs/en/architecture.md`, "Lanes".
 
-Pictures go through `AttachmentInbox` into `<data directory>\inbox\<chat>\<project>\`; the run gets
-the chat folder in `--add-dir`. A command wins over a picture: `/stop` works with one attached, the
+A Telegram topic is its own `ChatId` (`telegram:123/42`) with its own selection: **every place that
+has a chat reads it through `store.For(chat)`** (`SessionStore.ChatScope`); `store.Feed` only where
+there is no chat (startup, the monitor) — otherwise a topic shows and changes the лента's project. A
+topic's active session is `ActiveSessions["<chat key>|<project>"]`; a session active in another chat
+cannot be picked (`ChatScope.IsActiveElsewhere`, «🔒» on «Сессии») — two topics would continue one
+session. A topic without a project is a
+«беседа»: its own folder under `SessionStore.TalkRoot`, emptied before every run, `AgentRunRequest.WebOnly`
+(the вопрос's tools, but a session). A new topic (no `TopicState`, or one with `Untyped` left by
+`/model`, `/effort`, `/mode`) shows «Тип темы» instead of running, and a skill there is refused; only
+`SetProjectPath` gives a topic its type. A deleted topic is learned of only from a failed send
+(`ChannelFailure.CannotReach`): `ChatWorker.ConsumeAsync` drops that chat's task queue. Details —
+`docs/en/architecture.md`, "Topics".
+
+Pictures go through `AttachmentInbox` into `<data directory>\inbox\<chat>\<project>\`; a task run gets
+the chat folder in `--add-dir` (a вопрос and a беседа get none, a беседа refuses pictures). A command wins over a picture: `/stop` works with one attached, the
 picture is dropped and the user is told so. Details — `docs/en/architecture.md`.
 
 ### The gateway → CLI → gateway loop
@@ -130,21 +147,29 @@ A card finds its chat by the **run id**, not by a "current chat": each run gets 
   it there although the process starts in the project. So the branch on every screen and the trust
   gate follow the **session's folder** (`SessionStore.SessionFolder`, kept in
   `SessionRecord.WorkingDirectory` from `init.cwd` and the worktree tools' results), not
-  `store.ProjectPath`. Details — `docs/en/cli-contract.md`, "A session in a worktree".
+  `store.For(chat).ProjectPath`; the folder lock too. Details — `docs/en/cli-contract.md`, "A session in a worktree".
 - `--bare` is not allowed: it does not read `~/.claude` and breaks the subscription OAuth login.
 - `--allowedTools` holds only `mcp__tg__send_file`: its policy belongs to the gateway. Do not add
-  other tools there — that bypasses the cards past the machine's config.
+  other tools there — that bypasses the cards past the machine's config. The one exception: a вопрос
+  and a беседа also get `WebSearch,WebFetch` there: they have no files and no commands, and a card
+  per search only slowed the answer. Accepted risk: a page talking the model into opening an address
+  with the conversation in it.
 - `--add-dir` carries exactly one folder — the chat's `inbox`. Never the data directory itself
   (`state.json`, `appsettings.Local.json` with the secrets, the MCP token) and never the project
-  subfolder: `/project` may change while the message waits in the queue. A вопрос (`/ask`) gets no
-  `--add-dir` at all.
+  subfolder: `/project` may change while the message waits in the queue. A вопрос (`/ask`) and a
+  беседа get no `--add-dir` at all.
 - A вопрос (`AgentRunKind.Question`) runs with `--no-session-persistence`, `--tools WebSearch,WebFetch`
   and `--strict-mcp-config` in an empty `%TEMP%\AgentsTracker-question`, recreated before every
   вопрос (a task could plant a hook there, and the trust gate skips вопросы) — never in the project or the
   data directory, and its `SessionId` never reaches `SessionStore`. Its model is `Gateway:Question`,
-  not the chat selection. Cards work as for a task: `--permission-prompt-tool`, the `tg` server and
-  `send_file` (checked against the chat's project) stay. Details — `docs/en/cli-contract.md`,
-  "A question".
+  not the chat selection. It also gets an `--append-system-prompt` saying there is no computer
+  access — the user's `CLAUDE.md` still loads and promises a shell. The permission tool, the `tg`
+  server and `send_file` (checked against the chat's project) stay. Details —
+  `docs/en/cli-contract.md`, "A question with no session".
+- A беседа (`AgentRunRequest.WebOnly`) gets the вопрос's tools and prompt line but keeps its session,
+  in its own folder under `SessionStore.TalkRoot`. Its mode is always the config's: choosing a беседа
+  clears the saved mode (`SetProjectPath`) and `/mode` is refused — otherwise a `/mode plan` saved
+  before the type was chosen would stick with no way to undo it.
 - CLI arguments go through `ProcessStartInfo.ArgumentList`, do not concatenate a string.
 - The CLI's output is read until it ends or `DrainGrace` (5 s) after the exit, never by a bare
   `await` on the reader: a background process that escaped the CLI keeps the pipe open, and the task
@@ -164,18 +189,20 @@ from `ValidateStartup`, not by `GatewayOptions.Validate` (the agent is not chose
 
 ### Sessions, state, audit
 
-Sessions are keyed by the **normalized project path**. A chat **project** equal to the config is
-stored as `null` (`SessionStore.SetProjectPath`), or a config edit would be silently overridden;
+Sessions are keyed by the **normalized project path** (a topic's — by `<chat key>|<path>`). A лента
+**project** equal to the config is stored as `null` (`ChatScope.SetProjectPath`), or a config edit
+would be silently overridden — a topic always stores the full path, its `null` is a беседа;
 model, effort and mode are stored as picked until «по умолчанию»/«из конфига» or `reset` clears them.
-State, secrets and
-the `audit\` journal live in `%LOCALAPPDATA%\AgentsTracker\`; config layers end with the `Gateway__*`
-environment variables. The audit is what a human answers for (who, where, what — no secrets, no full
-texts, addresses as `channel:value`, kinds in `AuditKinds`); the log is for debugging. Secrets are
-masked in one place, `Text.Redact` (via `Text.ClipRedacted`, used by `AuditEvent.NowByKeys` and
-`Text.Preview`): an approval
-writes the whole command, tokens included, so anything new that reaches the journal, the log or the
-monitor goes through it. Details — `docs/en/architecture.md`, the user-facing config —
-`docs/en/deployment.md`.
+State, secrets, the `audit\` journal and the `logs\` log live in `%LOCALAPPDATA%\AgentsTracker\`;
+config layers end with the `Gateway__*` environment variables. The audit is what a human answers for
+(who, where, what — no secrets, no full texts, addresses as `channel:value`, kinds in `AuditKinds`);
+the log is for debugging. Secrets are masked in one place, `Text.Redact` (via `Text.ClipRedacted`,
+used by `AuditEvent.NowByKeys` and `Text.Preview`): an approval writes the whole command, tokens
+included, so anything new that reaches the journal or the monitor goes through it. The log file and
+the monitor's ring are masked at the sink
+(`RingBufferLoggerProvider`), the console is not — raw CLI or HTTP text logged at Information or above
+still goes through `Text.ClipRedacted` at its call site. Details — `docs/en/architecture.md`, the
+user-facing config — `docs/en/deployment.md`.
 
 Context fill lives on `SessionRecord` (`ContextTokens`/`ContextWindow`), taken from the last
 main-thread turn of a run — `usage` of the `result` line is a sum over turns, not the context.
@@ -199,8 +226,8 @@ What the agent really did is in the CLI transcript `~/.claude/projects/<folder-k
 every line carries `cwd` and `gitBranch`. After `EnterWorktree` the file moves under the
 worktree's key — look it up with `ls ~/.claude/projects/*/<session>*.jsonl`.
 
-A false refusal is diagnosed from the outside: `limit.refused` in `audit\audit-<YYYY-MM>.jsonl` (when
-and how many times) and `monitor-api.ps1 "api/limits"` (the parsed windows with `resetsAt`). The
+A false refusal is diagnosed from the outside: `limit.refused` in `audit\audit-<YYYY-MM>.jsonl` (when,
+how many times, for which model and window) and `monitor-api.ps1 "api/limits"` (the parsed windows with `resetsAt`). The
 endpoint's raw answer is out of reach from a session — a direct HTTP call, reading
 `~/.claude/.credentials.json` and grepping `claude.exe` are all denied; reason from the parsed
 numbers instead, remembering that usage inside one window never falls until the reset.
@@ -265,6 +292,9 @@ time — `DisplayFormat`; the renderer's quirks — `docs/en/architecture.md`.
 - `claude` is not on PATH in a session: call `~/.local/bin/claude.exe` directly.
 - Passing a slash command to `claude -p` from Bash needs `MSYS_NO_PATHCONV=1` — MSYS rewrites a
   leading `/context` into a Windows path.
+- `CLAUDE_CODE_SKIP_PROMPT_HISTORY=1` in `~/.claude/settings.json` stops the CLI from writing
+  session transcripts: every `--resume` then fails with «No conversation found» and the session is
+  reset on each second message. Check it first when `~/.claude/projects/<folder-key>/` stays empty.
 
 ## Как работать
 

@@ -28,13 +28,13 @@ public sealed class ProjectScreen(
 
     public string Key => "proj";
 
-    public void Open(UserId user) => _nav.Reset(user);
+    public void Open(ChatId chat) => _nav.Reset(chat);
 
     public string? Apply(string argument, UserId user, ChatId chat)
     {
         if (argument == UpArgument)
         {
-            _nav.Reset(user);
+            _nav.Reset(chat);
             return null;
         }
 
@@ -42,83 +42,92 @@ public sealed class ProjectScreen(
         // лишний обход диска на каждое нажатие.
         if (argument.StartsWith(GroupPrefix, StringComparison.Ordinal))
         {
-            _nav.Set(user, new ScreenPosition(Group: argument[GroupPrefix.Length..]));
+            _nav.Set(chat, new ScreenPosition(Group: argument[GroupPrefix.Length..]));
             return null;
         }
 
         if (argument.StartsWith(PagePrefix, StringComparison.Ordinal)
             && int.TryParse(argument[PagePrefix.Length..], out var page))
         {
-            _nav.Update(user, p => p with { Page = page });
+            _nav.Update(chat, p => p with { Page = page });
             return null;
         }
 
+        var scope = store.For(chat);
+        var previous = Current(scope);
+        var fromLabel = scope.IsNewTopic ? null : previous is null ? "беседа" : Path.GetFileName(previous);
+
         // По ключу, а не по номеру: между отрисовкой и нажатием список мог измениться,
         // и номер указал бы на другой путь.
-        var project = catalog.List(store.ProjectPath).FirstOrDefault(p => Key12(ProjectCatalog.Normalize(p)) == argument);
+        var project = catalog.List(previous).FirstOrDefault(p => Key12(ProjectCatalog.Normalize(p)) == argument);
         if (project is null) return "Проекта уже нет в списке";
 
-        var previous = store.ProjectPath;
-        if (ProjectCatalog.Same(project, previous)) return null;
+        if (IsCurrent(project, previous)) return null;
 
-        store.SetProjectPath(project);
+        scope.SetProjectPath(project);
 
         // Выбранная папка становится первой в списке, показывать пятую страницу незачем.
-        _nav.Update(user, p => p with { Page = 0 });
+        _nav.Update(chat, p => p with { Page = 0 });
 
         logger.LogInformation("Проект переключён на {Project}", project);
-        audit.Changed(store, user, "project", Path.GetFileName(previous), Path.GetFileName(project));
+        audit.Changed(scope, user, "project", fromLabel, Path.GetFileName(project));
 
         // Сессии живут в папке, где созданы: у нового проекта своя или ни одной.
         // Предупреждаем, чтобы смена контекста не выглядела потерей истории.
-        return store.SessionId is null
+        return scope.SessionId is null
             ? $"{Path.GetFileName(project)} — сессия начнётся заново"
             : $"{Path.GetFileName(project)} — вернулись к её сессии";
     }
 
-    public Task<(string Html, Keyboard Keyboard)> RenderAsync(UserId user, CancellationToken ct) =>
-        Task.FromResult(Render(user));
+    public Task<(string Html, Keyboard Keyboard)> RenderAsync(ChatId chat, CancellationToken ct) =>
+        Task.FromResult(Render(chat));
 
-    private (string Html, Keyboard Keyboard) Render(UserId user)
+    /// <summary>Проект чата; null — беседа: её временная папка в список проектов не попадает.</summary>
+    private static string? Current(SessionStore.ChatScope scope) => scope.IsTalk ? null : scope.ProjectPath;
+
+    private static bool IsCurrent(string path, string? current) => current is not null && ProjectCatalog.Same(path, current);
+
+    private (string Html, Keyboard Keyboard) Render(ChatId chat)
     {
-        var current = store.ProjectPath;
-        var position = _nav.Of(user);
+        var current = Current(store.For(chat));
+        var position = _nav.Of(chat);
 
         // Пересобираем на каждый показ: папка могла исчезнуть вместе с проектами.
         var groups = catalog.Grouped(current);
 
         // Папка одна — промежуточный экран только добавит нажатие.
         if (groups.Count <= 1)
-            return RenderProjects(user, groups.Count == 0 ? [] : groups[0].Projects, group: null, current, position.Page);
+            return RenderProjects(chat, groups.Count == 0 ? [] : groups[0].Projects, group: null, current, position.Page);
 
         var opened = position.Group is null ? null : groups.FirstOrDefault(g => Key12(g.Name) == position.Group);
 
         if (opened is null)
         {
-            _nav.Reset(user);
-            return RenderGroups(user, groups, current, position.Page);
+            _nav.Reset(chat);
+            return RenderGroups(chat, groups, current, position.Page);
         }
 
-        return RenderProjects(user, opened.Projects, opened.Name, current, position.Page);
+        return RenderProjects(chat, opened.Projects, opened.Name, current, position.Page);
     }
 
     private (string Html, Keyboard Keyboard) RenderGroups(
-        UserId user, IReadOnlyList<ProjectGroup> groups, string current, int pageIndex)
+        ChatId chat, IReadOnlyList<ProjectGroup> groups, string? current, int pageIndex)
     {
         // Папок-владельцев тоже бывает больше, чем влезает в клавиатуру: под корнем с
         // вложенностью группа — это каждая ветка дерева.
         var (page, clamped, counter, pageRow) = Page(groups, pageIndex, Key, PagePrefix, "папок");
-        _nav.Update(user, p => p with { Page = clamped });
+        _nav.Update(chat, p => p with { Page = clamped });
 
         var lines = page.Select(group =>
-            $"{Marker(group.Projects.Any(p => ProjectCatalog.Same(p, current)))} "
+            $"{Marker(group.Projects.Any(p => IsCurrent(p, current)))} "
             + $"<b>{E(group.Name)}</b> — {group.Projects.Count}");
+
+        var now = current is null ? "💬 <b>беседа</b>" : $"<b>{E(Path.GetFileName(current))}</b>\n<code>{E(current)}</code>";
 
         var html = $"""
             📁 <b>Проект</b>
 
-            Сейчас: <b>{E(Path.GetFileName(current))}</b>
-            <code>{E(current)}</code>
+            Сейчас: {now}
 
             {string.Join("\n", lines)}
 
@@ -138,13 +147,13 @@ public sealed class ProjectScreen(
     }
 
     private (string Html, Keyboard Keyboard) RenderProjects(
-        UserId user, IReadOnlyList<string> all, string? group, string current, int pageIndex)
+        ChatId chat, IReadOnlyList<string> all, string? group, string? current, int pageIndex)
     {
         var (page, clamped, counter, pageRow) = Page(all, pageIndex, Key, PagePrefix, "проектов");
-        _nav.Update(user, p => p with { Page = clamped });
+        _nav.Update(chat, p => p with { Page = clamped });
 
         var lines = page.Select(path =>
-            $"{Marker(ProjectCatalog.Same(path, current))} <b>{E(Path.GetFileName(path))}</b>{Branch(path)}\n   <code>{E(path)}</code>");
+            $"{Marker(IsCurrent(path, current))} <b>{E(Path.GetFileName(path))}</b>{Branch(path)}\n   <code>{E(path)}</code>");
 
         var html = $"""
             📁 <b>{E(group ?? "Проект")}</b>
@@ -156,7 +165,7 @@ public sealed class ProjectScreen(
 
         var buttons = page
             .Select(path => Button(
-                $"{(ProjectCatalog.Same(path, current) ? "▶ " : "")}{Path.GetFileName(path)}",
+                $"{(IsCurrent(path, current) ? "▶ " : "")}{Path.GetFileName(path)}",
                 $"{Key}:{Key12(ProjectCatalog.Normalize(path))}"))
             .Chunk(2)
             .ToList();

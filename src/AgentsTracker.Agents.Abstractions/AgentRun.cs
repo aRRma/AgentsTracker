@@ -29,6 +29,10 @@ namespace AgentsTracker.Agents;
 /// Что за запуск. У <see cref="AgentRunKind.ContextReport"/> и <see cref="AgentRunKind.Compact"/>
 /// промпт бэкенд подставляет сам: команда своя у каждого агента.
 /// </param>
+/// <param name="WebOnly">
+/// Беседа вне проекта: инструменты — только поиск в сети, как у <see cref="AgentRunKind.Question"/>,
+/// но сессия ведётся. Признак, а не вид запуска: разбивка и сжатие беседы получают те же пределы.
+/// </param>
 public sealed record AgentRunRequest(
     string RunId,
     string Prompt,
@@ -40,7 +44,8 @@ public sealed record AgentRunRequest(
     string PermissionMode,
     TimeSpan Timeout,
     string? AttachmentsPath = null,
-    AgentRunKind Kind = AgentRunKind.Task);
+    AgentRunKind Kind = AgentRunKind.Task,
+    bool WebOnly = false);
 
 public enum AgentRunKind
 {

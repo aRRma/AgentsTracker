@@ -17,7 +17,8 @@ public sealed class QuestionLauncher(ChatWorker worker, SessionStore store, IAge
     /// </summary>
     private static readonly TimeSpan Wait = TimeSpan.FromMinutes(10);
 
-    private readonly ConcurrentDictionary<UserId, DateTimeOffset> _pending = new();
+    /// <summary>Где ждём текст вопроса. По чату: текст в соседней теме — уже её задача.</summary>
+    private readonly ConcurrentDictionary<ChatId, DateTimeOffset> _pending = new();
 
     /// <summary>Почему вопрос задать нельзя; null — можно.</summary>
     public string? Refusal =>
@@ -29,7 +30,7 @@ public sealed class QuestionLauncher(ChatWorker worker, SessionStore store, IAge
         if (Refusal is { } refusal) return refusal;
 
         // Превью, а не весь вопрос: в него могли вставить токен или содержимое файла.
-        audit.Write(AuditEvent.Now(AuditKinds.Message, $"question: {Text.Preview(text)}", user, chat, store.ProjectPath));
+        audit.Write(AuditEvent.Now(AuditKinds.Message, $"question: {Text.Preview(text)}", user, chat, store.For(chat).ProjectPath));
 
         // Ждать он будет только другой вопрос: задача ему не помеха.
         var waits = worker.IsAnswering || worker.QuestionQueueLength > 0;
@@ -39,10 +40,10 @@ public sealed class QuestionLauncher(ChatWorker worker, SessionStore store, IAge
             : "💬 Вопрос принят — отвечу вне сессии, не дожидаясь задачи.";
     }
 
-    public void Expect(UserId user) => _pending[user] = DateTimeOffset.UtcNow;
+    public void Expect(ChatId chat) => _pending[chat] = DateTimeOffset.UtcNow;
 
-    public bool TryTake(UserId user) =>
-        _pending.TryRemove(user, out var since) && DateTimeOffset.UtcNow - since <= Wait;
+    public bool TryTake(ChatId chat) =>
+        _pending.TryRemove(chat, out var since) && DateTimeOffset.UtcNow - since <= Wait;
 
-    public void Cancel(UserId user) => _pending.TryRemove(user, out _);
+    public void Cancel(ChatId chat) => _pending.TryRemove(chat, out _);
 }

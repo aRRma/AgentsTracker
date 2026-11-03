@@ -21,10 +21,10 @@ public sealed class SettingsMenuCoordinator(
     public async Task OpenAsync(ChatId chat, UserId user, CancellationToken ct, string screen = "root")
     {
         var target = Screen(screen);
-        target.Open(user);
+        target.Open(chat);
 
         MessageRef? message = null;
-        await foreach (var (html, keyboard) in target.RenderFramesAsync(user, ct))
+        await foreach (var (html, keyboard) in target.RenderFramesAsync(chat, ct))
         {
             if (message is null)
                 message = await channel.SendAsync(chat, new OutgoingMessage(html, Keyboard: keyboard), ct);
@@ -53,7 +53,7 @@ public sealed class SettingsMenuCoordinator(
         // без аргумента — переход из корня, экран открывается с начала.
         string? toast = null;
         if (argument.Length > 0) toast = target.Apply(argument, press.User, press.Chat);
-        else target.Open(press.User);
+        else target.Open(press.Chat);
 
         await AnswerAsync(press, toast, ct);
 
@@ -61,7 +61,7 @@ public sealed class SettingsMenuCoordinator(
         // нечего, но выбор уже применён.
         if (press.Message is not { } message) return;
 
-        await foreach (var (html, keyboard) in target.RenderFramesAsync(press.User, ct))
+        await foreach (var (html, keyboard) in target.RenderFramesAsync(press.Chat, ct))
             await EditQuietlyAsync(message, html, keyboard, ct);
     }
 

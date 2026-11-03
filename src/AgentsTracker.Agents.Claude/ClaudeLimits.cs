@@ -237,8 +237,10 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
 
             if (!response.IsSuccessStatusCode)
             {
+                // Маска — здесь: консоль и docker logs приёмник лога не маскирует, а в теле
+                // ошибки сервис может повторить заголовки запроса.
                 logger.LogWarning(
-                    "Эндпоинт лимитов ответил {Code}: {Body}", (int)response.StatusCode, Truncate(body));
+                    "Эндпоинт лимитов ответил {Code}: {Body}", (int)response.StatusCode, Text.ClipRedacted(body, 500));
                 return new LimitsSnapshot([], null, DateTimeOffset.UtcNow, Describe(response.StatusCode));
             }
 
@@ -417,6 +419,4 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
 
     private static bool IsWindow(string key) =>
         key.StartsWith("five_hour", StringComparison.Ordinal) || key.StartsWith("seven_day", StringComparison.Ordinal);
-
-    private static string Truncate(string value) => value.Length <= 500 ? value : value[..500] + "…";
 }

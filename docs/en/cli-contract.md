@@ -137,7 +137,8 @@ a server failure, and the agent doesn't understand what went wrong. The policy l
 - Size and caption — per the channel's `ChannelLimits`. Refusals go into the `file.send` audit
   with outcome `refused`.
 
-The tool is passed in `--allowedTools mcp__tg__send_file` so the CLI doesn't call
+The tool is passed in `--allowedTools mcp__tg__send_file` (a вопрос and a беседа also get
+`WebSearch,WebFetch` there — "A question with no session") so the CLI doesn't call
 `mcp__tg__approve` on every send: the gateway checks the folder, type, and size itself.
 Verified on CLI 2.1.261 with a scratch instance: `tools/list` returns both tools, `claude -p`
 with this flag calls `send_file` directly and never `approve` (`permission_denials` is empty).
@@ -184,8 +185,9 @@ removed — rejected by API»: real screenshots go through, an artificial one in
 `ClaudeBackend.BuildArguments` always passes `-p <prompt>`, `--output-format stream-json
 --verbose` (without `--verbose` `-p` writes no stream), `--permission-prompt-tool`,
 `--permission-mode`, `--mcp-config` and `--allowedTools mcp__tg__send_file`. Conditionally:
-`--resume <id>` or `--session-id <uuid>`, `--add-dir` (only if the chat folder exists), `--model`,
-`--effort`. A вопрос gets its own set — "A question with no session" below.
+`--resume <id>` or `--session-id <uuid>`, `--add-dir` (only if the chat folder exists, never for a
+вопрос or a беседа), `--model`, `--effort`. A вопрос and a беседа get their own set, with a longer
+`--allowedTools` — "A question with no session" below.
 
 `ClaudeBackend.StreamCollector` parses stdout line by line (`ClaudeStreamEvent.Classify`): tool
 calls → `IAgentRunObserver.Activity`, everything else is discarded — in a long run that's
@@ -209,13 +211,13 @@ finishing the task with nobody listening and writing into the session the new in
 failed `AssignProcessToJobObject` is logged once and the run goes on. Outside Windows the class
 does nothing — a container gives the same.
 
-A run in progress is recorded in `state.json` (`GatewayState.ActiveRun`, a вопрос — in
+A run in progress is recorded in `state.json` (`GatewayState.ActiveRuns` by chat key, a вопрос — in
 `ActiveQuestion`, since it runs in parallel): `ChatWorker` sets `BeginRun` before starting and
-`EndRun` in `finally`. If the record is still there at startup, the previous instance died
-mid-run, and `StartupNotice` sends «🔌 Шлюз запущен» to everyone in `IChatChannel.AllowedUsers`,
-tells the chat of the interrupted run (`ActiveRun.ChatKey` via `IChatChannel.ParseChat`) that it
-was interrupted («напишите „продолжай“»; for a вопрос — «задайте его снова через /ask») and writes
-`run.end` with outcome `interrupted`. Telegram does not let a bot write first to a user who hasn't
+`EndRun` in `finally`. A record still there at startup means the previous instance died mid-run. At
+startup `StartupNotice` sends «🔌 Шлюз запущен» to everyone in `IChatChannel.AllowedUsers`, into
+their лента. The chat or topic of each interrupted run (`ActiveRun.ChatKey` via
+`IChatChannel.ParseChat`) is told that it was interrupted («напишите „продолжай“»; for a вопрос —
+«задайте его снова через /ask»), and `run.end` is written with outcome `interrupted`. Telegram does not let a bot write first to a user who hasn't
 written to it: a failed send is logged at Debug.
 
 In the chat — `RunStatusMessage`: one «Работаю…» message, edited every 4 s (elapsed time, call
@@ -333,14 +335,24 @@ Checked on CLI 2.1.261.
 is impossible), no `--resume`/`--session-id`, `--tools WebSearch,WebFetch` (built-ins only; `""`
 disables all) and `--strict-mcp-config`: only the gateway's own `tg` server from `--mcp-config` is
 loaded — the user's MCP servers cost ~40k tokens of context per question otherwise (48k vs 9.6k on
-a one-word answer). `--permission-mode` and `--permission-prompt-tool` are passed as always; no
-`--add-dir`. The working folder is an empty `%TEMP%\AgentsTracker-question`: not the project (its
-CLAUDE.md would load) and not the data directory (secrets).
+a one-word answer). `--permission-mode` and `--permission-prompt-tool` are passed as always.
+`--allowedTools` adds `WebSearch,WebFetch`: there are no files or commands to protect, and a card
+per search only slows the answer. `--append-system-prompt` tells the model it has no computer: the
+user's `~/.claude/CLAUDE.md` still loads, and without the line the model looked for a way to run
+commands. No `--add-dir`. The working folder is an empty `%TEMP%\AgentsTracker-question`: not the
+project (its CLAUDE.md would load) and not the data directory (secrets).
 
-A вопрос runs in its own lane, **in parallel** with a task (`architecture.md`, "Two lanes"). Its
-permissions are unchanged: cards and `send_file` (checked against the chat's project) work as
-before, the two processes' cards told apart by the run id in the `X-AgentsTracker-Run` header of
-each run's own `--mcp-config` file. There is no `Agent` tool among `--tools`, so a вопрос has no
+A беседа (a topic without a project) gets the same set through `AgentRunRequest.WebOnly`, but keeps
+its session (`--session-id`/`--resume`) in its own folder `%TEMP%\AgentsTracker-talk\<chat key>`
+(`telegram_123_42`), emptied before each run: `--resume` finds the session after the folder is
+deleted and created again — the transcript is keyed by the path. A беседа always runs in the
+config's `--permission-mode`: choosing a беседа clears the saved mode, and `/mode` there is refused —
+otherwise a `/mode plan` given before the type was chosen would stick with no way to undo it.
+
+A вопрос runs in its own lane, **in parallel** with tasks (`architecture.md`, "Lanes"). Apart from
+search and page reads, which need no card, its permissions are a task's: cards and `send_file`
+(checked against the chat's project) work as before, the two processes' cards told apart by the run
+id in the `X-AgentsTracker-Run` header of each run's own `--mcp-config` file. There is no `Agent` tool among `--tools`, so a вопрос has no
 subagents.
 
 ## Plan limits

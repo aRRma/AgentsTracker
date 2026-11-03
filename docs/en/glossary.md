@@ -26,6 +26,10 @@ English (`IAgentLimits`, `ProjectPath`, `audit\`) — the glossary is about text
 | The start of a session the model keeps on its side and reads cheaper than anew (prompt cache) | **кэш** («кэш до 15:42», «кэш остыл») | кеш, память, буфер |
 | A run that leaves no turn in the session, only to keep the cache from going cold | **подогрев** | прогрев, пинг, keep-alive |
 | A one-off request with no session and no project (`/ask`) | **вопрос** | запрос, режим ASK, режим вопроса |
+| A Telegram topic in the private chat with the bot: its own session, project, model, effort and mode | **тема** | тред, топик, ветка, чат |
+| The private chat outside any topic | **лента** («лента без темы») | общий чат, главная тема, General |
+| A topic with no project: web search only, a session of its own (`ProjectPath = null`) | **беседа** | чат, диалог, разговор, вопрос |
+| What a topic works with: a project or a беседа (the «Тип темы» screen) | **тип темы** | режим темы, вид темы |
 | The agent asking about an action | **подтверждение** | согласование, запрос разрешения, апрув |
 | The message with the decision buttons | **карточка подтверждения** | карточка согласования, запрос |
 | What the «Всегда» button writes down | **правило «всегда»** | разрешение, allow-правило |
@@ -43,6 +47,7 @@ English (`IAgentLimits`, `ProjectPath`, `audit\`) — the glossary is about text
 | What the agent sends into the chat | **файл** | вложение |
 | The action journal (`/audit`) | **журнал** | аудит (in a UI text), лог |
 | The technical log | **лог** | журнал |
+| The outcome of sending an answer to the chat (reached it, or «не дошло») | **доставка** | — |
 | The user's decision on a card | **отклонить** | отказать, запретить |
 | A card withdrawn by anything but the user | **отменено** | отклонено |
 | The gateway refusing by a rule (file type, size) | **отказ** | запрет, ошибка |
@@ -96,13 +101,16 @@ runs in parallel with a задача and is answered as a reply to the message t
 «режим»: that word belongs to `--permission-mode`. When the agent itself asks, that is a «вопрос
 агента» — a card with options, not the user's вопрос.
 
+**вопрос / беседа.** A беседа is a тема without a project; unlike a вопрос, it keeps its own
+сессия, so the next message continues it. Both see only web search, not files.
+
 **лимит / предел.** A лимит belongs to the subscription: «Лимит тарифа исчерпан», the windows,
 the bars. A предел is technical and has nothing to do with money: a file size, a message length,
 a run timeout («предел канала», «Превышен предел в 45 мин»).
 
 **журнал / лог.** The журнал is what a human is answerable for — `/audit`, the monitor's
 «Журнал», `audit\audit-<YYYY-MM>.jsonl`. The лог is for debugging — the monitor's «Лог»,
-`ILogger`. The mechanism keeps its English name (`audit`), the text says «журнал».
+`ILogger`, the file `logs\gateway-<YYYY-MM-DD>.log`. The mechanism keeps its English name (`audit`), the text says «журнал».
 
 **отклонить / отменено / отказ.** The user pressed «❌ Отклонить» — отклонено. The card went away
 for another reason (`/stop`, a gateway restart) — отменено. The gateway itself did not let

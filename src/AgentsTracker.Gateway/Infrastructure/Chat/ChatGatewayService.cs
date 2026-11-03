@@ -1,4 +1,5 @@
 using AgentsTracker.Gateway.Infrastructure.Audit;
+using AgentsTracker.Gateway.Infrastructure.Monitoring;
 
 namespace AgentsTracker.Gateway.Infrastructure.Chat;
 
@@ -12,6 +13,8 @@ public sealed class ChatGatewayService(
     StartupNotice notice,
     SessionStore store,
     IAuditLog audit,
+    IAgentBackend agent,
+    RunMonitor monitor,
     IHostApplicationLifetime lifetime,
     ILogger<ChatGatewayService> logger) : BackgroundService
 {
@@ -41,7 +44,12 @@ public sealed class ChatGatewayService(
             return;
         }
 
-        audit.Write(AuditEvent.Now(AuditKinds.Gateway, "старт", project: store.ProjectPath));
+        // Версии и pid — по журналу видно, какая сборка и какой CLI работали, когда что-то
+        // случилось. Версию CLI уже узнал ValidateStartup: третий запуск claude --version не нужен.
+        var cli = monitor.CliVersion is { Length: > 0 } version ? $" {version}" : "";
+        audit.Write(AuditEvent.Now(AuditKinds.Gateway, $"старт {AppVersion.Current}, {agent.DisplayName}{cli}",
+            project: store.Feed.ProjectPath,
+            outcome: $"pid:{Environment.ProcessId}" + (Container.Detected ? ", container" : "")));
         await notice.SendAsync(stoppingToken);
 
         try
@@ -65,7 +73,7 @@ public sealed class ChatGatewayService(
             try
             {
                 var bot = await channel.ConnectAsync(stoppingToken);
-                logger.LogInformation("{Channel}: бот {Bot} готов. Проект: {Project}", channel.DisplayName, bot, store.ProjectPath);
+                logger.LogInformation("{Channel}: бот {Bot} готов. Проект: {Project}", channel.DisplayName, bot, store.Feed.ProjectPath);
                 await channel.PublishCommandsAsync(ChatCommandCatalog.Commands, stoppingToken);
                 return true;
             }

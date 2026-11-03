@@ -13,13 +13,16 @@ an entry in the `HelpCommandHandler` text and, if the command belongs in the «�
 
 Taken: `/start /help` (Help), `/new /stop` (Chat), `/ask` (Question), `/rules` (Approvals),
 `/audit` (Audit), `/menu /settings /status /sessions /agent /model /effort /mode /skills /project
-/usage` (Settings). **A duplicate across two features kills startup** (`ChatDispatcher` builds a
+/usage` (Settings), `/topic` (Topics). **A duplicate across two features kills startup** (`ChatDispatcher` builds a
 dictionary of commands).
 
-The «Меню» list holds `/menu`, the screens, `/ask`, `/rules`, `/audit` and `/help`, ordered by
-frequency. `/new /stop /model /effort /mode` work as text but stay out of the list: buttons on
+The «Меню» list holds `/menu`, `/stop`, the screens, `/ask`, `/rules`, `/audit` and `/help`, ordered
+by frequency. `/new /model /effort /mode` work as text but stay out of the list: buttons on
 «Сессии» and «Агент» do the same, and a long list reads worse. `/ask` is in because the question is
-typed right after the command. `RootScreen` has buttons for the screens only.
+typed right after the command, `/stop` because a run must be stopped fast. `RootScreen` has buttons
+for the screens only. With topics on, a command picked from «Меню» goes to the topic it was picked
+in; from the лента Telegram Desktop sends it to the лента, while the mobile client opens a new topic,
+as it does for anything typed there.
 
 An unknown slash command goes to the CLI as-is: it is Claude Code's own. So «Контекст» has no
 `/context` command: it would shadow Claude Code's.
@@ -27,7 +30,8 @@ An unknown slash command goes to the CLI as-is: it is Claude Code's own. So «К
 ## A settings screen
 
 A class implementing `ISettingsScreen` in `Features/Settings/Screens/`, `AddSingleton<ISettingsScreen, …>`
-in `SettingsModule`, a button in `RootScreen`.
+in `SettingsModule`, a button in `RootScreen`. A screen of another feature lives in that feature and
+is registered by its module the same way — `TopicScreen` in `Topics`.
 
 - `Key` is the screen's callback prefix: a button carries `cfg:<Key>:<argument>`. It must be unique,
   and an unknown key silently opens `root`, so a mismatch looks like a button that does nothing.
@@ -39,8 +43,15 @@ in `SettingsModule`, a button in `RootScreen`.
 - `Apply` receives the `ChatId`: a screen can enqueue work on `ChatWorker` (`SkillsScreen`), and
   the answer goes to whoever pressed the button. A changed setting is written to the journal with
   `IAuditLog.Changed` (`SettingsAudit`).
-- The list position lives in `ScreenNavigation` per user: screens are singletons.
-- An irreversible button asks first through `PendingConfirmations` (per user: action and session);
+- Every screen renders for a chat (`RenderAsync(ChatId)`, `Open(ChatId)`) and reads the selection
+  through `store.For(chat)`: a topic has its own project, session, model, effort and mode.
+- A new topic has no type yet (`IsNewTopic`). A model, effort or mode change there keeps it new
+  (`TopicState.Untyped`); only `SetProjectPath` types it. Its text opens «Тип темы» (`TopicHandler`),
+  and a skill there is refused (`SkillLauncher`: «Сначала выберите тип темы: /topic»). A new command
+  that starts a task needs the same refusal.
+- The list position lives in `ScreenNavigation` per `ChatId`: screens are singletons, and each topic
+  has its own `ChatId`.
+- An irreversible button asks first through `PendingConfirmations` (per `ChatId`: action and session);
   «Да» carries the argument `yes:<action>`, and `Open` drops the pending question. Example —
   `ContextScreen`.
 - Pages and callback_data keys — `SettingsKeyboard.Page`/`Key12`. The one-letter prefix of a
@@ -52,7 +63,9 @@ in `SettingsModule`, a button in `RootScreen`.
 A folder in `Features/` with a `*Module : IFeatureModule` (`Infrastructure/Modules/`: `AddServices`
 and `MapEndpoints`, the latter empty if there is nothing to mount) and a line in the module list in
 `Program.cs`. Text handlers (`IChatTextHandler`) are polled in that order, so `ChatModule` stays
-last: its handler always returns `true`. Buttons are `IChatButtonHandler`, told apart by a prefix of
+last: its handler always returns `true`. `TopicsModule` goes right before it, after `SettingsModule`
+and `QuestionModule`: a skill's arguments and a вопрос after a bare `/ask` are answers, not a new
+topic's text. Buttons are `IChatButtonHandler`, told apart by a prefix of
 the callback data (`cfg:` — the menu).
 
 ## A project
@@ -114,8 +127,9 @@ A class with `[McpServerToolType]` in `Agents.Claude/Mcp/`, the name as a consta
 `IOperatorConsole` (implemented in `OperatorConsole`, `Features/Approvals/`).
 
 A tool without an approval card goes into `--allowedTools` in `ClaudeBackend.BuildArguments`, and
-its whole policy becomes the gateway's. Only `mcp__tg__send_file` is there: the host checks the
-folder, the type and the size itself. Nothing else belongs there — it bypasses the cards.
+its whole policy becomes the gateway's. `mcp__tg__send_file` is there: the host checks the folder,
+the type and the size itself. A вопрос and a беседа also get `WebSearch,WebFetch` there — they have
+no files or commands. Nothing else belongs there — it bypasses the cards.
 
 The `send_file` type whitelist lives in several places — the map in `OperatorConsole`, the tool
 description in `ClaudeSendFileTool` (the CLI sees the description of the **running** gateway),

@@ -1,7 +1,37 @@
 namespace AgentsTracker.Gateway.Domain;
 
+/// <summary>
+/// Выбор чата из меню. У ленты он лежит в корне <see cref="GatewayState"/>, как до тем, у темы —
+/// в <see cref="TopicState"/>: одна форма на оба места, чтобы правила выбора не расходились.
+/// </summary>
+public interface IChatSelection
+{
+    string? ProjectPath { get; set; }
+    string? Model { get; set; }
+    string? PermissionMode { get; set; }
+    string? Effort { get; set; }
+}
+
+/// <summary>
+/// Выбор темы. <see cref="ProjectPath"/> хранится полным путём даже при совпадении с конфигом:
+/// null у темы значит «беседа», а не «проект из конфига». Model, effort и режим null — по умолчанию.
+/// </summary>
+public sealed class TopicState : IChatSelection
+{
+    public string? ProjectPath { get; set; }
+    public string? Model { get; set; }
+    public string? PermissionMode { get; set; }
+    public string? Effort { get; set; }
+
+    /// <summary>
+    /// true — запись завели /model, /effort или /mode, а тип ещё не выбран: тема остаётся новой.
+    /// null, а не false, — у выбранной темы поле не пишется в state.json.
+    /// </summary>
+    public bool? Untyped { get; set; }
+}
+
 /// <summary>Всё, что шлюз помнит между перезапусками. Лежит в state.json.</summary>
-public sealed class GatewayState
+public sealed class GatewayState : IChatSelection
 {
     /// <summary>
     /// Активная сессия до появления списка сессий. Читается при загрузке и переезжает
@@ -62,9 +92,13 @@ public sealed class GatewayState
 
     /// <summary>
     /// Активная сессия каждого проекта: путь папки → id сессии. Ключ — нормализованный путь,
-    /// потому что --resume работает только в той папке, где сессия создана.
+    /// потому что --resume работает только в той папке, где сессия создана. У темы ключ —
+    /// «ключ темы|путь»: у каждой темы своя сессия, и в чужую тему она не перескочит.
     /// </summary>
     public Dictionary<string, string> ActiveSessions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Выбор тем по ключу чата темы. Темы нет в словаре — тип ещё не выбран.</summary>
+    public Dictionary<string, TopicState> Topics { get; set; } = new(StringComparer.Ordinal);
 
     public UsageStats Usage { get; set; } = new();
 
@@ -78,14 +112,20 @@ public sealed class GatewayState
     public List<RunRecord> RecentRuns { get; set; } = [];
 
     /// <summary>
-    /// Запуск, идущий прямо сейчас: живёт от старта процесса до итога. Запись, оставшаяся
-    /// к моменту старта шлюза, значит, что прошлый экземпляр умер посреди работы — об этом
-    /// надо сказать в чат, иначе ответа не будет, а чат промолчит.
+    /// Задачи, идущие прямо сейчас, по ключу чата: живут от старта процесса до итога. Запись,
+    /// оставшаяся к моменту старта шлюза, значит, что прошлый экземпляр умер посреди работы —
+    /// об этом надо сказать в чат, иначе ответа не будет, а чат промолчит.
+    /// </summary>
+    public Dictionary<string, ActiveRun> ActiveRuns { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Идущая задача до тем, когда она была одна. Читается при старте, чтобы сказать «прервано»
+    /// после обновления; новые версии сюда не пишут.
     /// </summary>
     public ActiveRun? ActiveRun { get; set; }
 
     /// <summary>
-    /// Вопрос, идущий прямо сейчас, — отдельно от <see cref="ActiveRun"/>: вопрос идёт
+    /// Вопрос, идущий прямо сейчас, — отдельно от <see cref="ActiveRuns"/>: вопрос идёт
     /// параллельно задаче, и общая запись затёрла бы её «прервано».
     /// </summary>
     public ActiveRun? ActiveQuestion { get; set; }

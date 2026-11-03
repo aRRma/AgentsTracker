@@ -69,7 +69,7 @@ public sealed class MonitorModule : IFeatureModule
                 snapshot.Error,
                 snapshot.FetchedUtc,
                 ExtraUsageEnabled = snapshot.ExtraUsage?.IsEnabled,
-                Model = store.ModelLabel(store.EffectiveModel, agent.Capabilities.Model),
+                Model = store.ModelLabel(store.Feed.EffectiveModel, agent.Capabilities.Model),
                 // Проценты считает шлюз: в JS нет decimal, и своя формула на странице разошлась
                 // бы с чатом на копеечной погрешности double. Доля остаётся для полноты снимка.
                 Windows = snapshot.Windows.Select(w => new
@@ -118,12 +118,13 @@ public sealed class MonitorModule : IFeatureModule
         live.GatewayStartedUtc,
         Agent = agent.DisplayName,
         live.CliVersion,
-        Project = store.ProjectPath,
-        Session = store.SessionId,
-        Model = store.ModelLabel(store.EffectiveModel, agent.Capabilities.Model),
-        PermissionMode = store.EffectivePermissionMode,
-        Effort = store.EffectiveEffort,
-        worker.IsBusy,
+        // Выбор ленты, а не идущего запуска: у монитора нет чата, а у каждой темы выбор свой.
+        Project = store.Feed.ProjectPath,
+        Session = store.Feed.SessionId,
+        Model = store.ModelLabel(store.Feed.EffectiveModel, agent.Capabilities.Model),
+        PermissionMode = store.Feed.EffectivePermissionMode,
+        Effort = store.Feed.EffectiveEffort,
+        IsBusy = worker.AnyBusy,
         // Вопрос идёт параллельно задаче и в Run не попадает: без своего поля процесс,
         // тратящий лимит, по снимку был бы не виден.
         worker.IsAnswering,
@@ -171,7 +172,8 @@ public sealed class MonitorModule : IFeatureModule
             Sessions = state.Sessions.OrderByDescending(s => s.LastActivityUtc).Select(s => new
             {
                 s.Id, s.ProjectPath, s.Title, s.CreatedUtc, s.LastActivityUtc, s.Turns, s.CacheUntilUtc,
-                Active = string.Equals(state.ActiveSessions.GetValueOrDefault(s.ProjectPath), s.Id, StringComparison.Ordinal),
+                // Активна в ленте или в какой-нибудь теме.
+                Active = state.ActiveSessions.ContainsValue(s.Id),
             }),
             Rules = state.AlwaysAllowByProject.Select(p => new { Project = p.Key, Rules = p.Value.Select(Text.Redact) }),
         };

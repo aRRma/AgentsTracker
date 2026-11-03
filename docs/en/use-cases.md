@@ -109,8 +109,12 @@ photo "as a file" — Telegram compresses photos.
 
 - **The computer on** and not asleep. If it sleeps on its own, turn that off — otherwise the message
   waits until morning.
-- **One task at a time.** The rest wait in the queue. `/status` shows what is running, `/stop`
-  interrupts it, `/new` starts a new session.
+- **Topics.** If the bot's chat has topics on, each topic is its own work: its own project and
+  session. A topic without a project is a беседа — web search only, no files. The chat outside
+  topics is the лента: service messages go there.
+- **One task at a time in a chat.** The rest wait in the queue. Topics run in parallel, but one
+  project takes one run at a time. `/status` shows what is running, `/stop` interrupts it (in a topic
+  only that topic, in the лента everything), `/new` starts a new session.
 - **Confirmations.** In the `default` mode anything that changes or deletes files and is not
   already allowed by a rule arrives as a card with buttons. Read the card and don't press
   «Всегда» ("Always") without looking.
@@ -124,7 +128,7 @@ keeps the session ready — that is the cache, and reading it is cheap. The cach
 after the last request, then goes cold, and the next run writes the whole context anew, which costs
 noticeably more. The deadline is under every answer ("🧊 кэш до 15:42") and in `/status`.
 
-- **One task — one session.** A new topic — `/new`. The bigger the context, the dearer each step.
+- **One task — one session.** For a new subject — `/new`. The bigger the context, the dearer each step.
 - **Pick the model at the start.** A model switch resets the cache, and so does the `plan` mode.
   While the cache is alive, the bot asks before the switch.
 - **Leaving for long with a big context?** Compress it first («Контекст» → «Сжать» in `/menu`), or

@@ -22,20 +22,22 @@ public sealed class ChatCommandHandler(
 
     private string StartNew(ChatCommandContext context)
     {
-        var previous = store.SessionId;
-        store.SetSessionId(null);
+        var scope = store.For(context.Chat);
+        var previous = scope.SessionId;
+        scope.SetSessionId(null);
 
         // Прошлый контекст забыт вместе с картинками, которые обсуждались в нём.
-        inbox.ClearSession(context.Chat, store.ProjectPath);
+        inbox.ClearSession(context.Chat, scope.ProjectPath);
 
-        audit.Write(AuditEvent.Now(AuditKinds.Settings, "session: новая", context.User, context.Chat, store.ProjectPath, previous));
+        audit.Write(AuditEvent.Now(AuditKinds.Settings, "session: новая", context.User, context.Chat, scope.ProjectPath, previous));
         return "🆕 Начата новая сессия — прошлый контекст забыт.";
     }
 
     private string Stop(ChatCommandContext context)
     {
-        var stopped = worker.Stop();
-        audit.Write(AuditEvent.Now(AuditKinds.Gateway, "/stop", context.User, context.Chat, store.ProjectPath, store.SessionId,
+        var stopped = worker.Stop(context.Chat);
+        var scope = store.For(context.Chat);
+        audit.Write(AuditEvent.Now(AuditKinds.Gateway, "/stop", context.User, context.Chat, scope.ProjectPath, scope.SessionId,
             stopped ? "stopped" : "idle"));
         return stopped ? "🛑 Остановлено." : "Сейчас ничего не выполняется.";
     }

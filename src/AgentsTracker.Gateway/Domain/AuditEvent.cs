@@ -17,6 +17,12 @@ public static class AuditKinds
     public const string SessionReset = "session.reset";
     public const string LimitRefused = "limit.refused";
     public const string Gateway = "gateway";
+
+    /// <summary>
+    /// Ответ не дошёл до чата. Отдельным видом, а не исходом run.end: тот — правда о запуске и
+    /// пишется до отправки, потому что папку отпускают раньше.
+    /// </summary>
+    public const string Delivery = "delivery";
 }
 
 /// <summary>

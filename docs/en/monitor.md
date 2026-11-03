@@ -38,8 +38,10 @@ section in `index.html`.
 callback as `RunStatusMessage`) and finish; `OperatorConsole` reports waiting for a card via
 `using monitor.Approval(tool, brief)`, brief being a short string, not the full input. Cards in the
 snapshot are a list: the CLI calls tools in parallel within one turn, and a вопрос's cards land
-there too. `run`, `queue` and `isBusy` describe the task only; a parallel вопрос shows as
-`isAnswering` and in the run history, never as the current run. 300 steps are kept, `DroppedSteps`
+there too. `run`, `queue` and `isBusy` describe tasks only; a parallel вопрос shows as
+`isAnswering` and in the run history, never as the current run. With topics several tasks run at
+once: `isBusy` is true while any of them runs, `run` is the first of them, the `queue` holds every
+chat's tasks, and `project`, `session`, `model`, `permissionMode`, `effort` are the лента's selection. 300 steps are kept, `DroppedSteps`
 is the difference against the counter. `Changes()` is a channel with capacity 1 and eviction: a slow
 browser gets the latest state, not a queue of stale ones. `/api/events` pings every 5 s between
 snapshots — without it the page couldn't tell silence from a crashed gateway.
@@ -51,7 +53,7 @@ History is `GatewayState.RecentRuns` (200 entries, `SessionStore.RecordRunOutcom
 `/api/stats.csv` uses `;`, a BOM and a decimal comma, or Excel under the Russian locale reads
 fractions as text. Limits come from `IAgentLimits.GetAsync` (Claude caches 3 min; the page polls
 once a minute, the journal and the log every 30 s); the log is `RingBufferLog` (500 entries,
-Information+, an `ILoggerProvider`).
+Information+, masked by `RingBufferLoggerProvider` — the same entries go to the log file).
 
 ## How to look at the page
 

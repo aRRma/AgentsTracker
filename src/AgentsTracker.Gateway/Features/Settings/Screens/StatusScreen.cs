@@ -23,8 +23,9 @@ public sealed class StatusScreen(
         switch (argument)
         {
             case "stop":
-                var stopped = worker.Stop();
-                audit.Write(AuditEvent.Now(AuditKinds.Gateway, "/stop", user, chat, store.ProjectPath, store.SessionId,
+                var stopped = worker.Stop(chat);
+                var scope = store.For(chat);
+                audit.Write(AuditEvent.Now(AuditKinds.Gateway, "/stop", user, chat, scope.ProjectPath, scope.SessionId,
                     stopped ? "stopped" : "idle"));
                 return stopped ? "Остановлено" : "Сейчас ничего не выполняется";
 
@@ -36,13 +37,13 @@ public sealed class StatusScreen(
         }
     }
 
-    public async Task<(string Html, Keyboard Keyboard)> RenderAsync(UserId user, CancellationToken ct) =>
-        Render(await limits.ViewAsync(store.EffectiveModel, ct), 1m);
+    public async Task<(string Html, Keyboard Keyboard)> RenderAsync(ChatId chat, CancellationToken ct) =>
+        Render(chat, await limits.ViewAsync(store.For(chat).EffectiveModel, ct), 1m);
 
     public async IAsyncEnumerable<(string Html, Keyboard Keyboard)> RenderFramesAsync(
-        UserId user, [EnumeratorCancellation] CancellationToken ct)
+        ChatId chat, [EnumeratorCancellation] CancellationToken ct)
     {
-        var view = await limits.ViewAsync(store.EffectiveModel, ct);
+        var view = await limits.ViewAsync(store.For(chat).EffectiveModel, ct);
 
         // Без окон анимировать нечего — один кадр, иначе сообщение дёргалось бы впустую.
         var frames = view.Windows.Count == 0 ? 1 : LimitBars.Frames;
@@ -56,7 +57,7 @@ public sealed class StatusScreen(
 
         for (var frame = 0; frame < frames; frame++)
         {
-            var rendered = Render(view, frames == 1 ? 1m : LimitBars.Progress(frame));
+            var rendered = Render(chat, view, frames == 1 ? 1m : LimitBars.Progress(frame));
             if (rendered.Html == shown) continue;
 
             if (shown is not null) await Task.Delay(LimitBars.FrameDelay, ct);
@@ -65,38 +66,42 @@ public sealed class StatusScreen(
         }
     }
 
-    private (string Html, Keyboard Keyboard) Render(LimitsView view, decimal progress)
+    private (string Html, Keyboard Keyboard) Render(ChatId chat, LimitsView view, decimal progress)
     {
         var state = store.Snapshot();
-        var project = store.ProjectPath;
-        var session = store.Session(store.SessionId);
+        var scope = store.For(chat);
+        var project = scope.ProjectPath;
+        var session = store.Session(scope.SessionId);
 
-        var busy = worker.IsBusy;
+        var busy = worker.IsBusy(chat);
 
         // Вопрос идёт параллельно задаче: без своей строки и кнопки «Остановить» идущий вопрос
         // выглядел бы простоем, а остановить его со статуса было бы нечем.
-        var answering = worker.IsAnswering;
+        var answering = worker.IsAnsweringFor(chat);
         var questions = answering
             ? $"\n💬 Идёт вопрос{(worker.QuestionQueueLength > 0 ? $", ещё в очереди: {worker.QuestionQueueLength}" : "")}"
             : "";
 
         var effort = agent.Capabilities.Effort is null
             ? ""
-            : $" · 🎚 {E(store.EffectiveEffort ?? "по умолчанию")}";
+            : $" · 🎚 {E(scope.EffectiveEffort ?? "по умолчанию")}";
+
+        var where = scope.IsNewTopic ? RootScreen.NewTopic
+            : scope.IsTalk ? "💬 <b>Беседа</b>"
+            : $"📁 <b>{E(Path.GetFileName(project))}</b>\n<code>{E(project)}</code>{Branch(project, store.SessionFolder(project, scope.SessionId))}";
 
         var html = $"""
             📟 <b>Статус</b> — {E(agent.DisplayName)}
 
-            {(busy ? "🟢 <b>Выполняется</b>" : "⚪ <b>Простаивает</b>")}, в очереди: {worker.QueueLength}{questions}
+            {(busy ? "🟢 <b>Выполняется</b>" : "⚪ <b>Простаивает</b>")}, в очереди: {worker.QueueLength(chat)}{questions}
             🕔 Последняя активность: {E(state.LastActivityUtc?.Ago ?? "—")}
 
-            📁 <b>{E(Path.GetFileName(project))}</b>
-            <code>{E(project)}</code>{Branch(project, store.SessionFolder(project, store.SessionId))}
+            {where}
             🧵 Сессия: {(session is null ? "<i>новая</i>" : $"<b>{E(session.Title)}</b> · {session.Turns} х")}
             📦 Контекст: {(session is { ContextTokens: > 0, ContextWindow: > 0 } ? ContextScreen.Fill(session, bar: false) : "—")}
-            🧊 Кэш: {ContextScreen.Cache(session, ContextScreen.Mismatch(store, agent, session))}
-            🧠 {E(store.ModelLabel(store.EffectiveModel, agent.Capabilities.Model) ?? "модель по умолчанию")}{effort} · 🔐 {E(store.EffectivePermissionMode)}
-            ♾ Правил «всегда» в проекте: {store.AlwaysAllowRules().Count}
+            🧊 Кэш: {ContextScreen.Cache(session, ContextScreen.Mismatch(store, scope, agent, session))}
+            🧠 {E(store.ModelLabel(scope.EffectiveModel, agent.Capabilities.Model) ?? "модель по умолчанию")}{effort} · 🔐 {E(scope.EffectivePermissionMode)}
+            ♾ Правил «всегда» {(scope.IsTalk ? "в беседе" : "в проекте")}: {scope.AlwaysAllowRules().Count}
 
             🚦 <b>Лимиты тарифа</b>
             {LimitBars.Render(view, progress)}

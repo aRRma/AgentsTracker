@@ -58,7 +58,10 @@ cmd //c start "" "src/AgentsTracker.Gateway/bin/Debug/net10.0/AgentsTracker.Gate
 - Stopping the gateway kills all its `claude` processes and everything they started (the Job
   Object, `cli-contract.md`): a dev server or an emulator the agent brought up must be started
   again.
-- The console outputs Russian text in cp866 — view the log in PowerShell (Git Bash has no `iconv`).
+- The log is in `<data directory>\logs\gateway-YYYY-MM-DD.log` (a scratch instance — in its own
+  `Gateway__DataDirectory`): UTF-8, so read it with `Get-Content -Encoding utf8` or `grep` by the chat
+  key. An entry starts with the date (`YYYY-MM-DD HH:MM:SS.mmm +03:00 WRN Category: text`), a
+  continuation is indented by 4 spaces. The console outputs Russian text in cp866 — view it in PowerShell (Git Bash has no `iconv`).
 - After startup the bot posts «🔌 Шлюз запущен» ("Gateway started") with the build version
   (`0.0.0-dev` from source) — it shows the new exe came up. If the restart hit a running task, its
   chat also gets «⚠️ Предыдущий запуск прерван перезапуском шлюза» with a hint to write

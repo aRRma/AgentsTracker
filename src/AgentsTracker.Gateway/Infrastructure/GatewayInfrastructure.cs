@@ -40,6 +40,7 @@ public static class GatewayInfrastructure
 
             services.AddSingleton<RunMonitor>();
             services.AddSingleton<RingBufferLog>();
+            services.AddSingleton(_ => new LogFile(Path.Combine(AppPaths.DataDirectory, "logs")));
             services.AddSingleton<ILoggerProvider, RingBufferLoggerProvider>();
 
             services.AddSingleton<ChatDispatcher>();
@@ -91,6 +92,11 @@ public static class GatewayInfrastructure
             // Первой строкой: по жалобе «после обновления ничего не изменилось» надо сразу
             // видеть, какая сборка на самом деле поднялась.
             logger.LogInformation("AgentsTracker {Version}", AppVersion.Current);
+
+            // Падение мимо всех ловушек иначе бесследно: консоли у задачи Планировщика нет.
+            // Файл лога пишется синхронно и успевает до конца процесса.
+            AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+                logger.LogCritical(e.ExceptionObject as Exception, "Необработанное исключение — процесс завершается");
 
             var options = app.Services.GetRequiredService<IOptions<GatewayOptions>>().Value;
             var agent = app.Services.GetRequiredService<IAgentBackend>();

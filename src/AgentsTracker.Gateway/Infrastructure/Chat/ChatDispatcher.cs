@@ -38,9 +38,10 @@ public sealed class ChatDispatcher(
         // к картинке — тоже команда: /stop обязан работать и с ней.
         if (command is not null && _commands.TryGetValue(command, out var handler))
         {
+            var scope = store.For(message.Chat);
             audit.Write(AuditEvent.Now(
                 AuditKinds.Message, argument.Length > 0 ? $"{command} {Text.Preview(argument)}" : command,
-                message.User, message.Chat, store.ProjectPath, store.SessionId));
+                message.User, message.Chat, scope.ProjectPath, scope.SessionId));
             await handler.HandleAsync(new ChatCommandContext(message.Chat, message.User, command, argument, message.Message), ct);
 
             // Картинку команда не берёт, а молча терять её нельзя: она не скачана и агенту

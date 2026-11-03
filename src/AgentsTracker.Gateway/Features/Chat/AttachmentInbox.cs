@@ -58,7 +58,7 @@ public sealed class AttachmentInbox(
         if (!_options.Enabled)
             return new AttachmentBatch([], "Приём вложений выключен в настройках шлюза (Gateway:Attachments:Enabled).");
 
-        var project = store.ProjectPath;
+        var project = store.For(chat).ProjectPath;
         var directory = SessionDirectory(chat, project);
 
         // Чистим здесь же: шлюз работает неделями, и одного обхода при старте мало,
@@ -117,7 +117,7 @@ public sealed class AttachmentInbox(
 
             var length = new FileInfo(path).Length;
             logger.LogInformation("Принята картинка {Name} ({Size})", name, length.Bytes);
-            audit.Write(AuditEvent.Now(AuditKinds.FileReceive, $"{name} ({length.Bytes})", user, chat, project, store.SessionId));
+            audit.Write(AuditEvent.Now(AuditKinds.FileReceive, $"{name} ({length.Bytes})", user, chat, project, store.For(chat).SessionId));
 
             return (path, null);
         }
@@ -267,7 +267,7 @@ public sealed class AttachmentInbox(
     private string Refuse(ChatId chat, UserId user, string project, string reason, string reply)
     {
         logger.LogInformation("Вложение отклонено: {Reason}", reason);
-        audit.Write(AuditEvent.Now(AuditKinds.FileReceive, reason, user, chat, project, store.SessionId, "refused"));
+        audit.Write(AuditEvent.Now(AuditKinds.FileReceive, reason, user, chat, project, store.For(chat).SessionId, "refused"));
         return reply;
     }
 

@@ -68,7 +68,10 @@ public sealed class ApprovalBroker(
 
     private readonly TimeSpan _timeout = TimeSpan.FromMinutes(options.Value.ApprovalTimeoutMinutes);
 
-    public bool HasPending => !_choices.IsEmpty || !_textPrompts.IsEmpty;
+    /// <summary>Висит ли карточка или просьба текста в чате; null — в любом.</summary>
+    public bool HasPending(ChatId? chat) =>
+        _choices.Values.Any(p => chat is null || p.Message.Chat == chat)
+        || _textPrompts.Values.Any(p => chat is null || p.Chat == chat);
 
     /// <summary>
     /// Регистрирует запуск перед стартом процесса. Dispose снимает его вместе с его
@@ -81,7 +84,7 @@ public sealed class ApprovalBroker(
         return new Registration(() =>
         {
             _runs.TryRemove(run.RunId, out _);
-            Cancel(run.RunId);
+            CancelRun(run.RunId);
         });
     }
 
@@ -108,7 +111,7 @@ public sealed class ApprovalBroker(
 
         // Запуск мог закончиться, пока карточка уходила в канал: его снятие её ещё не видело,
         // и без этой проверки она висела бы с живыми кнопками до таймаута.
-        if (Run(run.RunId) is null) Cancel(run.RunId);
+        if (Run(run.RunId) is null) CancelRun(run.RunId);
 
         try
         {
@@ -170,7 +173,7 @@ public sealed class ApprovalBroker(
             _textPrompts[id] = new TextPrompt(completion, run.Chat, run.RunId, message);
 
             // Та же гонка, что у карточки: запуск закончился, пока уходила просьба.
-            if (Run(run.RunId) is null) Cancel(run.RunId);
+            if (Run(run.RunId) is null) CancelRun(run.RunId);
 
             return await WaitAsync(completion.Task, ct);
         }
@@ -240,15 +243,18 @@ public sealed class ApprovalBroker(
         await FinishCardAsync(pending.Message, pending.Html, $"➡️ {label}");
     }
 
-    /// <summary>Снимает все ожидания всех запусков — когда пользователь дал /stop.</summary>
-    public void CancelAll() => Cancel(null);
+    /// <summary>Снимает ожидания чата — когда пользователь дал /stop; null — всех чатов.</summary>
+    public void Cancel(ChatId? chat) => Cancel((_, at) => chat is null || at == chat);
 
-    /// <summary>Снимает ожидания одного запуска; null — всех.</summary>
-    private void Cancel(string? runId)
+    /// <summary>Снимает ожидания одного запуска.</summary>
+    private void CancelRun(string runId) => Cancel((run, _) => run == runId);
+
+    /// <summary>Снимает ожидания, подходящие под условие от id запуска и чата.</summary>
+    private void Cancel(Func<string, ChatId, bool> match)
     {
         foreach (var (id, pending) in _choices)
         {
-            if (runId is not null && pending.RunId != runId) continue;
+            if (!match(pending.RunId, pending.Message.Chat)) continue;
             if (!pending.Completion.TrySetCanceled()) continue;
 
             _choices.TryRemove(id, out _);
@@ -259,7 +265,7 @@ public sealed class ApprovalBroker(
 
         foreach (var (id, prompt) in _textPrompts)
         {
-            if (runId is not null && prompt.RunId != runId) continue;
+            if (!match(prompt.RunId, prompt.Chat)) continue;
             if (_textPrompts.TryRemove(id, out _)) prompt.Completion.TrySetCanceled();
         }
     }

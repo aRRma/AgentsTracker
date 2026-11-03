@@ -36,64 +36,277 @@ public sealed class SessionStore
         Migrate();
     }
 
-    /// <summary>Папка, в которой запускается агент: выбранная из чата либо из конфига.</summary>
-    public string ProjectPath
+    /// <summary>Выбор чата: темы — свой, ленты — общий с прошлыми версиями.</summary>
+    public ChatScope For(ChatId chat) => new(this, chat);
+
+    /// <summary>
+    /// Выбор ленты — для того, у кого чата нет: старт шлюза, монитор. Чат известен — только
+    /// <see cref="For"/>, иначе тема покажет и изменит проект ленты.
+    /// </summary>
+    public ChatScope Feed => new(this, null);
+
+    /// <summary>Корень папок бесед: удалять перед запуском можно только внутри него.</summary>
+    public static string TalkRoot => ProjectCatalog.Normalize(Path.Combine(Path.GetTempPath(), "AgentsTracker-talk"));
+
+    /// <summary>Путь внутри <see cref="TalkRoot"/> — папка беседы: её чистят перед запуском, а запуск идёт только с поиском.</summary>
+    public static bool IsTalkFolder(string path) => ProjectCatalog.IsInside(ProjectCatalog.Normalize(path), TalkRoot);
+
+    /// <summary>Своя папка у каждой темы: по пути папки CLI находит сессии беседы.</summary>
+    private static string TalkFolder(ChatId chat) =>
+        Path.Combine(TalkRoot, string.Concat(chat.Key.Select(c => char.IsAsciiLetterOrDigit(c) ? c : '_')));
+
+    /// <summary>
+    /// Выбор одного чата: проект, активная сессия, модель, effort, режим. Тема без записи —
+    /// беседа: команда в новой теме не должна тронуть чужой проект.
+    /// </summary>
+    public sealed class ChatScope
     {
-        get { lock (_gate) return ProjectPathLocked(); }
+        private readonly SessionStore _store;
+        private readonly ChatId? _chat;
+
+        internal ChatScope(SessionStore store, ChatId? chat) => (_store, _chat) = (store, chat);
+
+        public bool IsTopic => _chat?.IsTopic == true;
+
+        /// <summary>Чат выбора; null — <see cref="SessionStore.Feed"/>, у которого чата нет.</summary>
+        public ChatId? Chat => _chat;
+
+        /// <summary>Тема без выбранного типа: шлюз сначала спросит его.</summary>
+        public bool IsNewTopic
+        {
+            get { lock (_store._gate) return IsNewTopicLocked(); }
+        }
+
+        /// <summary>Тема, которой выбрали беседу. У новой темы <see cref="IsTalk"/> тоже true, но тип не выбран.</summary>
+        public bool IsChosenTalk
+        {
+            get { lock (_store._gate) return IsTalkLocked() && !IsNewTopicLocked(); }
+        }
+
+        /// <summary>Беседа: тема без проекта. Идёт в своей пустой папке, только с поиском в сети.</summary>
+        public bool IsTalk
+        {
+            get { lock (_store._gate) return IsTalkLocked(); }
+        }
+
+        /// <summary>Папка, в которой запускается агент: выбранная из чата либо из конфига.</summary>
+        public string ProjectPath
+        {
+            get { lock (_store._gate) return _store.ProjectPathLocked(_chat); }
+        }
+
+        public string? Model => Read(s => s.Model);
+
+        /// <summary>Модель, которой пойдёт следующий запуск: из чата, иначе из конфига. null — решает CLI.</summary>
+        public string? EffectiveModel
+        {
+            get { lock (_store._gate) return Selection()?.Model ?? (IsTalkLocked() ? _store._options.Question.Model : _store._options.Model); }
+        }
+
+        /// <summary>
+        /// Режим, выбранный из чата. У беседы его нет: выбор беседы стирает сохранённый, а /mode в ней
+        /// получает отказ — иначе /mode plan, данный до выбора типа, остался бы без способа снять.
+        /// </summary>
+        public string? PermissionMode => Read(s => s.PermissionMode);
+
+        /// <summary>Режим работы следующего запуска: выбранный из чата, иначе из конфига.</summary>
+        public string EffectivePermissionMode => PermissionMode ?? _store._options.PermissionMode;
+
+        /// <summary>Уровень усилий, выбранный из чата. null — не выбирали, действует значение конфига.</summary>
+        public string? Effort => Read(s => s.Effort);
+
+        /// <summary>Уровень усилий следующего запуска: из чата, иначе из конфига. null — решает CLI.</summary>
+        public string? EffectiveEffort
+        {
+            get { lock (_store._gate) return Selection()?.Effort ?? (IsTalkLocked() ? _store._options.Question.Effort : _store._options.Effort); }
+        }
+
+        /// <summary>Активная сессия текущего проекта. null — следующий запуск начнёт новую.</summary>
+        public string? SessionId
+        {
+            get { lock (_store._gate) return _store._state.ActiveSessions.GetValueOrDefault(Slot(_store.ProjectPathLocked(_chat))); }
+        }
+
+        /// <summary>У темы null — беседа.</summary>
+        public void SetProjectPath(string? path)
+        {
+            // Совпадение с конфигом храним у ленты как null: тогда правка ProjectPath в конфиге
+            // не окажется молча перекрыта выбором, сделанным когда-то из чата.
+            var value = path is { Length: > 0 } && (IsTopic || !ProjectCatalog.Same(path, _store._options.ProjectPath))
+                ? ProjectCatalog.Normalize(path)
+                : null;
+
+            Write(s =>
+            {
+                s.ProjectPath = value;
+
+                // Беседа режим не читает, а сохранённый до неё (/mode plan в новой теме) молча ожил
+                // бы, когда тему потом привяжут к проекту.
+                if (IsTopic && value is null) s.PermissionMode = null;
+            }, typed: true);
+        }
+
+        public void SetModel(string? model) => Write(s => s.Model = model);
+
+        public void SetPermissionMode(string? mode) => Write(s => s.PermissionMode = mode);
+
+        public void SetEffort(string? effort) => Write(s => s.Effort = effort);
+
+        /// <summary>Задаёт активную сессию текущего проекта; null начинает новую.</summary>
+        public void SetSessionId(string? sessionId) => _store.Mutate(s =>
+        {
+            var slot = Slot(_store.ProjectPathLocked(_chat));
+
+            if (sessionId is { Length: > 0 }) s.ActiveSessions[slot] = sessionId;
+            else s.ActiveSessions.Remove(slot);
+
+            s.LastActivityUtc = DateTimeOffset.UtcNow;
+        });
+
+        /// <summary>
+        /// Сессия активна в другом чате на этом проекте. Выбрать её здесь — две темы продолжали бы
+        /// одну сессию, и их разговоры перемешались бы.
+        /// </summary>
+        public bool IsActiveElsewhere(string sessionId)
+        {
+            lock (_store._gate)
+            {
+                var own = Slot(_store.ProjectPathLocked(_chat));
+                var slots = _store._state.ActiveSessions;
+                return slots.Any(kv => !slots.Comparer.Equals(kv.Key, own) && string.Equals(kv.Value, sessionId, StringComparison.Ordinal));
+            }
+        }
+
+        /// <summary>
+        /// Меняет активную сессию проекта, только если она всё ещё равна
+        /// <paramref name="onlyIfActive"/>: так итог запуска не перетирает /new или смену
+        /// сессии, сделанные по ходу. Возвращает, была ли запись.
+        /// </summary>
+        public bool TrySetSessionId(string projectPath, string? sessionId, string? onlyIfActive)
+        {
+            var slot = Slot(ProjectCatalog.Normalize(projectPath));
+            var applied = false;
+
+            _store.Mutate(s =>
+            {
+                var current = s.ActiveSessions.GetValueOrDefault(slot);
+                if (!string.Equals(current, onlyIfActive, StringComparison.Ordinal)) return;
+
+                if (sessionId is { Length: > 0 }) s.ActiveSessions[slot] = sessionId;
+                else s.ActiveSessions.Remove(slot);
+
+                s.LastActivityUtc = DateTimeOffset.UtcNow;
+                applied = true;
+            });
+
+            return applied;
+        }
+
+        /// <summary>
+        /// Забывает сессии проекта и начинает новую. Активные в других чатах остаются: в соседней
+        /// теме на том же проекте может идти запуск, и его сессия пропала бы на середине.
+        /// Возвращает, сколько записей снято.
+        /// </summary>
+        public int ForgetSessions()
+        {
+            var removed = 0;
+
+            _store.Mutate(s =>
+            {
+                var project = _store.ProjectPathLocked(_chat);
+                s.ActiveSessions.Remove(Slot(project));
+                removed = s.Sessions.RemoveAll(r =>
+                    string.Equals(r.ProjectPath, project, StringComparison.OrdinalIgnoreCase)
+                    && !s.ActiveSessions.ContainsValue(r.Id));
+            });
+
+            return removed;
+        }
+
+        /// <summary>
+        /// Заводит сессию заранее, до ответа CLI: id шлюз выдаёт сам (<c>--session-id</c>),
+        /// поэтому прерванный или упавший запуск не теряет ветку — следующее сообщение
+        /// продолжит её через <c>--resume</c>.
+        /// </summary>
+        public void RegisterSession(string projectPath, string prompt, string sessionId)
+        {
+            var project = ProjectCatalog.Normalize(projectPath);
+            var now = DateTimeOffset.Now;
+
+            _store.Mutate(s =>
+            {
+                s.LastActivityUtc = now.ToUniversalTime();
+                Touch(s, project, prompt, sessionId, now, activateIn: Slot(project));
+            });
+        }
+
+        /// <summary>Правила «всегда» текущего проекта: копия, чтобы читать без замка.</summary>
+        public IReadOnlyList<string> AlwaysAllowRules()
+        {
+            lock (_store._gate)
+                return [.. _store._state.AlwaysAllowByProject.GetValueOrDefault(_store.ProjectPathLocked(_chat)) ?? []];
+        }
+
+        /// <summary>Снимает правило «всегда». Возвращает false, если такого правила не было.</summary>
+        public bool RemoveAlwaysAllow(string signature)
+        {
+            var removed = false;
+            _store.Mutate(s =>
+            {
+                var project = _store.ProjectPathLocked(_chat);
+                removed = s.AlwaysAllowByProject.GetValueOrDefault(project)?.Remove(signature) == true;
+                if (s.AlwaysAllowByProject.GetValueOrDefault(project) is { Count: 0 }) s.AlwaysAllowByProject.Remove(project);
+            });
+            return removed;
+        }
+
+        /// <summary>Снимает все правила «всегда» текущего проекта. Возвращает, сколько их было.</summary>
+        public int ClearAlwaysAllow()
+        {
+            var removed = 0;
+            _store.Mutate(s =>
+            {
+                var project = _store.ProjectPathLocked(_chat);
+                removed = s.AlwaysAllowByProject.GetValueOrDefault(project)?.Count ?? 0;
+                s.AlwaysAllowByProject.Remove(project);
+            });
+            return removed;
+        }
+
+        /// <summary>Ключ активной сессии в <see cref="GatewayState.ActiveSessions"/>.</summary>
+        private string Slot(string project) => IsTopic ? $"{_chat!.Key}|{project}" : project;
+
+        /// <summary>Выбор под замком; null — тема без записи.</summary>
+        private IChatSelection? Selection() =>
+            IsTopic ? _store._state.Topics.GetValueOrDefault(_chat!.Key) : _store._state;
+
+        private bool IsTalkLocked() => IsTopic && Selection()?.ProjectPath is not { Length: > 0 };
+
+        private bool IsNewTopicLocked() => IsTopic && _store._state.Topics.GetValueOrDefault(_chat!.Key) is null or { Untyped: true };
+
+        private string? Read(Func<IChatSelection, string?> field)
+        {
+            lock (_store._gate) return Selection() is { } selection ? field(selection) : null;
+        }
+
+        /// <summary>
+        /// Первая запись в теме заводит её выбор. Тип известен только после выбора проекта или
+        /// беседы (<paramref name="typed"/>): после одной /model тема осталась бы новой по смыслу, а
+        /// следующий текст ушёл бы беседой без вопроса.
+        /// </summary>
+        private void Write(Action<IChatSelection> change, bool typed = false) => _store.Mutate(s =>
+        {
+            if (!IsTopic)
+            {
+                change(s);
+                return;
+            }
+
+            if (!s.Topics.TryGetValue(_chat!.Key, out var topic)) s.Topics[_chat.Key] = topic = new TopicState { Untyped = true };
+            if (typed) topic.Untyped = null;
+            change(topic);
+        });
     }
-
-    public string? Model
-    {
-        get { lock (_gate) return _state.Model; }
-    }
-
-    /// <summary>Модель, которой пойдёт следующий запуск: из чата, иначе из конфига. null — решает CLI.</summary>
-    public string? EffectiveModel
-    {
-        get { lock (_gate) return _state.Model ?? _options.Model; }
-    }
-
-    public string? PermissionMode
-    {
-        get { lock (_gate) return _state.PermissionMode; }
-    }
-
-    /// <summary>Режим работы следующего запуска: выбранный из чата, иначе из конфига.</summary>
-    public string EffectivePermissionMode
-    {
-        get { lock (_gate) return _state.PermissionMode ?? _options.PermissionMode; }
-    }
-
-    /// <summary>Уровень усилий, выбранный из чата. null — не выбирали, действует значение конфига.</summary>
-    public string? Effort
-    {
-        get { lock (_gate) return _state.Effort; }
-    }
-
-    /// <summary>Уровень усилий следующего запуска: из чата, иначе из конфига. null — решает CLI.</summary>
-    public string? EffectiveEffort
-    {
-        get { lock (_gate) return _state.Effort ?? _options.Effort; }
-    }
-
-    /// <summary>Активная сессия текущего проекта. null — следующий запуск начнёт новую.</summary>
-    public string? SessionId
-    {
-        get { lock (_gate) return _state.ActiveSessions.GetValueOrDefault(ProjectPathLocked()); }
-    }
-
-    public void SetProjectPath(string? path)
-    {
-        // Совпадение с конфигом храним как null: тогда правка ProjectPath в конфиге
-        // не окажется молча перекрыта выбором, сделанным когда-то из чата.
-        var value = path is { Length: > 0 } && !ProjectCatalog.Same(path, _options.ProjectPath)
-            ? ProjectCatalog.Normalize(path)
-            : null;
-
-        Mutate(s => s.ProjectPath = value);
-    }
-
-    public void SetModel(string? model) => Mutate(s => s.Model = model);
 
     /// <summary>
     /// Модель для показа человеку: версия, которой алиас ответил в последний раз, иначе
@@ -130,49 +343,6 @@ public sealed class SessionStore
         Mutate(s => s.ModelVersions[requested] = answered);
     }
 
-    public void SetPermissionMode(string? mode) => Mutate(s => s.PermissionMode = mode);
-
-    public void SetEffort(string? effort) => Mutate(s => s.Effort = effort);
-
-    /// <summary>Задаёт активную сессию текущего проекта; null начинает новую.</summary>
-    public void SetSessionId(string? sessionId)
-    {
-        Mutate(s =>
-        {
-            var project = ProjectPathLocked();
-
-            if (sessionId is { Length: > 0 }) s.ActiveSessions[project] = sessionId;
-            else s.ActiveSessions.Remove(project);
-
-            s.LastActivityUtc = DateTimeOffset.UtcNow;
-        });
-    }
-
-    /// <summary>
-    /// Меняет активную сессию проекта, только если она всё ещё равна
-    /// <paramref name="onlyIfActive"/>: так итог запуска не перетирает /new или смену
-    /// сессии, сделанные по ходу. Возвращает, была ли запись.
-    /// </summary>
-    public bool TrySetSessionId(string projectPath, string? sessionId, string? onlyIfActive)
-    {
-        var project = ProjectCatalog.Normalize(projectPath);
-        var applied = false;
-
-        Mutate(s =>
-        {
-            var current = s.ActiveSessions.GetValueOrDefault(project);
-            if (!string.Equals(current, onlyIfActive, StringComparison.Ordinal)) return;
-
-            if (sessionId is { Length: > 0 }) s.ActiveSessions[project] = sessionId;
-            else s.ActiveSessions.Remove(project);
-
-            s.LastActivityUtc = DateTimeOffset.UtcNow;
-            applied = true;
-        });
-
-        return applied;
-    }
-
     /// <summary>Сессии проекта, свежие сверху.</summary>
     public IReadOnlyList<SessionRecord> SessionsFor(string projectPath)
     {
@@ -197,22 +367,6 @@ public sealed class SessionStore
             var record = _state.Sessions.FirstOrDefault(r => string.Equals(r.Id, sessionId, StringComparison.Ordinal));
             return record is null ? null : Clone(record);
         }
-    }
-
-    /// <summary>Забывает все сессии проекта и начинает новую. Возвращает, сколько записей снято.</summary>
-    public int ForgetSessions(string projectPath)
-    {
-        var project = ProjectCatalog.Normalize(projectPath);
-        var removed = 0;
-
-        Mutate(s =>
-        {
-            removed = s.Sessions.RemoveAll(r =>
-                string.Equals(r.ProjectPath, project, StringComparison.OrdinalIgnoreCase));
-            s.ActiveSessions.Remove(project);
-        });
-
-        return removed;
     }
 
     /// <summary>
@@ -248,7 +402,7 @@ public sealed class SessionStore
 
             // Активной сессию здесь не делаем — это решает ChatWorker через TrySetSessionId.
             // Иначе запись расхода откатила бы /new или смену сессии по ходу запуска.
-            var record = Touch(s, project, prompt, sessionId, now, activate: false);
+            var record = Touch(s, project, prompt, sessionId, now, activateIn: null);
             record.Turns += usage.Turns;
         });
     }
@@ -346,17 +500,17 @@ public sealed class SessionStore
     public void BeginRun(ActiveRun run) => Mutate(s =>
     {
         if (run.Question) s.ActiveQuestion = run;
-        else s.ActiveRun = run;
+        else s.ActiveRuns[run.ChatKey] = run;
     });
 
-    public void EndRun(bool question) => Mutate(s =>
+    public void EndRun(ActiveRun run) => Mutate(s =>
     {
-        if (question) s.ActiveQuestion = null;
-        else s.ActiveRun = null;
+        if (run.Question) s.ActiveQuestion = null;
+        else s.ActiveRuns.Remove(run.ChatKey);
     });
 
     /// <summary>
-    /// Запуски, оставшиеся от убитого экземпляра: задача и вопрос, если были; записи снимаются.
+    /// Запуски, оставшиеся от убитого экземпляра: задачи и вопрос, если были; записи снимаются.
     /// Зовётся один раз на старте.
     /// </summary>
     public IReadOnlyList<ActiveRun> TakeInterruptedRuns()
@@ -364,9 +518,11 @@ public sealed class SessionStore
         List<ActiveRun> runs = [];
         Mutate(s =>
         {
-            if (s.ActiveRun is { } run) runs.Add(run);
+            if (s.ActiveRun is { } legacy) runs.Add(legacy);
+            runs.AddRange(s.ActiveRuns.Values);
             if (s.ActiveQuestion is { } question) runs.Add(question);
             s.ActiveRun = null;
+            s.ActiveRuns.Clear();
             s.ActiveQuestion = null;
         });
         return runs;
@@ -379,28 +535,12 @@ public sealed class SessionStore
     }
 
     /// <summary>
-    /// Заводит сессию заранее, до ответа CLI: id шлюз выдаёт сам (<c>--session-id</c>),
-    /// поэтому прерванный или упавший запуск не теряет ветку — следующее сообщение
-    /// продолжит её через <c>--resume</c>.
-    /// </summary>
-    public void RegisterSession(string projectPath, string prompt, string sessionId)
-    {
-        var project = ProjectCatalog.Normalize(projectPath);
-        var now = DateTimeOffset.Now;
-
-        Mutate(s =>
-        {
-            s.LastActivityUtc = now.ToUniversalTime();
-            Touch(s, project, prompt, sessionId, now, activate: true);
-        });
-    }
-
-    /// <summary>
-    /// Обновляет запись сессии, создавая при необходимости; при <paramref name="activate"/>
-    /// делает её активной в проекте. Зовётся под замком из <see cref="Mutate"/>.
+    /// Обновляет запись сессии, создавая при необходимости; с <paramref name="activateIn"/>
+    /// делает её активной в этом ключе <see cref="GatewayState.ActiveSessions"/>. Зовётся под
+    /// замком из <see cref="Mutate"/>.
     /// </summary>
     private static SessionRecord Touch(
-        GatewayState state, string project, string prompt, string sessionId, DateTimeOffset now, bool activate)
+        GatewayState state, string project, string prompt, string sessionId, DateTimeOffset now, string? activateIn)
     {
         var record = state.Sessions.FirstOrDefault(r => string.Equals(r.Id, sessionId, StringComparison.Ordinal));
         if (record is null)
@@ -417,7 +557,7 @@ public sealed class SessionStore
 
         record.LastActivityUtc = now;
 
-        if (activate) state.ActiveSessions[project] = sessionId;
+        if (activateIn is not null) state.ActiveSessions[activateIn] = sessionId;
         TrimSessions(state, project);
 
         return record;
@@ -426,20 +566,13 @@ public sealed class SessionStore
     public void ResetUsage() => Mutate(s => s.Usage = new UsageStats { SinceUtc = DateTimeOffset.Now });
 
     // Правила «всегда» живут в проекте. Запуск проверяет и пишет их в своём проекте, а не в
-    // текущем проекте чата: /project можно сменить посреди задачи. /rules — в текущем.
+    // текущем проекте чата: /project можно сменить посреди задачи. /rules — в текущем (ChatScope).
 
     public bool IsAlwaysAllowed(string projectPath, string signature)
     {
         lock (_gate)
             return _state.AlwaysAllowByProject.GetValueOrDefault(ProjectCatalog.Normalize(projectPath))
                 ?.Contains(signature, StringComparer.Ordinal) == true;
-    }
-
-    /// <summary>Правила «всегда» текущего проекта: копия, чтобы читать без замка.</summary>
-    public IReadOnlyList<string> AlwaysAllowRules()
-    {
-        lock (_gate)
-            return [.. _state.AlwaysAllowByProject.GetValueOrDefault(ProjectPathLocked()) ?? []];
     }
 
     public void AddAlwaysAllow(string projectPath, string signature)
@@ -449,32 +582,6 @@ public sealed class SessionStore
             var rules = RulesOf(s, ProjectCatalog.Normalize(projectPath));
             if (!rules.Contains(signature, StringComparer.Ordinal)) rules.Add(signature);
         });
-    }
-
-    /// <summary>Снимает правило «всегда». Возвращает false, если такого правила не было.</summary>
-    public bool RemoveAlwaysAllow(string signature)
-    {
-        var removed = false;
-        Mutate(s =>
-        {
-            var project = ProjectPathLocked();
-            removed = s.AlwaysAllowByProject.GetValueOrDefault(project)?.Remove(signature) == true;
-            if (s.AlwaysAllowByProject.GetValueOrDefault(project) is { Count: 0 }) s.AlwaysAllowByProject.Remove(project);
-        });
-        return removed;
-    }
-
-    /// <summary>Снимает все правила «всегда» текущего проекта. Возвращает, сколько их было.</summary>
-    public int ClearAlwaysAllow()
-    {
-        var removed = 0;
-        Mutate(s =>
-        {
-            var project = ProjectPathLocked();
-            removed = s.AlwaysAllowByProject.GetValueOrDefault(project)?.Count ?? 0;
-            s.AlwaysAllowByProject.Remove(project);
-        });
-        return removed;
     }
 
     private static List<string> RulesOf(GatewayState state, string project)
@@ -544,16 +651,26 @@ public sealed class SessionStore
             .Where(r => string.Equals(r.ProjectPath, project, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(r => r.LastActivityUtc)
             .Skip(SessionsPerProject)
-            // Активную не выбрасываем даже старую: иначе следующий запуск ушёл бы
-            // с --resume на сессию, которой в списке уже нет.
-            .Where(r => !string.Equals(r.Id, state.ActiveSessions.GetValueOrDefault(project), StringComparison.Ordinal))
+            // Активную не выбрасываем даже старую — ни ленты, ни темы: иначе следующий запуск
+            // ушёл бы с --resume на сессию, которой в списке уже нет.
+            .Where(r => !state.ActiveSessions.ContainsValue(r.Id))
             .ToArray();
 
         foreach (var record in stale) state.Sessions.Remove(record);
     }
 
-    private string ProjectPathLocked() =>
-        ProjectCatalog.Normalize(_state.ProjectPath is { Length: > 0 } p ? p : _options.ProjectPath);
+    /// <summary>Проект чата под замком; null — лента. Тема без проекта — беседа в своей папке.</summary>
+    private string ProjectPathLocked(ChatId? chat = null)
+    {
+        if (chat is { IsTopic: true })
+        {
+            return _state.Topics.GetValueOrDefault(chat.Key)?.ProjectPath is { Length: > 0 } topic
+                ? ProjectCatalog.Normalize(topic)
+                : TalkFolder(chat);
+        }
+
+        return ProjectCatalog.Normalize(_state.ProjectPath is { Length: > 0 } p ? p : _options.ProjectPath);
+    }
 
     private void Mutate(Action<GatewayState> change)
     {
@@ -718,6 +835,8 @@ public sealed class SessionStore
         state.AlwaysAllowByProject = new Dictionary<string, List<string>>(state.AlwaysAllowByProject, StringComparer.OrdinalIgnoreCase);
         state.ModelVersions = new Dictionary<string, string>(state.ModelVersions, StringComparer.OrdinalIgnoreCase);
         state.TrustedProjects = new Dictionary<string, string>(state.TrustedProjects, StringComparer.OrdinalIgnoreCase);
+        state.Topics = new Dictionary<string, TopicState>(state.Topics, StringComparer.Ordinal);
+        state.ActiveRuns = new Dictionary<string, ActiveRun>(state.ActiveRuns, StringComparer.Ordinal);
 
         // Старые версии писали голое имя инструмента («WebSearch»). Теперь в сигнатуру входят
         // аргументы, так что такие записи не совпадут никогда — убираем из /rules.

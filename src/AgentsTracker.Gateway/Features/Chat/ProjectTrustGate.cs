@@ -73,6 +73,10 @@ public sealed class ProjectTrustGate(
             }
             catch (TimeoutException)
             {
+                // Две темы на одном проекте — две карточки: пока эта ждала, доверие дали по соседней.
+                if (agent.InspectProject(project) is not { } now || store.IsProjectTrusted(project, now.Fingerprint))
+                    return Outcome.Trusted;
+
                 audit.Write(AuditEvent.Now(AuditKinds.Trust, summary, null, chat, project, outcome: "timeout"));
                 await SayAsync(chat, replyTo, $"Задача не запущена: на вопрос о доверии к проекту {name} не ответили.", ct);
                 return Outcome.Declined;

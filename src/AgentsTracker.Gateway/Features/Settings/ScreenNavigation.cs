@@ -9,20 +9,20 @@ namespace AgentsTracker.Gateway.Features.Settings;
 internal sealed record ScreenPosition(string? Group = null, int Page = 0, string? Card = null);
 
 /// <summary>
-/// Позиция в списке на каждого пользователя. Экраны — синглтоны, а разрешённых у канала
-/// бывает несколько: с общим полем страница, открытая одним, подменила бы список
-/// под пальцем у другого.
+/// Позиция в списке на каждый чат. Экраны — синглтоны, а чатов много: у каждого разрешённого
+/// свой, и у каждой темы свой. С общим полем страница, открытая в одном, подменила бы список
+/// под пальцем в другом. Чаты только личные, так что чат — это и пользователь.
 /// </summary>
 internal sealed class ScreenNavigation
 {
-    private readonly ConcurrentDictionary<UserId, ScreenPosition> _byUser = new();
+    private readonly ConcurrentDictionary<ChatId, ScreenPosition> _byChat = new();
 
-    public ScreenPosition Of(UserId user) => _byUser.GetValueOrDefault(user) ?? new ScreenPosition();
+    public ScreenPosition Of(ChatId chat) => _byChat.GetValueOrDefault(chat) ?? new ScreenPosition();
 
-    public void Set(UserId user, ScreenPosition position) => _byUser[user] = position;
+    public void Set(ChatId chat, ScreenPosition position) => _byChat[chat] = position;
 
-    public void Update(UserId user, Func<ScreenPosition, ScreenPosition> change) => Set(user, change(Of(user)));
+    public void Update(ChatId chat, Func<ScreenPosition, ScreenPosition> change) => Set(chat, change(Of(chat)));
 
     /// <summary>К началу — при открытии экрана из корня или командой: иначе показалась бы прошлая карточка.</summary>
-    public void Reset(UserId user) => _byUser.TryRemove(user, out _);
+    public void Reset(ChatId chat) => _byChat.TryRemove(chat, out _);
 }

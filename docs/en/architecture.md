@@ -37,19 +37,21 @@ src/AgentsTracker.Gateway/
   Program.cs            data directory, service commands, lists of agents (Gateway:Agent), channels (Gateway:Channel:Type) and features
   Domain/               pure models: GatewayState (state.json), AuditEvent and AuditKinds
   Infrastructure/       GatewayInfrastructure.cs (config layers, DI, Kestrel, ValidateStartup, MapFeatures), AppPaths, Modules/IFeatureModule,
-                        Configuration (GatewayOptions, ProjectCatalog), State (SessionStore, CacheGuard), Git, Audit, Monitoring (RunMonitor, RingBufferLog),
+                        Configuration (GatewayOptions, ProjectCatalog), State (SessionStore, CacheGuard), Git, Audit, Monitoring (RunMonitor, RingBufferLog, LogFile),
                         Chat (ChatGatewayService, ChatDispatcher, DisplayFormat, MarkdownRenderer,
-                        StartupNotice — «запущен»/«прерван» after a restart, Dispatch/ — handler contracts),
+                        StartupNotice — «запущен»/«прерван» after a restart, ChatCommandCatalog — the «Меню» command list,
+                        Dispatch/ — handler contracts),
                         Security (DPAPI secrets, ProtectSecretsCommand, DataDirectoryAcl), Cli/ (ConsoleCommands routes install, uninstall, protect-secrets),
                         Autostart/ (a Task Scheduler task via schtasks),
                         Container.Detected (in a container `install` refuses, and startup warns if `MonitorBind` does not fit: there it must be `any`)
   Features/             vertical slices, each with its own *Module
     Approvals/          ApprovalBroker, ApprovalCardRenderer, OperatorConsole, /rules
-    Chat/               ChatWorker (two lanes), RunStatusMessage, /new /stop, AttachmentInbox (pictures from the chat),
+    Chat/               ChatWorker (a lane per chat, the folder lock), RunStatusMessage, /new /stop, AttachmentInbox (pictures from the chat),
                         ProjectTrustGate («Доверять проекту?» before a task's run)
     Settings/           SettingsMenuCoordinator + Screens/*, SkillLauncher, PendingConfirmations (the second press for irreversible buttons),
                         /menu /settings /status /sessions /agent /model /effort /mode /skills /project /usage
     Question/           /ask and the «Задать вопрос» buttons: a one-off run with no session (QuestionLauncher)
+    Topics/             «Тип темы» (TopicScreen), /topic and the text of a new topic (TopicHandler)
     Help/ Audit/ Monitor/   /start /help; /audit; the web page (index.html — EmbeddedResource) and /api/*
 ```
 
@@ -57,7 +59,7 @@ Layering rules (also in CLAUDE.md — breaking one is an architecture error, not
 `Abstractions` do not open files and do not go over the network; `Gateway` knows a specific agent
 and channel only in `Program.cs`; the backend and the channel know nothing about each other or
 `GatewayOptions`; `Infrastructure` knows nothing about features (except the `Dispatch` contracts); a
-feature depends on a feature only through a public service (`Settings` → `ChatWorker.IsBusy`).
+feature depends on a feature only through a public service (`Settings` → `ChatWorker.IsBusy(chat)`).
 
 ## How a message travels
 
@@ -68,7 +70,8 @@ is a rejection too). Text is processed in order:
    go to a waiting free-form answer and nothing could interrupt a stuck run;
 2. the `IChatTextHandler` chain in module order: an answer to a card (`ApprovalTextHandler`) →
    skill arguments (`SkillArgumentsTextHandler`) → the text of a вопрос after a bare `/ask` or the
-   «Задать вопрос» button (`QuestionTextHandler`) → the agent's queue (`ChatEnqueueTextHandler`, always
+   «Задать вопрос» button (`QuestionTextHandler`) → in a topic with no type yet, the «Тип темы»
+   screen instead of a run (`TopicHandler`) → the agent's queue (`ChatEnqueueTextHandler`, always
    `true`). That is why `ChatModule` is last. Unknown slash commands are Claude Code's own and go to
    the CLI.
 
@@ -87,26 +90,52 @@ Buttons: the `IChatButtonHandler` chain (`Dispatch/`), each recognizing its own 
 
 Before a task's run `ChatWorker` asks `ProjectTrustGate`: if `IAgentBackend.InspectProject` finds the
 agent's settings in the project and their fingerprint is not trusted yet, a «Доверять проекту?» card
-goes through `ApprovalBroker` under its own short-lived `RunScope` (so `/stop` withdraws it).
+goes through `ApprovalBroker` under its own short-lived `RunScope` (so `/stop` withdraws it). The
+same check covers the session's folder when the agent moved the session into a worktree.
 «❌ Отклонить», silence and `/stop` all mean no run; the first two also drop the task queue. The
-project is re-read after the card: if `/project` changed meanwhile, the new one is checked too. Why —
+project and the session are re-read after the card: if `/project` or `/new` changed them meanwhile,
+the new ones are checked too. Why —
 `cli-contract.md`, "Project settings and the trust dialog".
 
-### Two lanes: a task and a вопрос in parallel
+### Lanes: chats, topics and a вопрос in parallel
 
-`ChatWorker` has two lanes, each with its own queue and `CancellationTokenSource`: tasks (and
-`/context`, `/compact`) one at a time, вопросы (`AgentRunKind.Question`) one at a time, and a task
-runs **in parallel** with a вопрос — otherwise a вопрос, asked precisely so as not to wait, would
-wait for a long task. Never more than two agent processes at once.
+`ChatWorker` has a task lane per chat — the лента and every тема (`ChatId.Key`), created with the
+chat's first task — and one shared вопрос lane. Each has its own queue and
+`CancellationTokenSource`. A chat's tasks (and `/context`, `/compact`) go one at a time; lanes of
+different chats and the вопрос lane run **in parallel** — otherwise a вопрос, asked precisely so as
+not to wait, would wait for a long task, and a topic would wait for another topic's project. The
+number of agent processes is not capped.
 
-- `IsBusy`/`QueueLength` are about tasks only: the menu, a session switch and «Сжать» do not wait
-  for a вопрос. `IsAnswering`/`QuestionQueueLength` — for the status line.
-- `/stop` (`ChatWorker.Stop`) interrupts both lanes and calls `ApprovalBroker.CancelAll`.
+- **One run per folder.** `LockFolderAsync` keeps a `SemaphoreSlim` per normalized folder: the
+  session's folder (a worktree the agent moved it to), not the project, because that is what the
+  agent edits. The lock is taken right after the trust loop — the card waits outside it, up to a
+  quarter of an hour — and before the model, the limit and the session refresh: a long wait would
+  make them stale, and on a limit exhausted meanwhile the CLI would go to credits. A waiting run
+  says «⏳ В проекте идёт другой запуск…», and the message is deleted when the wait ends; `/stop`
+  interrupts the wait too ("Details worth knowing", `Lane.RunCts`). Under the lock the run
+  checks again, without a card, that the folders are still trusted and the project and session are
+  the same: a neighbour's run in the folder could have planted a hook, and `/new` could have moved
+  the session to another folder. If anything changed, the lock is released and the trust loop runs
+  again. The lock is released after the session and usage are recorded, before the answer is sent.
+  Known limit: the lock key is fixed at the start, so a session the agent moves into a worktree
+  mid-run (`EnterWorktree`) does not lock that worktree.
+- `IsBusy(chat)`/`QueueLength(chat)` are about that chat's tasks only: the menu, a session switch
+  and «Сжать» do not wait for a вопрос. `AnyBusy` — for the monitor. `IsAnswering`/`QuestionQueueLength`
+  — for the вопрос lane; the screens use `IsAnsweringFor(chat)`: in a topic only its own вопрос, as
+  `/stop` there stops only its own.
+- `/stop` (`ChatWorker.Stop(chat)`) in a topic interrupts that topic's lane, its cards
+  (`ApprovalBroker.Cancel(chat)`) and the вопрос if it came from that topic (`Lane.Chat`). `/stop` in
+  the лента interrupts everything, as before topics.
 - A limit refusal, `RateLimited` or a declined trust drains only its own lane: the вопрос has its
-  own model, and the other lane checks the limit before its own run anyway.
-- A вопрос stays out of `RunMonitor` (the current run and the queue there are the task's) but is in
-  the run history and the journal. `state.json` keeps the task in `ActiveRun` and the вопрос in
-  `ActiveQuestion`; after a restart `StartupNotice` reports both.
+  own model, and the other lanes check the limit before their own runs anyway. The вопрос lane is
+  shared, so every chat whose вопросы were dropped is told.
+- A вопрос stays out of `RunMonitor` (the current run and the queue there are tasks') but is in
+  the run history and the journal. The monitor shows one run — the first of those in progress
+  (`RunStarted` returns whether it took the slot); its queue holds every chat's tasks.
+- `state.json` keeps tasks in `ActiveRuns` (by chat key; the single `ActiveRun` of a previous version
+  is still read once after an update) and the вопрос in `ActiveQuestion`. After a restart
+  `StartupNotice` reports every interrupted run; a topic gets only its «прерван», «запущен» goes to
+  the лента.
 - A вопрос is answered as a **reply** to the user's message: «Вопрос принят», the status, every part
   of the answer, its cards and files. The path: `IncomingMessage.Message` → `QueuedPrompt.ReplyTo` →
   `OutgoingMessage.ReplyTo` and the `replyTo` parameter of the channel's file methods. Telegram sends
@@ -165,18 +194,70 @@ Object) must happen exactly once, when the singleton is created.
 
 ## Sessions and chat-side selection
 
-Sessions are keyed by the **normalized project path** (`ProjectCatalog.Normalize`); the gateway
-issues the id of a new one (`--session-id`) and resets it only on `SessionLost` from the CLI
-(`cli-contract.md`).
+Session records belong to the **normalized project path** (`ProjectCatalog.Normalize`), the active
+session to the chat (a topic's slot is `<chat key>|<project>`, see "Topics"); the gateway issues the
+id of a new one (`--session-id`) and resets it only on `SessionLost` from the CLI (`cli-contract.md`).
 
-The chat-side selection (`SessionStore`) sits on top of the config: `EffectiveModel`,
-`EffectivePermissionMode`, `EffectiveEffort`, `ProjectPath`. A project equal to the config is stored as
-`null` (`SetProjectPath`): otherwise a config edit would be silently overridden by an old selection.
+The chat-side selection sits on top of the config and belongs to a chat: `store.For(chat)` returns a
+`SessionStore.ChatScope` with `EffectiveModel`, `EffectivePermissionMode`, `EffectiveEffort`,
+`ProjectPath`, `SessionId` and the setters. `store.Feed` is the лента's selection for places without
+a chat (startup, the monitor); where a chat is known, only `For(chat)` — otherwise a topic would show
+and change the лента's project. For the лента a project equal to the config is stored as `null`
+(`SetProjectPath`): otherwise a config edit would be silently overridden by an old selection.
 The model, effort and mode are stored as picked, and the «по умолчанию» / «из конфига» buttons (or
 `reset`) put `null` back. The model is stored as the alias that goes to the agent (`opus`), but a
 person always sees it through
 `SessionStore.ModelLabel` — with the version the alias last answered with (`ModelVersions` in
 `state.json`), else the agent's `Describe`.
+
+### Topics
+
+A Telegram topic in the private chat is its own chat address: `TelegramChatId(Value, Thread)`, the
+key `telegram:123/42` (old keys without `/` still parse). The channel takes the thread from
+`IsTopicMessage ? MessageThreadId : null` of the message or of the pressed button's message and
+passes it to every send, so answers, cards, files and the status land in their topic by themselves.
+A reply to the topic's service «тема создана» message is not a reply (`ReplyToMessage.MessageId ==
+Thread`). A button on an inaccessible message (date 0) knows no thread and is `ChatKind.Unknown`.
+A topic deleted in the client sends nothing; sending to it gives «message thread not found»
+(`ChannelFailure.CannotReach`).
+
+The лента keeps the old root fields of `GatewayState`; a topic has a `TopicState` in
+`GatewayState.Topics` with the same `IChatSelection` shape. A topic's `ProjectPath` is always the full
+path: `null` there means «беседа», not «the config project». A topic with no record is new: its
+text opens «Тип темы» (`TopicHandler`) instead of a run, and a command in it works as in a беседа,
+so it cannot touch somebody else's project. Only a type (the «Тип темы» screen or `/project`) makes a
+topic typed; `/model`, `/effort` or `/mode` before that create a record with `Untyped = true`, and the
+topic stays new — otherwise the next text would silently run as a беседа.
+
+A topic's active session lives in `ActiveSessions` under `<chat key>|<project>`: two topics on one
+project keep different sessions, and switching a topic's project back returns to its
+session there. «Очистить» on «Сессии» drops the project's records except those active in other chats.
+The list on «Сессии» is per project, so it shows the other chats' sessions too; one active in another
+chat is marked «🔒» and cannot be picked (`ChatScope.IsActiveElsewhere`) — two topics would continue
+one session.
+
+A беседа runs in its own folder `SessionStore.TalkRoot\<chat key>` (`%TEMP%\AgentsTracker-talk`),
+emptied before each run, before the trust check, like the вопрос folder; `--resume` finds the session
+by the folder path, not its contents. The run carries `AgentRunRequest.WebOnly`: the backend gives it
+the вопрос's tool set (`cli-contract.md`, "A question with no session") but keeps the session, also
+for `/context` and `/compact`. Pictures are refused before download, and the refusal goes to the
+journal as `file.receive` `refused`. The default model and effort are `Gateway:Question`; the mode
+is always the config's (choosing a беседа clears the saved one, `/mode` there is refused). Whether a
+run is a беседа is decided by its final folder (`IsTalkFolder`), not by the topic at enqueue time:
+the topic may get a project while the task waits.
+
+A deleted topic is learned of only from a send: Telegram answers «message thread not found», the
+channel gives `CannotReach`. The first send of a run is the «Доверять проекту?» card (when it is
+asked) or the status message; `ConsumeAsync` catches the failure, does not start the run and drops
+that topic's task queue (not the вопрос lane). `run.start` is written only after the status went
+out. A 429 on the status is waited out once, like an answer part. The deleted topic's records stay
+in `state.json`, and its active sessions stay marked «🔒» on «Сессии».
+
+With topics on, the лента is a place for service messages: the client moves what is typed there
+into a new topic. Telegram Desktop lets only a command picked from «Меню» reach the лента itself;
+the mobile client moves even those. So «Шлюз запущен» goes to the лента,
+and `/stop` in the лента — «stop everything» — is reached only from «Меню» on Desktop; elsewhere
+`/stop` is given in each topic.
 
 ### Context and run kinds
 
@@ -231,7 +312,7 @@ the `.git` files itself, with no `git` process: the caption is needed on every t
 Everything about a run reads the branch of the **session's folder** (`SessionStore.SessionFolder`),
 not of the project folder. The agent can move its session into a worktree itself (`EnterWorktree`),
 and the CLI resumes it there although the process starts in the project — the details are in
-`docs/en/cli-contract.md`, "A session in a worktree". `ChatWorker.RunObserver` takes the folder from
+`cli-contract.md`, "A session in a worktree". `ChatWorker.RunObserver` takes the folder from
 `IAgentRunObserver.WorkingDirectoryChanged`, the run status re-reads it every tick, and a change is
 written to `SessionRecord.WorkingDirectory` at once (an interrupted run moves the session too).
 «Статус» shows such a session as «🌳 сессия в worktree <folder> · 🌿 <branch>». A move through
@@ -252,7 +333,8 @@ of the run and shows `master → feature` if the agent switched it itself.
 
 `AppPaths.DataDirectory` is `%LOCALAPPDATA%\AgentsTracker\` (ACL — the owner and SYSTEM), or
 `Gateway:DataDirectory` when set. It holds `state.json` (atomic), `mcp-gateway-<pid>-<run>.json` while
-a run lives, `appsettings.Local.json` with the secrets, `inbox\` and `audit\audit-<YYYY-MM>.jsonl`.
+a run lives, `appsettings.Local.json` with the secrets, `inbox\`, `audit\audit-<YYYY-MM>.jsonl` and
+`logs\gateway-<YYYY-MM-DD>.log`.
 
 `SessionStore.Save` writes `state.json.tmp` with `Flush(true)` and swaps it in with `File.Replace`,
 leaving the previous version in `state.json.bak`: without the flush, NTFS after a power cut keeps the
@@ -286,12 +368,37 @@ excerpt of 80. `NowByKeys` masks every summary through `Text.ClipRedacted`: an a
 command itself, a command carries a bot token from an environment variable or a curl header just as
 easily, and the monitor serves the journal without a password. `Text.Redact` knows token shapes
 (Telegram, `sk-`, GitHub, AWS, Slack, JWT), `Authorization`/`Bearer`, a password in a URL and the
-values of `token=`/`--password`-like keys; `Text.Preview` masks too (log, monitor, run status).
+values of `token=`/`--password`-like keys; `Text.Preview` masks too (journal, monitor, run status).
+
+The log is masked once, at the sink: `RingBufferLoggerProvider` builds one masked `LogEntry` for both
+the monitor's ring and `LogFile` (`logs\gateway-<YYYY-MM-DD>.log`, Information and above, 14 days by
+the date in the name). The file is written synchronously, so the `CRT` entry of an unhandled exception
+lands before the process exits; a write failure is swallowed. The console is not masked, so the
+rawest text (CLI output, the limits endpoint's error body) is also masked at its call site.
 
 The kinds are in `AuditKinds`: `access.rejected`, `message`, `run.start`/`run.end`, `approval`,
 `question`, `file.send`, `file.receive`, `settings`, `rules`, `trust`, `session.reset`,
-`limit.refused`, `gateway`. Menu screens write through `SettingsAudit.Changed`. The journal gets what
+`limit.refused`, `gateway`, `delivery`. Menu screens write through `SettingsAudit.Changed`. The journal gets what
 a human is answerable for, `ILogger` gets what is needed for debugging.
+
+What a run leaves, numbers first — the 200-character limit cuts the tail and `/audit` shows 160:
+
+- `run.start` — the kind (`вопрос`, `контекст`, `сжатие`, `беседа`), model, mode, effort, branch, and
+  `ждал другой запуск N` when the folder lock took a second or more. The queue wait is the gap
+  between `message` and `run.start` of the same chat.
+- `run.end` — time, turns, tokens in/out, `кэш` read/write (not part of the input) and the model
+  that answered (a run without usage — only the
+  selected model); for `error` and `rate-limit` the start of the error text, for `cancel` `/stop` or
+  `предел времени` (the backend's timeout does not touch the run's token). The outcome stays
+  `ok`/`error`/`rate-limit`/`cancel`: the monitor's run history keys on it.
+- A soft gateway stop (`docker stop`, Ctrl+C) writes no `run.end` and leaves the run in `state.json`:
+  the next start says «прервано» and writes `run.end interrupted`, as after a killed process.
+- `gateway` `внутренняя ошибка: <type>: <message>` (`error`) — an exception in a lane; `gateway`
+  `старт` — the gateway and CLI versions, `pid` and `container` in the outcome.
+- `limit.refused` — the model and the first paragraph of the refusal (the window and the reset).
+- `delivery` — only on a failure: `partial`/`lost` when parts of the answer did not reach the chat,
+  `unreachable` when the chat is gone (a deleted topic) and its queue was dropped. Not a `run.end`
+  outcome: `run.end` is written before the send.
 
 ## Chat output
 
@@ -345,9 +452,11 @@ remainder once put «67% · осталось 32%» in one message.
 
 - `Channel.CreateUnbounded` in `ChatWorker` lanes without `SingleReader`: with it `Reader.Count` throws
   and `/status` falls over.
-- `Lane.RunCts` and the broker registration in `ChatWorker` are set right before `agent.RunAsync`,
-  after the status message is sent: only the run's `finally` clears them, and a failure above would
-  leave `IsBusy` (or a registered run) set until a restart.
+- `Lane.RunCts` in `ChatWorker` is set after the trust check and before the folder lock — otherwise
+  `/stop` could not interrupt the wait for the lock; the `finally` in `ConsumeAsync` clears it, so a
+  failure on any path (a deleted topic, a status that did not go out) does not leave `IsBusy` set.
+  The broker registration is set right before `agent.RunAsync`, after the status message, and the
+  run's own `finally` removes it.
 - `HttpClient` only through `IHttpClientFactory`. `ClaudeLimits.HttpClientName` — one timeout, no
   retries. The Telegram client (`TelegramClientFactory`) is a singleton, DNS is refreshed by
   `PooledConnectionLifetime`; retry only on `HttpRequestException`: Bot API methods are POSTs without
