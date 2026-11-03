@@ -1,0 +1,141 @@
+<!doctype html>
+<!--
+  Исходник docs/images/architecture.png. Картинку без исходника не поправить: слово на схеме
+  разойдётся с глоссарием, и его придётся рисовать заново. Снимок — окно 1280×640, например
+  через Playwright: browser_resize 1280×640, browser_navigate file:///…/architecture.html,
+  browser_take_screenshot.
+-->
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Как работает AgentsTracker</title>
+<style>
+  :root {
+    --bg: #0b1118;
+    --card: #101a24;
+    --line: #1f2d3b;
+    --text: #e8eef4;
+    --muted: #8fa1b3;
+    --blue: #3b82f6;
+    --gold: #e5b84a;
+    --mono: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+    --sans: "Segoe UI", Inter, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1280px; height: 640px; overflow: hidden; }
+  body {
+    position: relative;
+    background-color: var(--bg);
+    background-image: radial-gradient(#1a2633 1px, transparent 1px);
+    background-size: 22px 22px;
+    color: var(--text);
+    font-family: var(--sans);
+  }
+  h1 { position: absolute; left: 56px; top: 32px; font-size: 22px; font-weight: 700; }
+  .lead { position: absolute; left: 56px; top: 66px; font-size: 14px; color: var(--muted); }
+  .frame {
+    position: absolute; left: 600px; top: 112px; width: 624px; height: 490px;
+    border: 1px dashed #2a3a4a; border-radius: 16px;
+  }
+  .frame .tag { position: absolute; left: 24px; top: 18px; font: 12px var(--mono); color: var(--muted); }
+  .box {
+    position: absolute; background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 16px 22px;
+  }
+  .box.main { border-color: #2c5a8a; }
+  .box h2 { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+  .box p { font: 12px/22px var(--mono); color: var(--muted); }
+  .tg h2 { display: flex; align-items: center; gap: 14px; margin-bottom: 0; }
+  .tg .sub { font: 12px var(--mono); color: var(--muted); margin-left: 52px; margin-top: -2px; }
+  .tg .notes { margin-top: 44px; }
+  .lock { position: absolute; right: 30px; top: 22px; font: 12px var(--mono); color: var(--gold);
+          display: flex; align-items: center; gap: 8px; }
+  svg.arrows { position: absolute; left: 0; top: 0; }
+  .label { position: absolute; font: 12px var(--mono); color: var(--muted); }
+  .label.gold { color: var(--gold); }
+</style>
+</head>
+<body>
+  <h1>Как работает AgentsTracker</h1>
+  <div class="lead">Путь одной задачи: от сообщения в чате до правки в проекте</div>
+
+  <div class="box tg" style="left:56px; top:160px; width:264px; height:180px;">
+    <h2>
+      <svg width="38" height="32" viewBox="0 0 24 20" aria-hidden="true">
+        <path d="M23 1 1 9.5l6.5 2.4L9.8 19l3.4-4.1 5.4 4L23 1Z" fill="#2f8fe6"/>
+        <path d="m7.5 11.9 12.2-8.8-9.9 10.6-.5 5.3-1.8-7.1Z" fill="#1d6fc0"/>
+      </svg>
+      Telegram
+    </h2>
+    <div class="sub">ваш чат с ботом</div>
+    <p class="notes">задача обычным сообщением<br>кнопки подтверждения</p>
+  </div>
+
+  <div class="frame"><span class="tag">ваш компьютер · Windows 10/11 или Docker</span></div>
+
+  <div class="box main" style="left:628px; top:168px; width:232px; height:132px;">
+    <h2>Шлюз AgentsTracker</h2>
+    <p>.NET 10, автозапуск<br>AllowedUserIds — только вы<br>токен шифруется DPAPI</p>
+  </div>
+
+  <div class="box" style="left:980px; top:168px; width:216px; height:132px;">
+    <h2>Claude Code</h2>
+    <p>claude в папке проекта<br>модель, effort, режим<br>сессия не теряется</p>
+  </div>
+
+  <div class="box" style="left:628px; top:352px; width:232px; height:104px;">
+    <h2>Состояние и журнал</h2>
+    <p>%LOCALAPPDATA%\AgentsTracker<br>переживает перезапуск</p>
+  </div>
+
+  <div class="box" style="left:980px; top:352px; width:216px; height:104px;">
+    <h2>Папка проекта</h2>
+    <p>исходники, тесты, .git<br>меняет только агент</p>
+  </div>
+
+  <div class="box" style="left:628px; top:500px; width:568px; height:76px;">
+    <h2>Веб-монитор</h2>
+    <p>127.0.0.1:5100 — статус, очередь, запуски, расход, журнал, лог</p>
+    <span class="lock">только с этого ПК
+      <svg width="16" height="18" viewBox="0 0 16 18" aria-hidden="true">
+        <rect x="1.5" y="8" width="13" height="9" rx="2.5" fill="none" stroke="#e5b84a" stroke-width="1.6"/>
+        <path d="M4.5 8V5.5a3.5 3.5 0 0 1 7 0V8" fill="none" stroke="#e5b84a" stroke-width="1.6"/>
+      </svg>
+    </span>
+  </div>
+
+  <svg class="arrows" width="1280" height="640" aria-hidden="true">
+    <defs>
+      <marker id="blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+        <path d="M0 0 10 5 0 10Z" fill="#3b82f6"/>
+      </marker>
+      <marker id="gold" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+        <path d="M0 0 10 5 0 10Z" fill="#e5b84a"/>
+      </marker>
+      <marker id="grey" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+        <path d="M0 0 10 5 0 10Z" fill="#5c7186"/>
+      </marker>
+    </defs>
+    <!-- чат → шлюз -->
+    <line x1="320" y1="212" x2="592" y2="212" stroke="#3b82f6" stroke-width="2" marker-end="url(#blue)"/>
+    <!-- шлюз → чат -->
+    <line x1="592" y1="252" x2="324" y2="252" stroke="#e5b84a" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#gold)"/>
+    <!-- шлюз → Claude Code -->
+    <line x1="860" y1="206" x2="972" y2="206" stroke="#3b82f6" stroke-width="2" marker-end="url(#blue)"/>
+    <!-- Claude Code → шлюз по MCP -->
+    <line x1="980" y1="262" x2="866" y2="262" stroke="#e5b84a" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#gold)"/>
+    <!-- Claude Code → папка проекта -->
+    <line x1="1088" y1="300" x2="1088" y2="346" stroke="#3b82f6" stroke-width="2" marker-end="url(#blue)"/>
+    <!-- шлюз → состояние -->
+    <line x1="744" y1="300" x2="744" y2="346" stroke="#5c7186" stroke-width="2" marker-end="url(#grey)"/>
+    <!-- состояние → монитор -->
+    <line x1="744" y1="456" x2="744" y2="494" stroke="#5c7186" stroke-width="2" marker-end="url(#grey)"/>
+  </svg>
+
+  <span class="label" style="left:404px; top:190px;">задача, команды</span>
+  <span class="label gold" style="left:348px; top:262px;">ответ и карточки подтверждения</span>
+  <span class="label" style="left:892px; top:184px;">запуск</span>
+  <span class="label gold" style="left:880px; top:272px;">MCP :5099</span>
+  <span class="label" style="left:976px; top:316px;">правки и тесты</span>
+</body>
+</html>
