@@ -3,7 +3,8 @@
 Notes for Claude Code working in this repository. This file holds the rules and the map; the
 details are in `docs/en/`:
 
-- `docs/en/use-cases.md` — what non-programmers use the bot for: five everyday scenarios.
+- `docs/en/use-cases.md` — what non-programmers use the bot for: five everyday scenarios, the full
+  command list and the line under an answer.
 - `docs/en/safety.md` — the risks of that, in plain words, and what closes each one.
 - `docs/en/operations.md` — restarting the gateway, scratch instance, the harness without Telegram,
   worktree, the two-language docs and the wiki, tooling.
@@ -12,7 +13,8 @@ details are in `docs/en/`:
 - `docs/en/extending.md` — checklists for adding: a chat command, a settings screen, a feature, an
   agent, a channel, a project, an MCP tool, a monitor endpoint, an exe command, an autostart
   mechanism, a config key.
-- `docs/en/deployment.md` — production run: publish, install/uninstall, Docker, ports, secrets.
+- `docs/en/deployment.md` — production run: publish, install/uninstall, Docker, ports, secrets, the
+  main config keys, troubleshooting.
 - `docs/en/cli-contract.md` — the CLI contract: approvals, stream-json, sessions, limits, skills.
 - `docs/en/glossary.md` — the glossary: one Russian word per concept for buttons, messages, the
   monitor and the docs, plus the synonyms not to use.
