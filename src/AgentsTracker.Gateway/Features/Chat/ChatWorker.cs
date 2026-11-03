@@ -524,7 +524,7 @@ public sealed class ChatWorker(
         // запуск расхода не сообщает — у него только выбранная модель. Предел времени живёт в бэкенде
         // и runCts не трогает, поэтому отмена без /stop — это он; остановку шлюза отсеяли выше.
         var spent = result.Usage is { } used
-            ? $", ходов {used.Turns}, токенов {used.InputTokens.Tokens}/{used.OutputTokens.Tokens}, {used.PrimaryModel ?? modelLabel ?? "модель по умолчанию"}"
+            ? $", ходов {used.Turns}, токенов {used.InputTokens.Tokens}/{used.OutputTokens.Tokens}, кэш {used.CacheReadTokens.Tokens}, {used.PrimaryModel ?? modelLabel ?? "модель по умолчанию"}"
             : $", {modelLabel ?? "модель по умолчанию"}";
         var reason = result switch
         {

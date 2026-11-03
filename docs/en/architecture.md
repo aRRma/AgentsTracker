@@ -386,7 +386,8 @@ What a run leaves, numbers first — the 200-character limit cuts the tail and `
 - `run.start` — the kind (`вопрос`, `контекст`, `сжатие`, `беседа`), model, mode, effort, branch, and
   `ждал другой запуск N` when the folder lock took a second or more. The queue wait is the gap
   between `message` and `run.start` of the same chat.
-- `run.end` — time, turns, tokens in/out and the model that answered (a run without usage — only the
+- `run.end` — time, turns, tokens in/out, `кэш` (read from the cache, not in the input) and the model
+  that answered (a run without usage — only the
   selected model); for `error` and `rate-limit` the start of the error text, for `cancel` `/stop` or
   `предел времени` (the backend's timeout does not touch the run's token). The outcome stays
   `ok`/`error`/`rate-limit`/`cancel`: the monitor's run history keys on it.
