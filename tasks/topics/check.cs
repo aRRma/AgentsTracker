@@ -393,7 +393,7 @@ async Task<AuditEvent> EndOf(string prompt)
     return audit.Entries.Last(e => e.Kind == AuditKinds.RunEnd && e.ChatKey == t1.Key);
 }
 var spentEnd = await EndOf("с расходом");
-Check(spentEnd.Outcome == "ok" && spentEnd.Summary.Contains("ходов 5, токенов 12.3k/1.8k, кэш 45.6k, opus-5-5"), "run.end: ходы, токены, кэш и ответившая модель");
+Check(spentEnd.Outcome == "ok" && spentEnd.Summary.Contains("ходов 5, токенов 12.3k/1.8k, кэш 45.6k/7.1k, opus-5-5"), "run.end: ходы, токены, кэш и ответившая модель");
 var timeoutEnd = await EndOf("таймаут");
 Check(timeoutEnd.Outcome == "cancel" && timeoutEnd.Summary.EndsWith(", предел времени"), "run.end: отмена без /stop — предел времени");
 var errorEnd = await EndOf("ошибка");
@@ -476,7 +476,7 @@ sealed class FakeBackend : IAgentBackend
                 return new AgentRunResult
                 {
                     Ok = true, Text = "готово", SessionId = request.ResumeSessionId ?? request.NewSessionId,
-                    Usage = new RunUsage { Turns = 5, InputTokens = 12_300, OutputTokens = 1_800, CacheReadTokens = 45_600, PrimaryModel = "opus-5-5" },
+                    Usage = new RunUsage { Turns = 5, InputTokens = 12_300, OutputTokens = 1_800, CacheReadTokens = 45_600, CacheWriteTokens = 7_100, PrimaryModel = "opus-5-5" },
                 };
         }
         var key = ChatKeyOf(request);
