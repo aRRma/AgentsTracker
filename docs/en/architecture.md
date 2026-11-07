@@ -271,7 +271,7 @@ work folders out while «Работа» is enabled, or they would show up as pro
   every run in `ChatWorker.ProcessAsync`, before the trust card: the id may leave the config while
   the topic stays «Работа». A run is «Работа» when the topic carries the mark **and** its folder is
   under the root (`IsWorkRun`). A refusal is a message, `access.rejected` in the journal and a
-  dropped task queue. Startup checks run only with a non-empty list (`WorkAccess.Validate`,
+  dropped task queue. Startup checks (except the `Folder` path itself, checked always) run only with a non-empty list (`WorkAccess.Validate`,
   `WorkOptions.Validate`): the ids are among `Channel:Settings:AllowedUserIds`, `Folder` is a full
   path that does not overlap the data directory, `%TEMP%`, `ProjectPath` or `Projects` and does not contain `ProjectsRoot`. An agent
   with no `AskingPermissionMode` has no «Работа».

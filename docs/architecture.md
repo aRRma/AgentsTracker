@@ -266,7 +266,7 @@ true` (`ProjectPath` равен `null`, как у беседы; `SessionStore.Is
   `ChatWorker.ProcessAsync`, до карточки доверия: id мог уйти из конфига, а тема осталась «Работой».
   Запуск считается «Работой», если у темы есть метка **и** её папка лежит под корнем (`IsWorkRun`).
   Отказ — сообщение, `access.rejected` в журнале и снятая очередь задач. Проверки при старте идут
-  только при непустом списке (`WorkAccess.Validate`, `WorkOptions.Validate`): id входят в
+  только при непустом списке, кроме самого пути `Folder` — он проверяется всегда (`WorkAccess.Validate`, `WorkOptions.Validate`): id входят в
   `Channel:Settings:AllowedUserIds`, `Folder` — полный путь, не пересекающийся с папкой данных,
   `%TEMP%`, `ProjectPath` и `Projects` и не содержит `ProjectsRoot`. У агента без `AskingPermissionMode` «Работы» нет.
 - **Режим.** Закреплён за `AgentCapabilities.AskingPermissionMode` (у Claude — `default`):
