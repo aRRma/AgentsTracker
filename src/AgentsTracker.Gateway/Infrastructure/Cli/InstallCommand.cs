@@ -123,14 +123,14 @@ public static class InstallCommand
 
         if (options.Start)
         {
-            var running = RunningGateway.WaitForStart(exe, TimeSpan.FromSeconds(10));
+            var running = RunningGateway.WaitForStart(exe, RunningGateway.DefaultWait);
             output.WriteLine(running
                 ? "  состояние:   запущен, в Telegram придёт «Шлюз запущен»"
                 : "  состояние:   команда запуска отправлена, процесс пока не виден — смотрите Планировщик заданий");
         }
         else
         {
-            output.WriteLine($"  состояние:   зарегистрирован, поднимется при входе в Windows");
+            output.WriteLine("  состояние:   зарегистрирован, поднимется при входе в Windows");
         }
     }
 

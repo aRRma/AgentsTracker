@@ -21,9 +21,6 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
     /// <summary>Флаг в тексте скилла: <c>--fix</c>, <c>--no-post</c>. Одиночные буквы не ищем: много ложных срабатываний.</summary>
     private static readonly Regex FlagPattern = new(@"(?<![\w-])--[a-z][a-z0-9-]{1,30}\b", RegexOptions.Compiled);
 
-    private static readonly string ClaudeHome =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude");
-
     /// <summary>
     /// Сколько держать результат обхода. Одно нажатие в меню — это Apply и Render подряд,
     /// то есть два обхода диска с разбором всех SKILL.md; за пять секунд плагины
@@ -106,7 +103,8 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
     /// </summary>
     private static bool SamePath(string left, string right) =>
         string.Equals(
-            Path.GetFullPath(left).TrimEnd('\\', '/'), Path.GetFullPath(right).TrimEnd('\\', '/'),
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(left)),
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(right)),
             StringComparison.OrdinalIgnoreCase);
 
     private List<SkillGroup> Scan(string projectPath)
@@ -116,7 +114,7 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
         Add(groups, BuiltInGroup, BuiltIn());
 
         Add(groups, "Проект", ScanFolder(Path.Combine(projectPath, ".claude"), prefix: null, "Проект"));
-        Add(groups, "Личные", ScanFolder(ClaudeHome, prefix: null, "Личные"));
+        Add(groups, "Личные", ScanFolder(ClaudePaths.Home, prefix: null, "Личные"));
 
         // Плагин без записи в enabledPlugins включён — так же считает и сам CLI.
         var settings = _plugins.Settings(projectPath);
@@ -206,7 +204,7 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            logger.LogDebug(ex, "Не удалось обойти {Folder}", folder);
+            logger.LogDebug(ex, "Не удалось обойти {Directory}", folder);
             return [];
         }
     }
@@ -226,7 +224,7 @@ public sealed class ClaudeSkillCatalog(IOptions<ClaudeOptions> options, ILogger<
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            logger.LogDebug(ex, "Не удалось прочитать {File}", file);
+            logger.LogDebug(ex, "Не удалось прочитать {Path}", file);
             return null;
         }
 

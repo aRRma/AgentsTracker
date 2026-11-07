@@ -69,7 +69,7 @@ public sealed class ClaudeCliLocator(IOptions<ClaudeOptions> options, ILogger<Cl
 
             if (!process.WaitForExit((int)VersionTimeout.TotalMilliseconds))
             {
-                try { process.Kill(entireProcessTree: true); } catch { /* уже мёртв */ }
+                try { process.Kill(entireProcessTree: true); } catch (Exception) { /* уже мёртв */ }
                 return null;
             }
 

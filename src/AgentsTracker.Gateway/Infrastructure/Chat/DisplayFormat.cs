@@ -26,7 +26,7 @@ public static class DisplayFormat
             _ => (count / 1_000_000m).ToString("0.##", CultureInfo.InvariantCulture) + "M",
         };
 
-        /// <summary>Размер файла: «512 Б», «3,4 КБ», «12 МБ».</summary>
+        /// <summary>Размер файла: «512 Б», «3.4 КБ», «12 МБ».</summary>
         public string Bytes => count switch
         {
             < 1024 => $"{count} Б",
@@ -58,8 +58,8 @@ public static class DisplayFormat
                 var local = moment.ToLocalTime();
                 var today = DateTimeOffset.Now.Date;
 
-                if (local.Date == today) return "сегодня " + local.ToString("HH:mm");
-                if (local.Date == today.AddDays(-1)) return "вчера " + local.ToString("HH:mm");
+                if (local.Date == today) return "сегодня " + local.ToString("HH:mm", CultureInfo.InvariantCulture);
+                if (local.Date == today.AddDays(-1)) return "вчера " + local.ToString("HH:mm", CultureInfo.InvariantCulture);
                 return local.ToString("d MMM, HH:mm");
             }
         }

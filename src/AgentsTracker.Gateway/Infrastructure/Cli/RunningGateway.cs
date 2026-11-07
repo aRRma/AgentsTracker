@@ -11,6 +11,9 @@ namespace AgentsTracker.Gateway.Infrastructure.Cli;
 /// </summary>
 public static class RunningGateway
 {
+    /// <summary>Сколько ждать запуска или остановки: одно значение для install и uninstall.</summary>
+    public static readonly TimeSpan DefaultWait = TimeSpan.FromSeconds(10);
+
     /// <summary>Все процессы этого же exe, кроме текущего.</summary>
     public static IReadOnlyList<Process> FromSamePath(string executable)
     {

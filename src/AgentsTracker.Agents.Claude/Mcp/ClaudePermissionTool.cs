@@ -83,8 +83,8 @@ public sealed class ClaudePermissionTool(
         foreach (var item in array.EnumerateArray())
         {
             if (item.ValueKind != JsonValueKind.Object) continue;
-            if (Str(item, "destination") != "localSettings") continue;
-            if (Str(item, "type") != "addRules" || Str(item, "behavior") != "allow") continue;
+            if (item.String("destination") != "localSettings") continue;
+            if (item.String("type") != "addRules" || item.String("behavior") != "allow") continue;
 
             result.Add(new PersistentRule(DescribeRules(item), item.Clone()));
         }
@@ -102,9 +102,9 @@ public sealed class ClaudePermissionTool(
         foreach (var rule in rules.EnumerateArray())
         {
             if (rule.ValueKind != JsonValueKind.Object) continue;
-            if (Str(rule, "toolName") is not { Length: > 0 } tool) continue;
+            if (rule.String("toolName") is not { Length: > 0 } tool) continue;
 
-            parts.Add(Str(rule, "ruleContent") is { Length: > 0 } content ? $"{tool}({content})" : tool);
+            parts.Add(rule.String("ruleContent") is { Length: > 0 } content ? $"{tool}({content})" : tool);
         }
 
         return parts.Count > 0 ? string.Join(", ", parts) : "(правило без содержимого)";
@@ -143,13 +143,13 @@ public sealed class ClaudePermissionTool(
 
     private static AgentQuestion ParseQuestion(JsonElement question)
     {
-        var text = Str(question, "question") ?? "";
-        var header = Str(question, "header");
+        var text = question.String("question") ?? "";
+        var header = question.String("header");
         var multiSelect = question.TryGetProperty("multiSelect", out var m) && m.ValueKind == JsonValueKind.True;
 
         var options = question.TryGetProperty("options", out var o) && o.ValueKind == JsonValueKind.Array
             ? o.EnumerateArray()
-                .Select((option, i) => new QuestionOption(Str(option, "label") ?? $"Вариант {i + 1}", Str(option, "description")))
+                .Select((option, i) => new QuestionOption(option.String("label") ?? $"Вариант {i + 1}", option.String("description")))
                 .ToList()
             : [];
 
@@ -191,9 +191,4 @@ public sealed class ClaudePermissionTool(
 
         return null;
     }
-
-    private static string? Str(JsonElement obj, string name) =>
-        obj.ValueKind == JsonValueKind.Object && obj.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
-            ? value.GetString()
-            : null;
 }

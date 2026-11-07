@@ -57,9 +57,9 @@ public static class ProtectSecretsCommand
         {
             output.WriteLine(
                 $"В {source} ключи {string.Join(", ", legacy.Select(k => $"{GatewayOptions.SectionName}:{k}"))} "
-                + $"лежат по-старому — шлюз их не читает, а protect-secrets не шифрует. "
+                + "лежат по-старому — шлюз их не читает, а protect-secrets не шифрует. "
                 + $"Перенесите их в {ChannelConfiguration.SettingsSection} "
-                + $"(pwsh -File scripts\\migrate-channel-settings.ps1) и повторите.");
+                + "(pwsh -File scripts\\migrate-channel-settings.ps1) и повторите.");
             return 1;
         }
 
@@ -69,7 +69,7 @@ public static class ProtectSecretsCommand
             changed += Protect(settings, [.. channels.SelectMany(c => c.SecretKeys).Distinct(StringComparer.Ordinal)]);
 
         var target = AppPaths.LocalSettings;
-        var moving = !string.Equals(Path.GetFullPath(source), Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase);
+        var moving = !ProjectCatalog.Same(source, target);
 
         // Боевой конфиг не затираем: устаревший файл рядом с проектом снёс бы рабочий
         // токен. Переносим, только если в папке данных ещё пусто.

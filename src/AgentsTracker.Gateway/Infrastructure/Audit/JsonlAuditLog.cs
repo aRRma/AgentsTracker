@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -62,7 +63,7 @@ public sealed class JsonlAuditLog(ILogger<JsonlAuditLog> logger) : IAuditLog
                 try { lines = File.ReadAllLines(file); }
                 catch (Exception ex)
                 {
-                    logger.LogWarning(ex, "Не удалось прочитать {File}", file);
+                    logger.LogWarning(ex, "Не удалось прочитать {Path}", file);
                     continue;
                 }
 
@@ -83,7 +84,7 @@ public sealed class JsonlAuditLog(ILogger<JsonlAuditLog> logger) : IAuditLog
         Directory.Exists(_directory) ? Directory.EnumerateFiles(_directory, "audit-*.jsonl") : [];
 
     private string FileFor(DateTimeOffset moment) =>
-        Path.Combine(_directory, $"audit-{moment:yyyy-MM}.jsonl");
+        Path.Combine(_directory, $"audit-{moment.ToString("yyyy-MM", CultureInfo.InvariantCulture)}.jsonl");
 
     private static AuditEvent? Parse(string line)
     {

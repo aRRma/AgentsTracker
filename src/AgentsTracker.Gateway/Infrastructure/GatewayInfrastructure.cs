@@ -52,15 +52,16 @@ public static class GatewayInfrastructure
             // от подтверждений. Порт подтверждений всегда loopback — его зовёт дочерний
             // процесс агента, дальше машины ему незачем.
             var defaults = new GatewayOptions();
-            var port = configuration.GetValue<int?>($"{GatewayOptions.SectionName}:McpPort") ?? defaults.McpPort;
-            var monitorPort = configuration.GetValue<int?>($"{GatewayOptions.SectionName}:MonitorPort") ?? defaults.MonitorPort;
-            var monitorBind = configuration.GetValue<string?>($"{GatewayOptions.SectionName}:MonitorBind") ?? defaults.MonitorBind;
-            var proxy = configuration.GetValue<string?>($"{GatewayOptions.SectionName}:Proxy");
-            var approvalMinutes = configuration.GetValue<int?>($"{GatewayOptions.SectionName}:ApprovalTimeoutMinutes")
+            var section = configuration.GetSection(GatewayOptions.SectionName);
+            var port = section.GetValue<int?>("McpPort") ?? defaults.McpPort;
+            var monitorPort = section.GetValue<int?>("MonitorPort") ?? defaults.MonitorPort;
+            var monitorBind = section.GetValue<string?>("MonitorBind") ?? defaults.MonitorBind;
+            var proxy = section.GetValue<string?>("Proxy");
+            var approvalMinutes = section.GetValue<int?>("ApprovalTimeoutMinutes")
                 ?? defaults.ApprovalTimeoutMinutes;
 
             // any нужен в контейнере: порт на 127.0.0.1 внутри него не опубликовать никаким -p.
-            var monitorAddress = monitorBind.Equals(GatewayOptions.MonitorBindAny, StringComparison.OrdinalIgnoreCase)
+            var monitorAddress = GatewayOptions.IsAnyBind(monitorBind)
                 ? IPAddress.Any
                 : IPAddress.Loopback;
 
@@ -182,7 +183,7 @@ public static class GatewayInfrastructure
     /// </summary>
     private static void ReportMonitor(GatewayOptions options, ILogger logger)
     {
-        var any = options.MonitorBind.Equals(GatewayOptions.MonitorBindAny, StringComparison.OrdinalIgnoreCase);
+        var any = GatewayOptions.IsAnyBind(options.MonitorBind);
 
         logger.LogInformation("Монитор: http://{Host}:{Port}/", any ? "0.0.0.0" : "127.0.0.1", options.MonitorPort);
 

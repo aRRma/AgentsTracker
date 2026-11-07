@@ -350,7 +350,7 @@ public sealed class TelegramChannel(
         try
         {
             var sent = await Bot.SendMessage(
-                id, message.Text, ParseMode(message), replyParameters: reply, replyMarkup: markup,
+                id, message.Text, ParseModeOf(message), replyParameters: reply, replyMarkup: markup,
                 messageThreadId: ThreadOf(chat), cancellationToken: ct);
             return new MessageRef(chat, MessageIdOf(sent.MessageId));
         }
@@ -366,34 +366,20 @@ public sealed class TelegramChannel(
             throw Translate(ex);
         }
 
-        try
-        {
-            var sent = await Bot.SendMessage(
-                id, ChatHtml.StripTags(message.Text), replyParameters: reply, replyMarkup: markup,
-                messageThreadId: ThreadOf(chat), cancellationToken: ct);
-            return new MessageRef(chat, MessageIdOf(sent.MessageId));
-        }
-        catch (RequestException ex)
-        {
-            throw Translate(ex);
-        }
+        var plain = await TranslatedAsync(() => Bot.SendMessage(
+            id, ChatHtml.StripTags(message.Text), replyParameters: reply, replyMarkup: markup,
+            messageThreadId: ThreadOf(chat), cancellationToken: ct));
+        return new MessageRef(chat, MessageIdOf(plain.MessageId));
     }
 
     public async Task<MessageRef> SendFileAsync(ChatId chat, string fileName, string text, MessageRef? replyTo, CancellationToken ct)
     {
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(text));
 
-        try
-        {
-            var sent = await Bot.SendDocument(
-                ChatIdOf(chat), InputFile.FromStream(stream, fileName), replyParameters: Reply(chat, replyTo),
-                messageThreadId: ThreadOf(chat), cancellationToken: ct);
-            return new MessageRef(chat, MessageIdOf(sent.MessageId));
-        }
-        catch (RequestException ex)
-        {
-            throw Translate(ex);
-        }
+        var sent = await TranslatedAsync(() => Bot.SendDocument(
+            ChatIdOf(chat), InputFile.FromStream(stream, fileName), replyParameters: Reply(chat, replyTo),
+            messageThreadId: ThreadOf(chat), cancellationToken: ct));
+        return new MessageRef(chat, MessageIdOf(sent.MessageId));
     }
 
     public Task<MessageRef> SendDocumentAsync(
@@ -415,14 +401,27 @@ public sealed class TelegramChannel(
     /// </summary>
     private static ReplyParameters? Reply(ChatId chat, MessageRef? replyTo) =>
         replyTo is { } target && target.Chat == chat
-            ? new ReplyParameters { MessageId = MessageId(target), AllowSendingWithoutReply = true }
+            ? new ReplyParameters { MessageId = NativeMessageIdOf(target), AllowSendingWithoutReply = true }
             : null;
 
-    public async Task DownloadAttachmentAsync(IncomingAttachment attachment, Stream destination, CancellationToken ct)
+    public Task DownloadAttachmentAsync(IncomingAttachment attachment, Stream destination, CancellationToken ct) =>
+        TranslatedAsync(() => Bot.GetInfoAndDownloadFile(attachment.FileId, destination, ct));
+
+    private async Task<MessageRef> SendMediaAsync(ChatId chat, Func<InputFile, Task<Message>> send, string fileName, Stream content)
+    {
+        var sent = await TranslatedAsync(() => send(InputFile.FromStream(content, fileName)));
+        return new MessageRef(chat, MessageIdOf(sent.MessageId));
+    }
+
+    /// <summary>
+    /// Любой отказ Bot API уходит как <see cref="ChannelRequestException"/>: иначе хост не узнает
+    /// ни про retry_after у 429, ни про «писать первым некуда». Одно место вместо копии на метод.
+    /// </summary>
+    private static async Task<T> TranslatedAsync<T>(Func<Task<T>> call)
     {
         try
         {
-            await Bot.GetInfoAndDownloadFile(attachment.FileId, destination, ct);
+            return await call();
         }
         catch (RequestException ex)
         {
@@ -430,12 +429,11 @@ public sealed class TelegramChannel(
         }
     }
 
-    private async Task<MessageRef> SendMediaAsync(ChatId chat, Func<InputFile, Task<Message>> send, string fileName, Stream content)
+    private static async Task TranslatedAsync(Func<Task> call)
     {
         try
         {
-            var sent = await send(InputFile.FromStream(content, fileName));
-            return new MessageRef(chat, MessageIdOf(sent.MessageId));
+            await call();
         }
         catch (RequestException ex)
         {
@@ -474,7 +472,7 @@ public sealed class TelegramChannel(
         try
         {
             await Bot.EditMessageText(
-                ChatIdOf(message.Chat), MessageId(message), content.Text, ParseMode(content),
+                ChatIdOf(message.Chat), NativeMessageIdOf(message), content.Text, ParseModeOf(content),
                 replyMarkup: Markup(content.Keyboard), cancellationToken: ct);
         }
         catch (ApiRequestException ex) when (ex.Message.Contains("message is not modified", StringComparison.OrdinalIgnoreCase))
@@ -483,44 +481,17 @@ public sealed class TelegramChannel(
         }
     }
 
-    public async Task DeleteAsync(MessageRef message, CancellationToken ct)
-    {
-        try
-        {
-            await Bot.DeleteMessage(ChatIdOf(message.Chat), MessageId(message), ct);
-        }
-        catch (RequestException ex)
-        {
-            throw Translate(ex);
-        }
-    }
+    public Task DeleteAsync(MessageRef message, CancellationToken ct) =>
+        TranslatedAsync(() => Bot.DeleteMessage(ChatIdOf(message.Chat), NativeMessageIdOf(message), ct));
 
-    public async Task AcknowledgeAsync(ButtonPress press, string? toast, CancellationToken ct)
-    {
-        try
-        {
-            await Bot.AnswerCallbackQuery(press.PressId, toast, cancellationToken: ct);
-        }
-        catch (RequestException ex)
-        {
-            throw Translate(ex);
-        }
-    }
+    public Task AcknowledgeAsync(ButtonPress press, string? toast, CancellationToken ct) =>
+        TranslatedAsync(() => Bot.AnswerCallbackQuery(press.PressId, toast, cancellationToken: ct));
 
-    public async Task IndicateTypingAsync(ChatId chat, CancellationToken ct)
-    {
-        try
-        {
-            await Bot.SendChatAction(ChatIdOf(chat), ChatAction.Typing, ThreadOf(chat), cancellationToken: ct);
-        }
-        catch (RequestException ex)
-        {
-            throw Translate(ex);
-        }
-    }
+    public Task IndicateTypingAsync(ChatId chat, CancellationToken ct) =>
+        TranslatedAsync(() => Bot.SendChatAction(ChatIdOf(chat), ChatAction.Typing, ThreadOf(chat), cancellationToken: ct));
 
-    private static ParseMode ParseMode(OutgoingMessage message) =>
-        message.Rich ? global::Telegram.Bot.Types.Enums.ParseMode.Html : global::Telegram.Bot.Types.Enums.ParseMode.None;
+    private static ParseMode ParseModeOf(OutgoingMessage message) =>
+        message.Rich ? ParseMode.Html : ParseMode.None;
 
     private static InlineKeyboardMarkup? Markup(Keyboard? keyboard) =>
         keyboard is { Rows.Count: > 0 }
@@ -550,7 +521,7 @@ public sealed class TelegramChannel(
 
     private static string MessageIdOf(int messageId) => messageId.ToString(CultureInfo.InvariantCulture);
 
-    private static int MessageId(MessageRef message) => int.Parse(message.Id, CultureInfo.InvariantCulture);
+    private static int NativeMessageIdOf(MessageRef message) => int.Parse(message.Id, CultureInfo.InvariantCulture);
 
     /// <summary>«can't parse entities» — единственный отказ со своим именем в <see cref="ChannelFailure"/>.</summary>
     private static bool IsMarkupRejected(ApiRequestException ex) =>

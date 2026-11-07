@@ -94,7 +94,7 @@ public sealed class LogFile(string directory)
                 || day >= oldest) continue;
 
             try { File.Delete(file); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* не удалился — удалится на смене дня */ }
         }
     }
 }

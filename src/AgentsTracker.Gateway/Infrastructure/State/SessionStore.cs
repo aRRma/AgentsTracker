@@ -263,8 +263,8 @@ public sealed class SessionStore
                 var project = _store.ProjectPathLocked(_chat);
                 s.ActiveSessions.Remove(Slot(project));
                 removed = s.Sessions.RemoveAll(r =>
-                    string.Equals(r.ProjectPath, project, StringComparison.OrdinalIgnoreCase)
-                    && !s.ActiveSessions.ContainsValue(r.Id));
+                    InProject(r, project)
+                    &&!s.ActiveSessions.ContainsValue(r.Id));
             });
 
             return removed;
@@ -400,7 +400,7 @@ public sealed class SessionStore
         lock (_gate)
         {
             return [.. _state.Sessions
-                .Where(r => string.Equals(r.ProjectPath, project, StringComparison.OrdinalIgnoreCase))
+                .Where(r => InProject(r, project))
                 .OrderByDescending(r => r.LastActivityUtc)
                 .Select(Clone)];
         }
@@ -413,7 +413,7 @@ public sealed class SessionStore
 
         lock (_gate)
         {
-            var record = _state.Sessions.FirstOrDefault(r => string.Equals(r.Id, sessionId, StringComparison.Ordinal));
+            var record = FindSession(_state, sessionId);
             return record is null ? null : Clone(record);
         }
     }
@@ -464,7 +464,7 @@ public sealed class SessionStore
     {
         Mutate(s =>
         {
-            var record = s.Sessions.FirstOrDefault(r => string.Equals(r.Id, sessionId, StringComparison.Ordinal));
+            var record = FindSession(s, sessionId);
             if (record is null) return;
 
             record.ContextTokens = tokens;
@@ -484,7 +484,7 @@ public sealed class SessionStore
 
         Mutate(s =>
         {
-            var record = s.Sessions.FirstOrDefault(r => string.Equals(r.Id, sessionId, StringComparison.Ordinal));
+            var record = FindSession(s, sessionId);
             if (record is null) return;
 
             record.WorkingDirectory = ProjectCatalog.Same(folder, record.ProjectPath) ? null : folder;
@@ -515,7 +515,7 @@ public sealed class SessionStore
 
         Mutate(s =>
         {
-            var record = s.Sessions.FirstOrDefault(r => string.Equals(r.Id, sessionId, StringComparison.Ordinal));
+            var record = FindSession(s, sessionId);
             if (record is null) return;
 
             if (ttl is not null) s.CacheTtl = ttl;
@@ -591,7 +591,7 @@ public sealed class SessionStore
     private static SessionRecord Touch(
         GatewayState state, string project, string prompt, string sessionId, DateTimeOffset now, string? activateIn)
     {
-        var record = state.Sessions.FirstOrDefault(r => string.Equals(r.Id, sessionId, StringComparison.Ordinal));
+        var record = FindSession(state, sessionId);
         if (record is null)
         {
             record = new SessionRecord
@@ -670,7 +670,14 @@ public sealed class SessionStore
         lock (_gate) return Clone(_state);
     }
 
-    /// <summary>Первая строка первого сообщения — по ней сессия узнаётся в списке.</summary>
+    /// <summary>Id сессии сравниваем с учётом регистра, а путь проекта — без него: как в <c>Rehydrate</c>.</summary>
+    private static SessionRecord? FindSession(GatewayState state, string sessionId) =>
+        state.Sessions.FirstOrDefault(r => string.Equals(r.Id, sessionId, StringComparison.Ordinal));
+
+    private static bool InProject(SessionRecord record, string project) =>
+        string.Equals(record.ProjectPath, project, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Первое сообщение одной строкой, до 60 символов — по нему сессия узнаётся в списке.</summary>
     private static string MakeTitle(string prompt)
     {
         var line = prompt.ReplaceLineEndings(" ").Trim();
@@ -678,7 +685,7 @@ public sealed class SessionStore
         return line.Length <= 60 ? line : line[..59] + "…";
     }
 
-    private static string DayKey(DateTimeOffset moment) => moment.ToString("yyyy-MM-dd");
+    private static string DayKey(DateTimeOffset moment) => moment.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     private static UsageTotals Bucket(Dictionary<string, UsageTotals> buckets, string key)
     {
@@ -697,7 +704,7 @@ public sealed class SessionStore
     private static void TrimSessions(GatewayState state, string project)
     {
         var stale = state.Sessions
-            .Where(r => string.Equals(r.ProjectPath, project, StringComparison.OrdinalIgnoreCase))
+            .Where(r => InProject(r, project))
             .OrderByDescending(r => r.LastActivityUtc)
             .Skip(SessionsPerProject)
             // Активную не выбрасываем даже старую — ни ленты, ни темы: иначе следующий запуск
@@ -760,7 +767,7 @@ public sealed class SessionStore
 
             _state.ActiveSessions.TryAdd(project, legacy);
 
-            if (!_state.Sessions.Any(r => string.Equals(r.Id, legacy, StringComparison.Ordinal)))
+            if (FindSession(_state, legacy) is null)
             {
                 _state.Sessions.Add(new SessionRecord
                 {

@@ -44,12 +44,12 @@ public static class ClaudeStreamEvent
     {
         if (!TryParse(line, out var root)) return Line.Text;
 
-        return String(root, "type") switch
+        return root.String("type") switch
         {
             "result" => Line.Result,
             "assistant" => Assistant(root),
-            "system" when String(root, "subtype") == "compact_boundary" => new Line(true, false, [], Compaction: Compaction(root)),
-            "system" when String(root, "subtype") == "init" && !Nested(root) => new Line(true, false, [], WorkingDirectory: String(root, "cwd")),
+            "system" when root.String("subtype") == "compact_boundary" => new Line(true, false, [], Compaction: Compaction(root)),
+            "system" when root.String("subtype") == "init" && !Nested(root) => new Line(true, false, [], WorkingDirectory: root.String("cwd")),
             "user" when !Nested(root) => new Line(true, false, [], MainInput: true, WorktreeMove: WorktreeMove(root)),
             _ => Line.Other,
         };
@@ -71,8 +71,8 @@ public static class ClaudeStreamEvent
         if (!root.TryGetProperty("tool_use_result", out var result) || result.ValueKind != JsonValueKind.Object)
             return null;
 
-        var worktreePath = String(result, "worktreePath");
-        var originalCwd = String(result, "originalCwd");
+        var worktreePath = result.String("worktreePath");
+        var originalCwd = result.String("originalCwd");
         if (worktreePath is not { Length: > 0 } && originalCwd is not { Length: > 0 })
             return null;
 
@@ -82,7 +82,7 @@ public static class ClaudeStreamEvent
             return null;
 
         foreach (var block in content.EnumerateArray())
-            if (String(block, "type") == "tool_result" && String(block, "tool_use_id") is { Length: > 0 } id)
+            if (block.String("type") == "tool_result" && block.String("tool_use_id") is { Length: > 0 } id)
                 return (id, worktreePath, originalCwd);
 
         return null;
@@ -103,9 +103,9 @@ public static class ClaudeStreamEvent
         List<(string Id, bool Exit)>? calls = null;
         foreach (var block in content.EnumerateArray())
         {
-            if (String(block, "type") == "tool_use"
-                && String(block, "name") is { } name and (EnterWorktree or ExitWorktree)
-                && String(block, "id") is { Length: > 0 } id)
+            if (block.String("type") == "tool_use"
+                && block.String("name") is { } name and (EnterWorktree or ExitWorktree)
+                && block.String("id") is { Length: > 0 } id)
                 (calls ??= []).Add((id, name == ExitWorktree));
         }
 
@@ -169,7 +169,7 @@ public static class ClaudeStreamEvent
         model = "";
         if (Nested(root)
             || !root.TryGetProperty("message", out message)
-            || String(message, "model") is not { Length: > 0 } name || name == "<synthetic>")
+            || message.String("model") is not { Length: > 0 } name || name == "<synthetic>")
         {
             message = default;
             return false;
@@ -212,8 +212,8 @@ public static class ClaudeStreamEvent
         var calls = new List<RunActivity>();
         foreach (var block in content.EnumerateArray())
         {
-            if (String(block, "type") != "tool_use") continue;
-            if (String(block, "name") is not { Length: > 0 } name) continue;
+            if (block.String("type") != "tool_use") continue;
+            if (block.String("name") is not { Length: > 0 } name) continue;
 
             block.TryGetProperty("input", out var input);
             calls.Add(new RunActivity(Describe(name, input), nested));
@@ -230,14 +230,14 @@ public static class ClaudeStreamEvent
     {
         var argument = name switch
         {
-            "Read" or "Edit" or "Write" or "NotebookEdit" => FileName(String(input, "file_path")),
-            "Bash" or "PowerShell" => String(input, "command"),
-            "Grep" or "Glob" => String(input, "pattern"),
-            "Agent" or "Task" => String(input, "description"),
-            "WebFetch" => String(input, "url"),
-            "WebSearch" => String(input, "query"),
-            "Skill" => "/" + String(input, "skill"),
-            Mcp.McpConfigFile.SendFileToolFullName => FileName(String(input, "path")),
+            "Read" or "Edit" or "Write" or "NotebookEdit" => FileName(input.String("file_path")),
+            "Bash" or "PowerShell" => input.String("command"),
+            "Grep" or "Glob" => input.String("pattern"),
+            "Agent" or "Task" => input.String("description"),
+            "WebFetch" => input.String("url"),
+            "WebSearch" => input.String("query"),
+            "Skill" => "/" + input.String("skill"),
+            Mcp.McpConfigFile.SendFileToolFullName => FileName(input.String("path")),
             _ => null,
         };
 
@@ -252,13 +252,6 @@ public static class ClaudeStreamEvent
 
     private static string? FileName(string? path) =>
         path is { Length: > 0 } ? Path.GetFileName(path) : path;
-
-    private static string? String(JsonElement element, string property) =>
-        element.ValueKind == JsonValueKind.Object
-        && element.TryGetProperty(property, out var value)
-        && value.ValueKind == JsonValueKind.String
-            ? value.GetString()
-            : null;
 
     private static bool TryParse(string line, out JsonElement root)
     {

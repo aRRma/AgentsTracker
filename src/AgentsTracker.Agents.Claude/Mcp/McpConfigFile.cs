@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -88,7 +89,7 @@ public sealed class McpConfigFile : IDisposable
         if (runId.Length == 0 || !runId.All(char.IsAsciiLetterOrDigit))
             throw new ArgumentException($"Id запуска «{runId}» не годится для имени файла.", nameof(runId));
 
-        var path = System.IO.Path.Combine(_directory, $"{_ownPrefix}{runId}{FileSuffix}");
+        var path = Path.Combine(_directory, $"{_ownPrefix}{runId}{FileSuffix}");
 
         var config = new
         {
@@ -159,18 +160,18 @@ public sealed class McpConfigFile : IDisposable
         try
         {
             var candidates = Directory.EnumerateFiles(directory, $"{FilePrefix}*{FileSuffix}")
-                .Append(System.IO.Path.Combine(directory, "mcp-gateway.json"))
+                .Append(Path.Combine(directory, "mcp-gateway.json"))
                 .ToList();
 
             foreach (var file in candidates)
             {
                 if (!File.Exists(file)) continue;
 
-                var name = System.IO.Path.GetFileNameWithoutExtension(file);
+                var name = Path.GetFileNameWithoutExtension(file);
                 var owner = name.Length > FilePrefix.Length ? name.AsSpan(FilePrefix.Length) : ReadOnlySpan<char>.Empty;
                 if (owner.IndexOf('-') is var dash and >= 0) owner = owner[..dash];
 
-                if (int.TryParse(owner, out var pid) && IsGateway(pid)) continue;
+                if (int.TryParse(owner, CultureInfo.InvariantCulture, out var pid) && IsGateway(pid)) continue;
 
                 File.Delete(file);
                 _logger.LogInformation("Удалён MCP-конфиг завершившегося экземпляра: {Path}", file);

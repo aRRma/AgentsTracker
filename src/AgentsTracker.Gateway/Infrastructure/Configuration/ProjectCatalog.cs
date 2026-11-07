@@ -100,7 +100,7 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
         {
             var root = Normalize(configured);
 
-            if (string.Equals(parent, root, StringComparison.OrdinalIgnoreCase))
+            if (Same(parent, root))
                 return Path.GetFileName(root) is { Length: > 0 } name ? name : root;
 
             if (IsInside(parent, root))
@@ -140,6 +140,7 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
             }
             catch (Exception ex)
             {
+                // Широко: папка из конфига может быть любой, и никакая её беда не должна обрывать список.
                 logger.LogDebug(ex, "Пропускаю {Directory}", directory);
                 continue;
             }
@@ -171,6 +172,7 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
         }
         catch (Exception ex)
         {
+            // Широко: ProjectPath из конфига бывает с любой порчей, список проектов обойдётся без соседей.
             logger.LogWarning(ex, "Не удалось определить папку над {Project}", _options.ProjectPath);
             yield break;
         }
@@ -184,7 +186,8 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Не удалось прочитать {Parent}", parent);
+            // Широко: папка над проектом может быть недоступной по любой причине, соседи — не обязательная часть списка.
+            logger.LogWarning(ex, "Не удалось прочитать {Directory}", parent);
             yield break;
         }
 

@@ -118,7 +118,7 @@ public sealed class WorkOptions
 
             root = Root;
         }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        catch (Exception ex) when (IsBadPath(ex))
         {
             errors.Add($"{key}:Folder — некорректный путь: {ex.Message}");
             return errors;
@@ -162,13 +162,17 @@ public sealed class WorkOptions
                 && ProjectCatalog.IsSameOrInside(ProjectCatalog.Normalize(projectsRoot), root))
                 errors.Add($"{key}:Folder ({root}) содержит ProjectsRoot ({projectsRoot}): список проектов был бы пуст.");
         }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        catch (Exception ex) when (IsBadPath(ex))
         {
             errors.Add($"{key}: проект из конфига — некорректный путь: {ex.Message}");
         }
 
         return errors;
     }
+
+    /// <summary>Что бросают <c>Path</c> и <c>GetFullPath</c> на кривой строке из конфига: это ошибка настройки, а не сбой запуска.</summary>
+    private static bool IsBadPath(Exception ex) =>
+        ex is ArgumentException or NotSupportedException or PathTooLongException;
 
     private static bool Overlaps(string left, string right) =>
         ProjectCatalog.IsSameOrInside(left, right) || ProjectCatalog.IsInside(right, left);
@@ -243,6 +247,10 @@ public sealed class GatewayOptions
     public const string MonitorBindLoopback = "loopback";
     public const string MonitorBindAny = "any";
 
+    /// <summary>Значение MonitorBind «any»: регистр не важен везде одинаково, и в Kestrel, и в проверке.</summary>
+    public static bool IsAnyBind(string value) =>
+        value.Equals(MonitorBindAny, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     /// Папка данных: state.json, аудит, appsettings.Local.json. null — по умолчанию
     /// (<c>%LOCALAPPDATA%\AgentsTracker</c>, на Linux и macOS <c>~/.local/share</c>).
@@ -298,9 +306,9 @@ public sealed class GatewayOptions
             errors.Add($"{SectionName}:MonitorPort совпадает с McpPort: {MonitorPort}");
 
         if (!MonitorBind.Equals(MonitorBindLoopback, StringComparison.OrdinalIgnoreCase)
-            && !MonitorBind.Equals(MonitorBindAny, StringComparison.OrdinalIgnoreCase))
+            && !IsAnyBind(MonitorBind))
         {
-            errors.Add($"{SectionName}:MonitorBind = «{MonitorBind}». Допустимо {MonitorBindLoopback} или {MonitorBindAny}.");
+            errors.Add($"{SectionName}:MonitorBind = «{MonitorBind}». Допустимо: {MonitorBindLoopback}, {MonitorBindAny}.");
         }
 
         // Нуль похож на «без ограничения», а на деле CancellationTokenSource срабатывает
@@ -341,7 +349,7 @@ public sealed class GatewayOptions
         var errors = new List<string>();
 
         if (!capabilities.PermissionMode.IsValid(PermissionMode))
-            errors.Add($"{SectionName}:PermissionMode = '{PermissionMode}'. Допустимо: {string.Join(", ", capabilities.PermissionMode.Values)}.");
+            errors.Add($"{SectionName}:PermissionMode = «{PermissionMode}». Допустимо: {string.Join(", ", capabilities.PermissionMode.Values)}.");
 
         ValidateEffort(capabilities, "Effort", Effort, errors);
         ValidateEffort(capabilities, "Question:Effort", Question.Effort, errors);
@@ -356,6 +364,6 @@ public sealed class GatewayOptions
         if (capabilities.Effort is null)
             errors.Add($"{SectionName}:{key} задан, а агент уровень усилий не поддерживает.");
         else if (capabilities.Effort.Resolve(effort) is null)
-            errors.Add($"{SectionName}:{key} = '{effort}'. Допустимо: {string.Join(", ", capabilities.Effort.Values)}.");
+            errors.Add($"{SectionName}:{key} = «{effort}». Допустимо: {string.Join(", ", capabilities.Effort.Values)}.");
     }
 }

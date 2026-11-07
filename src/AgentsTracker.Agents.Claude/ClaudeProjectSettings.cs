@@ -138,14 +138,12 @@ internal static class ClaudeProjectSettings
     private static string Relative(string projectPath, string full) =>
         Path.GetRelativePath(projectPath, full).Replace('\\', '/');
 
-    private static readonly JsonDocumentOptions ParseOptions = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
-
     private static void Describe(string relative, byte[] content, List<string> dangerous, List<string> rules, List<string> other)
     {
         JsonDocument document;
         try
         {
-            document = JsonDocument.Parse(content, ParseOptions);
+            document = JsonDocument.Parse(content, JsonProps.Lenient);
         }
         catch (JsonException)
         {
@@ -175,8 +173,8 @@ internal static class ClaudeProjectSettings
 
             foreach (var key in CommandKeys)
             {
-                if (root.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String)
-                    dangerous.Add($"команда {key}: {value.GetString()}");
+                if (root.String(key) is { } value)
+                    dangerous.Add($"команда {key}: {value}");
             }
 
             if (root.TryGetProperty("statusLine", out var status) && status.ValueKind == JsonValueKind.Object
@@ -225,8 +223,8 @@ internal static class ClaudeProjectSettings
 
             foreach (var hook in hooks.EnumerateArray().Where(h => h.ValueKind == JsonValueKind.Object))
             {
-                if (hook.TryGetProperty("command", out var command) && command.ValueKind == JsonValueKind.String)
-                    yield return command.GetString()!;
+                if (hook.String("command") is { } command)
+                    yield return command;
                 else if (hook.TryGetProperty("type", out var type))
                     yield return $"({type})";
             }

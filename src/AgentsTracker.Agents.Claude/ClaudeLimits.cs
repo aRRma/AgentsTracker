@@ -23,6 +23,11 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
     /// </summary>
     private const string Endpoint = "https://api.anthropic.com/api/oauth/usage";
 
+    /// <summary>Ключи общих окон. Опечатка в одном из мест молча выбросила бы окно из проверки лимита.</summary>
+    private const string FiveHour = "five_hour";
+
+    private const string SevenDay = "seven_day";
+
     /// <summary>
     /// Без User-Agent «как у CLI» эндпоинт отвечает 429. Версия фиксированная: настоящую
     /// узнать можно только запуском claude --version.
@@ -153,9 +158,9 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
     /// </summary>
     private static int Order(LimitWindow window) => window.Key switch
     {
-        "five_hour" => 0,
-        "seven_day" => 1,
-        _ when window.Key.StartsWith("five_hour_", StringComparison.Ordinal) => 2,
+        FiveHour => 0,
+        SevenDay => 1,
+        _ when window.Key.StartsWith(FiveHour + "_", StringComparison.Ordinal) => 2,
         _ => 3,
     };
 
@@ -181,15 +186,15 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
 
     private static string? Suffix(string key) => key switch
     {
-        _ when key.StartsWith("seven_day_", StringComparison.Ordinal) => key["seven_day_".Length..],
-        _ when key.StartsWith("five_hour_", StringComparison.Ordinal) => key["five_hour_".Length..],
+        _ when key.StartsWith(SevenDay + "_", StringComparison.Ordinal) => key[(SevenDay.Length + 1)..],
+        _ when key.StartsWith(FiveHour + "_", StringComparison.Ordinal) => key[(FiveHour.Length + 1)..],
         _ => null,
     };
 
     private static string Describe(string key) => key switch
     {
-        "five_hour" => "5 часов",
-        "seven_day" => "неделя",
+        FiveHour => "5 часов",
+        SevenDay => "неделя",
         _ when Suffix(key) is { } suffix => $"неделя, {suffix.Replace('_', ' ')}",
         _ => key,
     };
@@ -212,7 +217,7 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
         };
 
         var absolute = local.Date == DateTimeOffset.Now.Date
-            ? local.ToString("HH:mm", Russian)
+            ? local.ToString("HH:mm", CultureInfo.InvariantCulture)
             : local.ToString("d MMMM HH:mm", Russian);
 
         return $"через {relative} ({absolute})";
@@ -292,8 +297,7 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
         if (Environment.GetEnvironmentVariable("CLAUDE_CODE_OAUTH_TOKEN") is { Length: > 0 } fromEnvironment)
             return (fromEnvironment, null);
 
-        var path = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", ".credentials.json");
+        var path = ClaudePaths.Credentials;
 
         if (!File.Exists(path))
             return (null, "не найден ~/.claude/.credentials.json — вход в Claude Code, похоже, не по подписке");
@@ -303,8 +307,7 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
             using var document = JsonDocument.Parse(File.ReadAllText(path));
 
             if (!document.RootElement.TryGetProperty("claudeAiOauth", out var oauth)
-                || !oauth.TryGetProperty("accessToken", out var token)
-                || token.GetString() is not { Length: > 0 } value)
+                || oauth.String("accessToken") is not { Length: > 0 } value)
             {
                 return (null, "в ~/.claude/.credentials.json нет токена подписки");
             }
@@ -353,10 +356,9 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
             if (Number(value, "utilization") is not { } raw) continue;
 
             DateTimeOffset? resets =
-                value.TryGetProperty("resets_at", out var at)
-                && at.ValueKind is JsonValueKind.String
+                value.String("resets_at") is { } at
                 && DateTimeOffset.TryParse(
-                    at.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var moment)
+                    at, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var moment)
                     ? moment
                     : null;
 
@@ -418,5 +420,5 @@ public sealed class ClaudeLimits(IHttpClientFactory httpClientFactory, ILogger<C
     }
 
     private static bool IsWindow(string key) =>
-        key.StartsWith("five_hour", StringComparison.Ordinal) || key.StartsWith("seven_day", StringComparison.Ordinal);
+        key.StartsWith(FiveHour, StringComparison.Ordinal) || key.StartsWith(SevenDay, StringComparison.Ordinal);
 }

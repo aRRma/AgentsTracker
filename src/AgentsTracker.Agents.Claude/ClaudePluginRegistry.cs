@@ -21,10 +21,7 @@ internal sealed class ClaudePluginRegistry(ILogger logger)
 
     private const string UserLayer = "личные настройки";
 
-    private static readonly string ClaudeHome =
-        System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude");
-
-    private static readonly string UserSettings = System.IO.Path.Combine(ClaudeHome, "settings.json");
+    private static readonly string UserSettings = Path.Combine(ClaudePaths.Home, "settings.json");
 
     private static readonly JsonSerializerOptions WriteOptions = new()
     {
@@ -34,27 +31,21 @@ internal sealed class ClaudePluginRegistry(ILogger logger)
         NewLine = "\n",
     };
 
-    private static readonly JsonDocumentOptions ReadOptions = new()
-    {
-        CommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true,
-    };
-
     /// <summary>Установленные плагины без учёта состояния.</summary>
     public List<Installed> List()
     {
         var result = new List<Installed>();
-        var installed = System.IO.Path.Combine(ClaudeHome, "plugins", "installed_plugins.json");
+        var installed = Path.Combine(ClaudePaths.Home, "plugins", "installed_plugins.json");
         if (!File.Exists(installed)) return result;
 
         JsonDocument document;
         try
         {
-            document = JsonDocument.Parse(File.ReadAllText(installed), ReadOptions);
+            document = JsonDocument.Parse(File.ReadAllText(installed), JsonProps.Lenient);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
-            logger.LogDebug(ex, "Не удалось прочитать {File}", installed);
+            logger.LogDebug(ex, "Не удалось прочитать {Path}", installed);
             return result;
         }
 
@@ -75,10 +66,7 @@ internal sealed class ClaudePluginRegistry(ILogger logger)
                     ? plugin.Value.EnumerateArray().FirstOrDefault()
                     : plugin.Value;
 
-                if (entry.ValueKind == JsonValueKind.Object
-                    && entry.TryGetProperty("installPath", out var pathElement)
-                    && pathElement.ValueKind == JsonValueKind.String
-                    && pathElement.GetString() is { Length: > 0 } path
+                if (entry.String("installPath") is { Length: > 0 } path
                     && Directory.Exists(path))
                     result.Add(new Installed(key, name, path));
             }
@@ -109,12 +97,12 @@ internal sealed class ClaudePluginRegistry(ILogger logger)
         try
         {
             var text = File.Exists(UserSettings) ? File.ReadAllText(UserSettings) : "{}";
-            root = JsonNode.Parse(text, documentOptions: ReadOptions) as JsonObject
+            root = JsonNode.Parse(text, documentOptions: JsonProps.Lenient) as JsonObject
                    ?? throw new JsonException("в корне не объект");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
-            logger.LogWarning(ex, "Не удалось прочитать {File}", UserSettings);
+            logger.LogWarning(ex, "Не удалось прочитать {Path}", UserSettings);
             return "Не удалось прочитать settings.json";
         }
 
@@ -131,17 +119,17 @@ internal sealed class ClaudePluginRegistry(ILogger logger)
         var temp = UserSettings + ".tmp";
         try
         {
-            Directory.CreateDirectory(ClaudeHome);
+            Directory.CreateDirectory(ClaudePaths.Home);
             File.WriteAllText(temp, root.ToJsonString(WriteOptions) + "\n", new UTF8Encoding(false));
             File.Move(temp, UserSettings, overwrite: true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            logger.LogWarning(ex, "Не удалось записать {File}", UserSettings);
+            logger.LogWarning(ex, "Не удалось записать {Path}", UserSettings);
             return "Не удалось записать settings.json";
         }
 
-        logger.LogInformation("Плагин {Plugin} {State} в {File}", key, enabled ? "включён" : "выключен", UserSettings);
+        logger.LogInformation("Плагин {Plugin} {State} в {Path}", key, enabled ? "включён" : "выключен", UserSettings);
         return null;
     }
 
@@ -151,8 +139,8 @@ internal sealed class ClaudePluginRegistry(ILogger logger)
     private static IEnumerable<(string File, string Layer)> Layers(string projectPath) =>
     [
         (UserSettings, UserLayer),
-        (System.IO.Path.Combine(projectPath, ".claude", "settings.json"), ".claude/settings.json проекта"),
-        (System.IO.Path.Combine(projectPath, ".claude", "settings.local.json"), ".claude/settings.local.json проекта"),
+        (Path.Combine(projectPath, ".claude", "settings.json"), ".claude/settings.json проекта"),
+        (Path.Combine(projectPath, ".claude", "settings.local.json"), ".claude/settings.local.json проекта"),
     ];
 
     private void Read(string file, string layer, Dictionary<string, Setting> into)
@@ -161,7 +149,7 @@ internal sealed class ClaudePluginRegistry(ILogger logger)
 
         try
         {
-            using var document = JsonDocument.Parse(File.ReadAllText(file), ReadOptions);
+            using var document = JsonDocument.Parse(File.ReadAllText(file), JsonProps.Lenient);
             if (!document.RootElement.TryGetProperty("enabledPlugins", out var section)
                 || section.ValueKind != JsonValueKind.Object)
                 return;
@@ -174,7 +162,7 @@ internal sealed class ClaudePluginRegistry(ILogger logger)
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
-            logger.LogDebug(ex, "Не удалось прочитать {File}", file);
+            logger.LogDebug(ex, "Не удалось прочитать {Path}", file);
         }
     }
 }

@@ -34,7 +34,7 @@ public static class UninstallCommand
         // версии поверх не пройдёт, а именно за этим команду и зовут перед обновлением.
         if (Environment.ProcessPath is { } exe)
         {
-            var stopped = RunningGateway.StopAll(exe, TimeSpan.FromSeconds(10));
+            var stopped = RunningGateway.StopAll(exe, RunningGateway.DefaultWait);
             if (stopped > 0) output.WriteLine($"Остановлено запущенных вручную: {stopped}");
         }
 

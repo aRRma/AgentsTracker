@@ -125,7 +125,7 @@ public sealed class ClaudeBackend(
         {
             cancelled = true;
             Kill(process);
-            try { await process.WaitForExitAsync(CancellationToken.None); } catch { /* уже мёртв */ }
+            try { await process.WaitForExitAsync(CancellationToken.None); } catch (Exception) { /* уже мёртв */ }
         }
 
         // Канал вывода может держать фоновый процесс, которому агент его передал: конец потока
@@ -245,6 +245,18 @@ public sealed class ClaudeBackend(
     /// (dev-сервер, watch) наследует его каналы вывода, и конец потока приходит только с ним.
     /// </summary>
     private static readonly TimeSpan DrainGrace = TimeSpan.FromSeconds(5);
+
+    private static readonly string[] MissingSessionMarkers =
+    [
+        "no conversation found", "session not found", "could not find session",
+        "unable to resume", "failed to resume", "invalid session",
+    ];
+
+    private static readonly string[] PlanLimitMarkers =
+    [
+        "usage limit reached", "usage limit", "usage credits", "extra usage",
+        "weekly limit", "5-hour limit", "rate_limit",
+    ];
 
     /// <summary>
     /// Построчно до конца потока. Может пережить сам запуск — если канал держит фоновый процесс
@@ -536,13 +548,13 @@ public sealed class ClaudeBackend(
                 // Целиком — только на Debug: в строке может быть ответ с содержимым файлов. Маска —
                 // здесь: консоль и docker logs приёмник лога не маскирует.
                 logger.LogWarning(ex, "Итог CLI не разобран как JSON: {Line}", Text.ClipRedacted(resultLine, ErrorDetailsLimit));
-                logger.LogDebug("итог целиком: {Line}", Truncate(resultLine, 2000));
+                logger.LogDebug("итог целиком: {Line}", Text.Clip(resultLine, 2000));
             }
         }
 
         if (payload is null)
         {
-            var details = string.IsNullOrWhiteSpace(stderr) ? Truncate(output.Noise, 3000) : Truncate(stderr, 3000);
+            var details = string.IsNullOrWhiteSpace(stderr) ? Text.Clip(output.Noise, 3000) : Text.Clip(stderr, 3000);
             logger.LogError("claude завершился с кодом {Code}: {Details}", exitCode, Text.ClipRedacted(details, ErrorDetailsLimit));
             logger.LogDebug("вывод целиком: {Details}", details);
 
@@ -567,7 +579,7 @@ public sealed class ClaudeBackend(
         var text = payload.Result;
         if (string.IsNullOrWhiteSpace(text))
             text = payload.IsError
-                ? (string.IsNullOrWhiteSpace(stderr) ? "Агент завершился с ошибкой без текста ответа." : Truncate(stderr.Trim(), 3000))
+                ? (string.IsNullOrWhiteSpace(stderr) ? "Агент завершился с ошибкой без текста ответа." : Text.Clip(stderr.Trim(), 3000))
                 : "(пустой ответ)";
 
         var failed = payload.IsError || exitCode != 0;
@@ -613,13 +625,7 @@ public sealed class ClaudeBackend(
         if (text is not { Length: > 0 }) return false;
         if (!text.Contains(resumedSessionId, StringComparison.OrdinalIgnoreCase)) return false;
 
-        string[] markers =
-        [
-            "no conversation found", "session not found", "could not find session",
-            "unable to resume", "failed to resume", "invalid session",
-        ];
-
-        return markers.Any(marker => text.Contains(marker, StringComparison.OrdinalIgnoreCase));
+        return MissingSessionMarkers.Any(marker => text.Contains(marker, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -630,13 +636,7 @@ public sealed class ClaudeBackend(
     {
         if (text is not { Length: > 0 }) return false;
 
-        string[] markers =
-        [
-            "usage limit reached", "usage limit", "usage credits", "extra usage",
-            "weekly limit", "5-hour limit", "rate_limit",
-        ];
-
-        return markers.Any(marker => text.Contains(marker, StringComparison.OrdinalIgnoreCase));
+        return PlanLimitMarkers.Any(marker => text.Contains(marker, StringComparison.OrdinalIgnoreCase));
     }
 
     private void Kill(Process process)
@@ -650,7 +650,4 @@ public sealed class ClaudeBackend(
             logger.LogWarning(ex, "Не удалось завершить процесс claude");
         }
     }
-
-    private static string Truncate(string value, int max) =>
-        value.Length <= max ? value : value[..max] + "…";
 }
