@@ -1,12 +1,11 @@
-# Claude Code Permissions on the Local Machine
+# Claude Code permissions on the local machine
 
 When to read this: you're setting up the gateway on your own PC, or handing the agent a new
 project. The gateway only relays «можно?» ("can I?") questions to Telegram: what the agent asks
 about, does silently, or is forbidden is decided by Claude Code's own settings files. Below is
-the recommended scheme and the author's working config as a ready-made example,
-`../examples/claude-settings.example.json` (verified against CLI 2.1.x).
+the recommended scheme and a ready-made example, `../examples/claude-settings.example.json`.
 
-## Three Files
+## Three files
 
 | File | Who sees it | What it's for |
 |---|---|---|
@@ -19,7 +18,7 @@ is fixed: `deny` → `ask` → `allow`, the first matching rule decides. So the 
 tighten the personal one (`ask` in the project overrides the user's `allow`), but it cannot
 loosen it.
 
-## How This Combines with the Gateway
+## How this combines with the gateway
 
 - An action under `allow` runs without a card in Telegram. Under `ask` — a card arrives. Under
   `deny` — the CLI refuses on its own, there is no card.
@@ -34,10 +33,10 @@ loosen it.
 - `env` from `~/.claude/settings.json` is inherited by the `claude` the gateway launches. If the
   Claude API is only reachable through a proxy, set `HTTPS_PROXY` here, and `NO_PROXY` must
   include `127.0.0.1`: the CLI reaches the gateway for approvals at that address, and a proxy
-  would break it. The example's `env` has `NO_PROXY`/`no_proxy`, `MCP_TIMEOUT` and two `DOTNET_*`
-  switches, no proxy.
+  would break it. The example's `env` holds only no-proxy, timeout and .NET telemetry switches —
+  no proxy.
 
-## What to Deny, What to Ask, What to Allow
+## What to deny, what to ask, what to allow
 
 The groups and the reasoning; the full list (most rules written for both `Bash(...)` and
 `PowerShell(...)`) is in `../examples/claude-settings.example.json`.
@@ -86,7 +85,7 @@ The groups and the reasoning; the full list (most rules written for both `Bash(.
 A mistake in `ask` is cheaper than one in `allow`: an extra question is annoying, an extra
 permission lets an action through silently.
 
-## Moving to Another PC
+## Moving to another PC
 
 The rules live in `~/.claude/settings.json` of the Windows user the gateway runs as (`install`
 creates the Task Scheduler task for the current user): `%USERPROFILE%\.claude\settings.json`.
@@ -130,7 +129,7 @@ docker compose exec -T gateway sh -c "cat > /home/app/.claude/settings.json" < d
 
 The `PowerShell(...)` and `git.exe` rules are not needed on Linux, but do no harm.
 
-## Syntax Pitfalls
+## Syntax pitfalls
 
 - **`Bash(...)` and `PowerShell(...)` are different tools.** A `Bash(git push -f*)` rule
   won't stop `git push -f` run through the PowerShell tool, so every deny and every ask is
@@ -140,8 +139,7 @@ The `PowerShell(...)` and `git.exe` rules are not needed on Linux, but do no har
 - `*` works anywhere in the string (`Bash(mongosh*drop*)`), but a rule matches from the start:
   `git push --force*` misses `git -C <folder> push --force`, `git push origin master --force`,
   `git push -f` and `git push origin +master`. So the git denies are written `git*push*--force*`
-  plus separate `-f` and `+` rules: a false hit (the same words in a commit message) costs one
-  rewording. `ask` is written the same way (`git*checkout*`, `git*stash*drop*`), except `push` and
+  plus separate `-f` and `+` rules. `ask` is written the same way (`git*checkout*`, `git*stash*drop*`), except `push` and
   `clean`: those words are common in commit messages and `git stash push` is an ordinary command,
   so they get the `git push*` + `git -C * push*` pair.
 - `allow` always comes as a `git -C * …` pair and names a subcommand, never a global option:
@@ -157,15 +155,15 @@ The `PowerShell(...)` and `git.exe` rules are not needed on Linux, but do no har
   `Bash(tail*)` will. `Bash(git status)` without an asterisk matches only that exact command
   with no arguments.
 - Compound commands are parsed by parts: `deny` fires if at least one part of `a && b`, `$(…)`,
-  `a; b` matches. For `allow` it's the opposite — every part must be allowed. Checked on
-  11.10.2026 in both Bash and PowerShell: `git log -1; git stash drop` asked about `drop`.
+  `a; b` matches. For `allow` it's the opposite — every part must be allowed. Checked in both Bash
+  and PowerShell: `git log -1; git stash drop` asks about `drop`.
 - Paths: `//**/.env` — anywhere on the filesystem, `~/…` — from the home folder, `**/.env` —
   only inside the current project. A single leading `/…` is **not** the disk root, but the
   root of the settings source; don't use it.
 - `mcp__server__*` in `allow` requires the server name (`mcp__plugin_playwright_playwright__*`);
   a bare `mcp__*` there silently does nothing, but in `deny` it does work.
 
-## This Project's Rules
+## This project's rules
 
 The `.claude/settings.json` file at the root closes off what the personal config doesn't need
 to know about:
@@ -178,25 +176,20 @@ to know about:
 - `dotnet run`, `AgentsTracker.Gateway.exe`, `schtasks`, `docker compose`, `Stop-Process`,
   `Stop-ScheduledTask` ask: from a session started through Telegram they would stop or duplicate
   the gateway itself (`operations.md`). This `ask` beats the personal `allow` on `dotnet run`;
-- `scripts\monitor-api.ps1` — no question. The `curl`/`Invoke-RestMethod` deny doesn't
-  distinguish the internet from `127.0.0.1`, and the agent kept running into it trying to read the
-  monitor's `/api/snapshot`. The script only reaches loopback and only reads; widening the rule to
-  `Invoke-RestMethod http://127.0.0.1*` won't work — `deny` is checked before `allow`.
+- `scripts\monitor-api.ps1` — no question: the `curl`/`Invoke-RestMethod` deny doesn't distinguish
+  the internet from `127.0.0.1`. The script only reaches loopback and only reads; widening the rule
+  to `Invoke-RestMethod http://127.0.0.1*` won't work — `deny` is checked before `allow`.
 
 Project-personal settings go in `.claude/settings.local.json`, which is in `.gitignore`.
 
 ## Hooks
 
-`hooks` in `~/.claude/settings.json` is the same restriction mechanism, but programmatic. The
-author has a `PreToolUse` hook on `Agent` that swaps subagent models to `sonnet` (the "Subagents
-only with `model: "sonnet"`" rule from `../../CLAUDE.md`). Hooks are scripts kept outside the
-project and are not included in the example; editing the hooks folder is set to `ask` so
-the agent can't rewrite its own restrictions.
+`hooks` in `~/.claude/settings.json` is the same restriction mechanism, but programmatic. Hooks
+are scripts kept outside the project and are not included in the example; editing the hooks
+folder is set to `ask` so the agent can't rewrite its own restrictions.
 
-The hook and `CLAUDE_CODE_SUBAGENT_MODEL` in `env` set the `sonnet` alias; the CLI decides what it
-resolves to. CLI 2.1.283 maps it to `claude-sonnet-5` and does not know the later
-`claude-sonnet-5-5`. So the author's own `env` (not in the example) holds
-`"ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-5-5[1m]"`; subagents, the `sonnet` button in the
-chat and `/ask` (default model `sonnet`) all go there. The `[1m]` is required: the CLI gives a
-model it does not know a 200 000 window, not 1 000 000. The variable pins the version — once the
-CLI knows `sonnet-5-5` itself or a newer one ships, remove it, or `sonnet` stays on 5-5.
+If the `sonnet` alias (subagents, the `sonnet` button in the chat, `/ask`) resolves to an old model
+or window because the CLI does not know a newer model, pin it in `env` with
+`ANTHROPIC_DEFAULT_SONNET_MODEL`, for example `claude-sonnet-<version>[1m]`. The `[1m]` is
+required: the CLI gives a model it does not know a 200 000 window, not 1 000 000. The variable
+pins the version — remove it once the CLI knows the model itself.

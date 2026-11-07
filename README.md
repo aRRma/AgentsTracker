@@ -22,8 +22,7 @@
 - **Файлы — в тот же чат.** Отчёт, таблицу или скриншот агент присылает файлом, а вы ему — картинку.
 
 Нужен компьютер с Windows, который включён, и вы в него вошли. Белый IP и открытые порты не нужны.
-Агент видит всё, что видит ваша учётная запись, а не только папку проекта, — прочитайте
-[«Безопасность»](#безопасность) до первой задачи.
+Прочитайте [«Безопасность»](#безопасность) до первой задачи.
 
 ## Для чего
 
@@ -72,7 +71,7 @@
 </table>
 
 <details>
-<summary>Ещё скриншоты: ответ, скиллы, расход, файлы, веб-монитор</summary>
+<summary>Ещё скриншоты: ответ, скиллы, расход, файлы, монитор</summary>
 
 <table align="center">
   <tr>
@@ -86,8 +85,8 @@
 </table>
 
 <p align="center">
-  <img src="docs/images/monitor.png" width="900" alt="Веб-монитор AgentsTracker"><br>
-  <sub><b>Веб-монитор.</b> Статус, очередь, расход, запуски, сессии, журнал и лог</sub>
+  <img src="docs/images/monitor.png" width="900" alt="Монитор AgentsTracker"><br>
+  <sub><b>Монитор.</b> Статус, очередь, расход, запуски, сессии, журнал и лог</sub>
 </p>
 
 </details>
@@ -95,19 +94,18 @@
 ## Как это работает
 
 <p align="center">
-  <img src="docs/images/architecture.png" width="900" alt="Схема: чат, шлюз, Claude Code, папка проекта, состояние и веб-монитор">
+  <img src="docs/images/architecture.png" width="900" alt="Схема: чат, шлюз, Claude Code, папка проекта, состояние и монитор">
 </p>
 
-Шлюз работает на вашем ПК. Он получает задачу из Telegram, запускает Claude Code в папке проекта и
-отдаёт ответ в чат. Когда агенту нужно подтверждение, он спрашивает шлюз, а шлюз — вас, карточкой с
-кнопками. Входящие подключения не нужны: шлюз и Claude Code сами ходят наружу — в Telegram, в
-Anthropic и туда, куда вы разрешите агенту.
+Когда агенту нужно подтверждение, он спрашивает шлюз, а шлюз — вас, карточкой с кнопками.
+Входящие подключения не нужны: шлюз и Claude Code сами ходят наружу — в Telegram, в Anthropic и
+туда, куда вы разрешите агенту.
 
 ## Установка
 
 ### Что нужно
 
-- **Windows 10 или 11.** На macOS и Linux — пока только [Docker](docs/deployment.md#docker).
+- **Windows 10 или 11.** На macOS и Linux — только [Docker](docs/deployment.md#docker).
 - **Claude Code** с входом по подписке. Каждая задача тратит лимит этой подписки. Проверка —
   `claude --version` в PowerShell. Если команды нет, выполните
   `irm https://claude.ai/install.ps1 | iex`, затем в новом окне запустите `claude` и войдите.
@@ -118,13 +116,12 @@ Anthropic и туда, куда вы разрешите агенту.
 ### Шаги
 
 1. **Скачайте архив** со страницы [Releases](https://github.com/aRRma/AgentsTracker/releases).
-   Если сомневаетесь, берите `…-win-x64-self-contained.zip` (~50 МБ): в нём всё нужное. Архив
-   `…-win-x64.zip` (~3 МБ) меньше, но требует
+   Если сомневаетесь, берите `…-win-x64-self-contained.zip`: в нём всё нужное. Архив
+   `…-win-x64.zip` меньше, но требует
    [ASP.NET Core Runtime 10](https://dotnet.microsoft.com/download/dotnet/10.0).
 2. **Распакуйте** его. Внутри — папка шлюза, `install.txt` с короткой инструкцией и
    `claude-settings.example.json`. Папку шлюза перенесите в постоянное место вне проектов, например
-   в `C:\Apps\AgentsTracker`. Откройте в ней PowerShell: в Проводнике наберите `powershell` в адресной
-   строке и нажмите Enter. Все команды ниже — в этом окне.
+   в `C:\Apps\AgentsTracker`. Откройте в ней PowerShell: все команды ниже — в этом окне.
 3. **Настройки.** Создайте файл настроек из примера и откройте его в Блокноте:
    ```powershell
    Copy-Item appsettings.Local.example.json appsettings.Local.json
@@ -169,7 +166,7 @@ Docker, сборка из исходников, все ключи настрое
   `Gateway:Work:AllowedUserIds` (см. [риски](docs/safety.md)).
 - **`/help`** — все команды. Команды самого Claude Code (`/init`) уходят агенту как есть.
 
-Веб-монитор на том же ПК — <http://127.0.0.1:5100>: статус, расход, история запусков, журнал и лог.
+Монитор на том же ПК — <http://127.0.0.1:5100>: статус, расход, история запусков, журнал и лог.
 Он только показывает, управление — в чате. Все команды и подпись под ответом —
 [docs/use-cases.md](docs/use-cases.md#команды).
 
@@ -198,7 +195,7 @@ Docker, сборка из исходников, все ключи настрое
 | [safety.md](docs/safety.md) | риски и как их закрыть |
 | [claude-permissions.md](docs/claude-permissions.md) | что агент делает без подтверждения, о чём спрашивает и что ему запрещено |
 | [deployment.md](docs/deployment.md) | установка, обновление, Docker, настройки, порты, «если что-то не так» |
-| [monitor.md](docs/monitor.md) | веб-монитор изнутри |
+| [monitor.md](docs/monitor.md) | монитор изнутри |
 | [architecture.md](docs/architecture.md) · [extending.md](docs/extending.md) · [cli-contract.md](docs/cli-contract.md) · [operations.md](docs/operations.md) · [glossary.md](docs/glossary.md) | для разработчика: устройство шлюза, чек-листы, контракт с CLI, работа на машине разработки, словарь терминов |
 
 Инструкции для самого агента — [CLAUDE.md](CLAUDE.md) и `docs/en/`, на английском.

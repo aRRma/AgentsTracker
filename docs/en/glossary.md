@@ -7,7 +7,7 @@ and do not invent a synonym: one thing under two names reads as two things.
 All user-facing text is Russian, so the terms are Russian. Type, folder and config key names stay
 English (`IAgentLimits`, `ProjectPath`, `audit\`) — the glossary is about texts, not identifiers.
 
-## The table
+## Terms
 
 | Concept | Term | Never write |
 | --- | --- | --- |
@@ -62,7 +62,7 @@ English (`IAgentLimits`, `ProjectPath`, `audit\`) — the glossary is about text
 sessions and «всегда» rules are keyed by. A folder is only the level above it in the list: projects
 are grouped by the folder that holds them (`📂 К папкам`). Never call a project a repository, even
 though it usually is a git repository: the config key is `ProjectPath`, the audit, the monitor and
-every document say «проект», and a second word would split one thing in two.
+every document say «проект».
 
 **задача / запуск.** The user writes a задача; the agent performs a запуск of it. The queue holds
 задачи («Очередь снята, не запущено: 3 задач(и)»), the statistics and the monitor count запуски
@@ -85,14 +85,13 @@ screen. The main agent's turns, as opposed to a сабагент's, are the «о
 «основная ветка».
 
 **проект / worktree.** A worktree is a separate folder of the same repository on its own branch. To
-the gateway it is an ordinary проект: its own сессия, «всегда» rules and доверие к проекту. The 🌳
-mark shows which project it was made from. The agent can also move a сессия into a worktree itself
-without changing the проект: «Статус» calls that «сессия в worktree», and доверие к проекту is asked
-for that folder too.
+the gateway it is an ordinary проект: its own сессия, «всегда» rules and доверие к проекту. The
+agent can also move a сессия into a worktree itself without changing the проект: «Статус» calls
+that «сессия в worktree», and доверие к проекту is asked for that folder too.
 
 **контекст / кэш.** The контекст is how much of the model's window a session takes. The кэш is how
-much longer the model keeps that session ready: an hour after the start of the last request, five
-minutes for a сабагент. The кэш «остывает»: the next run then writes the whole context anew and
+much longer the model keeps that session ready after the last request. The кэш «остывает»: the
+next run then writes the whole context anew and
 spends more of the лимит. A model switch and the `plan` mode reset the кэш too. A подогрев is a run
 that only extends the кэш and leaves no turn in the session.
 
@@ -117,7 +116,8 @@ a run timeout («предел канала», «Превышен предел в
 
 **журнал / лог.** The журнал is what a human is answerable for — `/audit`, the monitor's
 «Журнал», `audit\audit-<YYYY-MM>.jsonl`. The лог is for debugging — the monitor's «Лог»,
-`ILogger`, the file `logs\gateway-<YYYY-MM-DD>.log`. The mechanism keeps its English name (`audit`), the text says «журнал».
+`ILogger`, the file `logs\gateway-<YYYY-MM-DD>.log`. The mechanism keeps its English name
+(`audit`), the text says «журнал».
 
 **отклонить / отменено / отказ.** The user pressed «❌ Отклонить» — отклонено. The card went away
 for another reason (`/stop`, a gateway restart) — отменено. The gateway itself did not let

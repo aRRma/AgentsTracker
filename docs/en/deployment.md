@@ -31,9 +31,8 @@ exe as `appsettings.Local.json`, fill it in and run `install --start`.
 Archive layout: a folder `AgentsTracker-<tag>-win-x64` (or `…-win-x64-self-contained`, named like
 the archive) with the application and, beside it, `install.txt` — a short user guide (source
 `../install-quickstart.txt`) — and `claude-settings.example.json`, the agent's permission rules
-for `~/.claude/settings.json` (`claude-permissions.md`, "Moving to Another PC"). The folder keeps
-extraction "here" from scattering a hundred and a half files over the downloads folder, and its
-name shows the installed version.
+for `~/.claude/settings.json` (`claude-permissions.md`, "Moving to another PC"). The folder name
+shows the installed version.
 
 ### From source
 
@@ -56,9 +55,7 @@ Along the way it also:
 - moves `appsettings.Local.json` from next to the exe into the data directory and encrypts the
   channel secrets (`Channel:Settings:BotToken`) and `Proxy`, as `protect-secrets` does. If the
   data directory already has a config, that one stays and the copy next to the exe is deleted
-  unread (`dotnet publish` copies there a file with a plain-text token). A config with the old
-  `Gateway:BotToken` is rejected and autostart is not registered — run
-  `scripts\migrate-channel-settings.ps1` first (`-Path` for a file next to the exe);
+  unread (`dotnet publish` copies there a file with a plain-text token);
 - locks down the data directory permissions: owner and SYSTEM only;
 - overwrites a task of the same name;
 - prints a summary: the path, the data directory, the ports, whether the config is filled in.
@@ -74,8 +71,7 @@ Code reads the OAuth login from `%USERPROFILE%\.claude`, and SYSTEM has no acces
 gateway runs only while you are logged into Windows. To run without a logged-in session, enable
 auto-logon and lock the screen rather than moving the task to SYSTEM.
 
-On macOS and Linux `install` refuses: they need a launchd agent and a user-level systemd unit,
-which will come later. Until then Docker is what is left there.
+On macOS and Linux `install` refuses; use Docker there.
 
 ### Version update
 
@@ -129,9 +125,7 @@ So the install folder can be deleted and recreated without touching the token, s
 journal. Re-encrypt after an edit with `AgentsTracker.Gateway.exe protect-secrets [file]`. It
 encrypts `Proxy` and the channel secrets (`BotToken`, the channel's own `Proxy`) in place. Without
 a file it takes the config in the data directory, else the one next to the exe, and moves the
-result into the data directory. It refuses to overwrite a config already there, and refuses a
-config with the old `Gateway:BotToken`/`Gateway:AllowedUserIds` keys
-(`scripts\migrate-channel-settings.ps1`).
+result into the data directory. It refuses to overwrite a config already there.
 
 DPAPI decrypts only for **the same account on the same machine**. A config with `dpapi:…` does not
 carry over to another PC or user: on a new machine put in a file with plain values and run
@@ -146,8 +140,6 @@ Config layers, each next one overrides the previous:
 3. `appsettings.Local.json` in the data directory — production;
 4. environment variables `Gateway__Key` (nested — `Gateway__Claude__Executable`).
 
-The config is read **once at startup**: change it, restart.
-
 The data directory is `%LOCALAPPDATA%\AgentsTracker` (on Linux and macOS
 `~/.local/share/AgentsTracker`); `Gateway:DataDirectory` relocates it. The config file itself
 lives there, so this key is read earlier than the rest: only from `appsettings.json` next to the
@@ -160,7 +152,7 @@ next to the exe.
 
 | Key | What for |
 |---|---|
-| `Channel:Type` | which channel; only `telegram` so far |
+| `Channel:Type` | which channel; `telegram` is the only one |
 | `Channel:Settings:BotToken` | the token from @BotFather |
 | `Channel:Settings:AllowedUserIds` | who may control the bot |
 | `Proxy`, `Channel:Settings:Proxy` | the machine-wide proxy · a proxy for the channel only (if absent, the common one is used) |
@@ -170,13 +162,13 @@ next to the exe.
 | `Claude:BuiltInSkills` | built-in skills for `/skills`, lines `"/command \| description \| argument hint"` |
 | `Model`, `Effort` | the default model and effort |
 | `PermissionMode` | what is allowed without asking. The chat switches `plan`, `default`, `acceptEdits`, `auto`; `dontAsk` and `bypassPermissions` only here, in the file |
-| `McpPort`, `MonitorPort`, `MonitorBind` | the port `claude` asks for approvals on (5099) · the monitor port (5100, `0` turns it off) · where the monitor listens: `loopback`, or `any` for a container |
+| `McpPort`, `MonitorPort`, `MonitorBind` | see [Ports](#ports) |
 | `DataDirectory` | where state, the audit journal and the log live; see above |
 | `ApprovalTimeoutMinutes`, `RunTimeoutMinutes` | how many minutes to wait for a card answer (15) and for the whole run (60) |
-| `Attachments:Enabled`, `:MaxBytes`, `:RetentionHours` | pictures from the chat: accept them (yes), the size ceiling (10 MB; Telegram gives a bot at most 20 MB), how many hours to keep them (24) |
+| `Attachments:Enabled`, `:MaxBytes`, `:RetentionHours` | pictures from the chat: accept them (yes), the size ceiling (10 MB), how many hours to keep them (24) |
 | `Question:Model`, `Question:Effort` | model and effort for `/ask` and a беседа: `sonnet` and whatever Claude Code decides by default. Not changeable from the chat for `/ask`; in a беседа `/model` and `/effort` change them |
 | `Work:AllowedUserIds` | who may use the «Работа» topic (remote work on the whole computer): ids from `Channel:Settings:AllowedUserIds`, a number like `[123456789]` or `"telegram:123456789"`. Empty (default) — the button is shown to nobody. The gateway will not start if an id is not among the bot's users |
-| `Work:Folder` | the root of the «Работа» topics' folders, a full path; each topic gets its own subfolder that is never emptied. Default `%USERPROFILE%\AgentsTracker-work`. The gateway will not start if it overlaps the data folder, the temp folder, `ProjectPath` or `Projects`, or contains `ProjectsRoot`. Overlaps are checked only when the list is non-empty; the path itself (full and valid) always |
+| `Work:Folder` | the root of the «Работа» topics' folders, a full path; each topic gets its own subfolder that is never emptied. Default `%USERPROFILE%\AgentsTracker-work`. The gateway will not start if the path overlaps the data folder, the temp folder, `ProjectPath` or the project list |
 
 ### Restart
 
@@ -200,19 +192,17 @@ write «продолжай». Ask an interrupted вопрос again with `/ask`.
 
 | Key | Default | What it is |
 |---|---|---|
-| `McpPort` | 5099 | `claude` uses it to ask the gateway for permissions. Always `127.0.0.1` only, locked with a token in the header. Can't be turned off — without it there are no buttons |
-| `MonitorPort` | 5100 | the web monitor. `0` disables it. A startup check rejects a clash with `McpPort` |
+| `McpPort` | 5099 | `claude` uses it to ask the gateway for confirmations. Always `127.0.0.1` only, locked with a token in the header. Can't be turned off — without it there are no buttons |
+| `MonitorPort` | 5100 | the monitor. `0` disables it. A startup check rejects a clash with `McpPort` |
 | `MonitorBind` | `loopback` | where the monitor listens. `any` is needed in a container; on a regular machine leave `loopback` |
 
 ```json
 { "Gateway": { "McpPort": 15099, "MonitorPort": 15100 } }
 ```
 
-Kestrel opens the ports with explicit `Listen` calls, so `--urls` and `ASPNETCORE_URLS` are
-ignored — only these keys set the ports. A `Kestrel:Endpoints` section does not move them
-either: ASP.NET Core adds such endpoints on top of the `Listen` ones, so it only opens an extra
-listener. Don't use it. "Any free port" is not an option: the MCP port goes into the config for
-the CLI and must stay fixed.
+Only these keys set the ports; `--urls`, `ASPNETCORE_URLS` and `Kestrel:Endpoints` do not (the last
+one only opens an extra listener). "Any free port" is not an option: the MCP port goes into the
+config for the CLI and must stay fixed.
 
 If another application holds a port, startup shows `Failed to bind to address` and the gateway
 does not come up:
@@ -231,8 +221,8 @@ No firewall rules are needed: with `MonitorBind: loopback` the ports don't face 
 ## Docker
 
 The container gives what an on-machine install doesn't: the agent sees only mounted volumes. A
-failed command and the «Всегда» (Always) button can't reach the rest of the system. The same holds for the «Работа» topic: «the whole computer» there
-is only the container.
+failed command and the «Всегда» (Always) button can't reach the rest of the system. The same holds
+for the «Работа» topic: «the whole computer» there is only the container.
 
 Copy `.env.example` to `.env` and fill in the token, your id and the folder with projects. Then:
 
@@ -257,9 +247,8 @@ share settings, plugins and session history.
 - **Tools.** The agent can do what is in the image: git, ripgrep and the .NET SDK. For other
   languages add a layer in the `Dockerfile`.
 - **Autostart** is `restart: unless-stopped`; `install` inside the container refuses and says why.
-- **`init: true`** puts a tiny init before the gateway. As PID 1 the gateway would have to reap
-  the agent's orphaned children (a background dev server after its run ended) and does not, so
-  they would pile up as zombies. Do not remove it from your own compose file.
+- **`init: true`** reaps the agent's orphaned background processes. Do not remove it from your own
+  compose file.
 
 Update: `docker compose up -d --build`. Volumes survive a rebuild.
 
@@ -271,7 +260,7 @@ The data directory is the gateway's whole state. On Windows only the owner and S
 | File | What |
 |---|---|
 | `appsettings.Local.json` | config; on Windows secrets are encrypted |
-| `state.json` | sessions per project, project, model, mode and effort selection (the лента's and each topic's), the runs in progress per chat, the versions the model aliases answered with, "Always" rules and trusted projects per project, statistics, run history |
+| `state.json` | the gateway's state: sessions, the choices per chat and topic, rules and trusted projects, statistics, run history |
 | `audit\audit-YYYY-MM.jsonl` | the "who did what, when" journal, one file per month |
 | `logs\gateway-YYYY-MM-DD.log` | the technical log, one file per day, Information and above, secrets masked; files older than 14 days are deleted |
 | `inbox\<chat>\<project>\` | pictures from the chat; swept after `Attachments:RetentionHours` (24 by default) |
@@ -291,7 +280,7 @@ last `CRT` entry in the file.
 | Symptom | Cause |
 |---|---|
 | The downloaded exe does not start and asks to install .NET | the `…-win-x64.zip` archive works only with ASP.NET Core Runtime 10 — install it or take `…-self-contained.zip` |
-| `dotnet` not found, or it cannot find SDK 10 | no .NET 10 SDK; it is needed only to build from source |
+| `dotnet` not found, or it cannot find the SDK | no .NET SDK; it is needed only to build from source |
 | The bot is silent | your id is not in `Channel:Settings:AllowedUserIds` (the journal has the rejected message), the token is wrong, or Telegram is unreachable without a proxy |
 | `Gateway:BotToken больше не читается` | the channel settings moved to `Gateway:Channel:Settings`; move them with `pwsh -File scripts\migrate-channel-settings.ps1` from the gateway's sources (a `.backup` stays next to it) |
 | Not all projects in the menu | `ProjectsRoot` is not set; the list pages with `◀ ▶` |
@@ -304,9 +293,9 @@ last `CRT` entry in the file.
 
 ## Multiple instances
 
-Under one account — **one gateway**: the data directory is shared, and a Telegram bot hands
-`getUpdates` to only one process (the second gets a 409). Several bots at once need different
-Windows users or different containers, each with its own volume and `~/.claude`. Spread the ports
+Under one account — **one gateway**: the data directory is shared, and a Telegram bot works with
+one process only. Several bots at once need different Windows users or different containers, each
+with its own volume and `~/.claude`. Spread the ports
 then: loopback is shared by the whole machine. A temporary second instance for debugging —
 `operations.md`.
 
@@ -315,8 +304,8 @@ then: loopback is shared by the whole machine. A temporary second instance for d
 GitHub Actions builds the release on a `v*` tag push — `../../.github/workflows/release.yml`:
 
 ```powershell
-git tag v0.1.0
-git push origin v0.1.0
+git tag v<X.Y.Z>
+git push origin v<X.Y.Z>
 ```
 
 It publishes both win-x64 archives (`AgentsTracker-<tag>-win-x64-self-contained.zip` with the
@@ -334,8 +323,5 @@ from source is plainly distinguishable from a released one. The gateway prints t
 first log line and puts it in the monitor snapshot's `version` and the «🔌 Шлюз запущен» message.
 
 Packaging builds the archive layout described above; `claude-settings.example.json` comes from
-`../examples/`. `install.txt` is UTF-8 with a BOM, otherwise Cyrillic turns into mojibake in
-Notepad on older Windows builds. No tokens are needed: the workflow uses the built-in
-`github.token` with `contents: write`. Before packaging it removes `appsettings.Local.json` and
-`appsettings.Development.json` from the publish output, so a plain-text token can never reach
-the release archive.
+`../examples/`. The workflow removes `appsettings.Local.json` and `appsettings.Development.json`
+from the output, so a token can never reach the archive.

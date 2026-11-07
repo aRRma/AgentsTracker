@@ -1,11 +1,11 @@
-# Risks and How to Close Them
+# Risks and how to close them
 
 When to read this: before giving the bot access to your home folders. The bot is your computer's
 command line in Telegram — convenient, and it demands care. Below are the risks, from the most
 likely to the rare and expensive. The full rule set for the machine and a ready-made settings file
 are in [Claude Code permissions](claude-permissions.md). This page is about what a person does.
 
-## 1. It Understood You Differently
+## 1. It understood you differently
 
 The most common risk. No ill intent: you said "sort these into folders", and the photos went
 somewhere else.
@@ -19,7 +19,7 @@ somewhere else.
 - keep deleting files and stopping programs behind a question (`ask` in the permission settings).
   Each such action then arrives as a confirmation card.
 
-## 2. Someone Else Got to the Bot
+## 2. Someone else got to the bot
 
 Anyone can find your bot in Telegram and write to it. Only the list of allowed users stands between
 you and a stranger.
@@ -33,7 +33,7 @@ you and a stranger.
   @BotFather and a new token in the settings. If you lost your phone, end its Telegram session from
   another device.
 
-## 3. Something Private Ended Up Where It Shouldn't
+## 3. Something private ended up where it shouldn't
 
 Two things. The agent can **send a file into the chat**, and Telegram keeps the conversation. Also,
 your task and the pieces of files the agent read go to Anthropic, otherwise it could not answer.
@@ -42,13 +42,12 @@ your task and the pieces of files the agent read go to Anthropic, otherwise it c
 
 - decide in advance what you never send: passwords, codes, photos of documents;
 - keep separate projects: "Documents for the bot" and everything else. The gateway sends a file only
-  from the current project, only of the allowed types (`.md .txt .json .cs .js .html .zip .7z`,
-  pictures `.png .jpg .jpeg`), and never from its own data folder;
+  from the current project, only of the allowed types (see [use-cases](use-cases.md)), and never
+  from its own data folder;
 - deny reading what must never travel anywhere (`.env`, `~/.ssh`, the password manager) with a
   one-time `deny` rule. «Всегда» cannot get around it. A secret inside the project is not covered
-  by the send limit: `appsettings.Local.json` is a `.json`, and a copy of `.env` named `.txt` passes
-  too. Keep secrets outside the project. A ban for one project goes into its
-  `.claude/settings.local.json`:
+  by the send limit (any `.json`, or a copy named `.txt`, passes). Keep secrets outside the
+  project. A ban for one project goes into its `.claude/settings.local.json`:
 
   ```json
   { "permissions": { "deny": ["Read(./.env)"] } }
@@ -57,12 +56,12 @@ your task and the pieces of files the agent read go to Anthropic, otherwise it c
   is packed inside;
 - a picture from the chat lands in `inbox` of the data folder, and the agent sees only that chat's
   folder. Only PNG and JPEG are accepted, the type is checked by content. `/new` deletes the
-  session's pictures, the rest are deleted after `RetentionHours` (24 hours);
+  session's pictures, the rest are deleted after `RetentionHours`;
 - a беседа and `/ask` search the web and open sites with no card. They have no files and no
   commands, but a page can talk the model into opening an address with the conversation in it. Don't
   write in a беседа what must not leave the chat.
 
-## 4. Permissions Piled Up and the Questions Stopped
+## 4. Permissions piled up and the questions stopped
 
 The «Всегда» ("Always") button is convenient and quietly turns into "do whatever you want with this
 command". In the `auto` mode cards almost never arrive.
@@ -70,8 +69,8 @@ command". In the `auto` mode cards almost never arrive.
 **How to close it:**
 
 - once a month look at `/rules`. `/rules del <n>` removes one rule, `/rules clear` removes all.
-  `/rules` shows only the gateway's rules. Usually the agent writes «Всегда» itself, into
-  `.claude/settings.local.json` in the project, so check that file too;
+  `/rules` shows only the gateway's rules. «Всегда» rules also land in the project's agent
+  settings (`.claude/settings.local.json`), so check that file too;
 - «Всегда» belongs to one project. Don't copy such rules around "just in case";
 - keep the `default` mode, where cards arrive. Use `auto` only while you watch the chat. Switching
   confirmations off entirely (`dontAsk`, `bypassPermissions`) is impossible from the chat, only by
@@ -80,14 +79,14 @@ command". In the `auto` mode cards almost never arrive.
   don't allow without looking;
 - «Плагины» in `/skills` edit your `~/.claude/settings.json` — the same as `/plugin` in Claude Code;
 - `/audit` shows the latest actions: who allowed what, and what was run. A card left without an
-  answer for 15 minutes (`ApprovalTimeoutMinutes`) is refused, and the agent is told not to repeat
-  the action: a forgotten card cannot grant permission later.
+  answer for `ApprovalTimeoutMinutes` (15 minutes by default) is refused, and the agent is told not
+  to repeat the action: a forgotten card cannot grant permission later.
 
-## 5. The Agent Reached Past the Chosen Project
+## 5. The agent reached past the chosen project
 
 `/project` says where the agent works, not what it can reach. A command run from that folder can
 read anything on the disk that your account can read. Only the limit on sending files into the chat
-is real.
+and the refusal to edit the gateway's own folder are real.
 
 **How to close it:**
 
@@ -96,7 +95,7 @@ is real.
 - for a real fence, run the gateway in Docker and mount only the folders you work with;
 - if the computer holds other people's data, create a separate Windows account for the bot.
 
-## 6. Someone Else's Project Brought Its Own Commands
+## 6. Someone else's project brought its own commands
 
 A project may hold settings for the agent: the `.claude` folder and the `.mcp.json` file. The agent
 runs them on its own, with no card, for example a command at the start of every task. In your own
@@ -110,23 +109,22 @@ project that is handy. In a downloaded one it is someone else's code on your com
 - if those files change, the card comes again;
 - read `.claude/settings.json` and `.mcp.json` of a foreign project yourself before you trust it.
 
-## 7. A Long Task Ate the Plan's Limit
+## 7. A long task ate the plan's limit
 
-"Sort out the whole photo archive" can cost a day's worth of the subscription. By default one run is
-cut off after an hour (`RunTimeoutMinutes`).
+"Sort out the whole photo archive" can cost a day's worth of the subscription. One run is cut off
+after a time limit (an hour by default).
 
 **How to close it:**
 
 - `/usage` shows what is left in the current window. When the window is used up, the gateway starts
   no new run and drops the queue;
 - ask for big things in parts: "start with the January folder";
-- `/stop` interrupts a task: in a topic only that topic, in the лента everything. `/status` shows
-  what is running;
+- `/stop` and `/status` — see [commands](use-cases.md#commands);
 - topics run in parallel, and each one spends the same limit. Keep the heavy tasks in one topic.
 
-## 8. Someone Else Can See the Computer
+## 8. Someone else can see the computer
 
-The web monitor at `127.0.0.1:5100` has no password. It changes nothing, but it shows the run
+The monitor at `127.0.0.1:5100` has no password. It changes nothing, but it shows the run
 history and the journal to anyone logged into this computer.
 
 **How to close it:**
@@ -143,7 +141,7 @@ history and the journal to anyone logged into this computer.
 - after `install` (or `protect-secrets`) the bot token on disk is encrypted (DPAPI), and only your
   account on this machine can decrypt it. A container has no DPAPI, so keep its `.env` to yourself.
 
-## 9. The «Работа» Topic Opens the Whole Computer
+## 9. The «Работа» topic opens the whole computer
 
 A «Работа» topic is remote work on the computer: commands, any files, your MCP servers (for
 example the browser). Whoever gets into your Telegram account gets the PC. It is off by default.
@@ -163,22 +161,21 @@ example the browser). Whoever gets into your Telegram account gets the PC. It is
   gateway's data folder and `~/.claude/settings.json`, and keep tokens out of the `env` there;
 - cards in «Работа» have no «Всегда» button: one tap would allow a command on the whole machine for
   good. `/rules` there says there are no rules;
-- web search runs with no card, but opening a page asks (unless you allowed `WebFetch` in your own rules). The agent can read any file, and a page
-  could talk it into sending a file's contents to an address;
+- web search runs with no card, opening a page asks (unless you allowed `WebFetch` in your own
+  rules). A page can talk the model into sending file contents out — the same risk as in section 3;
 - access is checked on the button and again before every task. If you remove an id from the config,
   the topic's tasks are refused with «⛔ Тема «Работа» недоступна», the queue is dropped and the
   journal records it. Choose another type with `/topic`;
-- the gateway refuses, with no card, an edit of files in its own data folder (state, settings, the
-  token) in any topic, and in «Работа» also an edit of the agent's own settings (`.claude`,
-  `~/.claude/settings.json` and the like) — a rule written there would be a «Всегда» for the whole
-  machine. It does not see shell commands, so those rely on the card and your `deny` rules. Reading
-  that folder is not blocked: keep secrets out of reach with `deny`;
+- the gateway refuses edits of its own data folder in any topic, and in «Работа» also of the agent's
+  own settings: a rule written there would be a «Всегда» for the whole machine. Shell commands are
+  not checked: they rely on the card and your `deny` rules. Reading that folder is not blocked:
+  keep secrets out of reach with `deny`;
 - the agent sends a file or screenshot only from the topic's own folder (it copies it there first),
   with the same type limits;
 - admin rights are not available: the gateway runs as your account without elevation and cannot
   answer a Windows UAC prompt. In Docker «the whole computer» is only the container.
 
-## The Five-Minute Checklist
+## The checklist
 
 1. `AllowedUserIds` is filled in, and the token is not lying around in the open.
 2. The mode is `default`, and cards arrive.

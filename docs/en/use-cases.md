@@ -1,14 +1,11 @@
-# What the Bot Is For If You Don't Write Code
+# What the bot is for if you don't write code
 
-When to read this: the bot already runs and the question is what else to hand it. A home computer
-knows far more about you than a phone does: documents, photos, statements, notes. Normally you can
-only reach them by sitting down at the desk. With the bot — from a queue at the clinic, from a
-holiday, from the kitchen.
+When to read this: the bot already runs and you want to know what to hand it.
 
 Below are five everyday scenarios: what to say, what comes back, what to set up once. The shared
 setup is at the end. What goes wrong is in [the risks](safety.md).
 
-## The Forgotten File, in One Question
+## The forgotten file, in one question
 
 The passport scan is needed at the check-in desk, the contract at the notary, and the slides stayed
 on the desktop at home. You write to the bot, the agent searches and sends the file into the chat.
@@ -20,20 +17,18 @@ on the desktop at home. You write to the bot, the agent searches and sends the f
 
 It searches by more than the name: "the contract with the word 'renovation' in it" is a normal
 request, because the agent looks inside the files. If the exact title escapes you, describe the
-document and roughly when it appeared. Often you don't need the whole file: ask for one line — the
-policy number, the appointment date. It is faster and leaves less in the chat.
+document and roughly when it appeared. You can ask for one line instead of the file: the policy
+number, the appointment date.
 
 **What to set up.** Pick the project (the folder those papers live in) with `/project`. The agent
 can send these types: `.md`, `.txt`, `.json`, `.html`, `.png`, `.jpg`, `.jpeg`, archives `.zip` and
 `.7z`, and code files `.cs` and `.js`. It cannot send a PDF, Word or Excel file into the chat — ask
-it to pack the file into a `.zip`. Telegram's limit is 50 MB per file, 10 MB for a picture sent as
-a photo.
+it to pack the file into a `.zip`. Telegram caps the size of a file; a big one is refused.
 
-## Home Bookkeeping Without Spreadsheets
+## Home bookkeeping without spreadsheets
 
-Bank statements, receipts, meter readings, bills. Dropping them into one folder works for everyone.
-Adding them up works for almost no one: it is dull and eats an evening. The agent reads the files,
-counts, and answers to the point.
+Bank statements, receipts, meter readings, bills. The agent reads the files, counts, and answers to
+the point.
 
 - "Total the quarter's spending by category and send me a file"
 - "How much went to the pharmacy since January?"
@@ -50,11 +45,10 @@ a bank CSV, an app's export, plain notes. Start a PDF with "can you read this on
 statement is fine, a bad scan is better known about in advance. A table comes back as a text file
 or a `.zip`.
 
-## A Notebook That Sorts Itself
+## A notebook that sorts itself
 
 A folder of text notes: a journal, ideas, lists, "what I promised to whom". The agent writes into
-it, searches the whole archive and sums things up. The files stay ordinary, and any editor will
-open them in ten years.
+it, searches the whole archive and sums things up.
 
 - "Note this: the handyman comes Saturday, 3000, phone is in the note"
 - "What did I write about the balcony renovation?"
@@ -66,7 +60,7 @@ tidy-up and a summary. Voice messages are not understood — text only.
 **What to set up.** A project with `.md` or `.txt` files and one naming rule, by month, say. Tell
 the agent once, and it will keep putting entries in the same place.
 
-## The House Reports In
+## The house reports in
 
 The computer at home is busy with something: a download, a long export, the media server. Instead
 of "I'll look when I get back", just ask.
@@ -78,9 +72,9 @@ of "I'll look when I get back", just ask.
 The agent answers with an explanation, not with command output: "40 GB free, the video folder takes
 the most". You can ask it to free up space, close a frozen program or start something long — that
 raises a confirmation card. Ask for long jobs as "start it and tell me when it's done" rather than
-waiting in the chat: by default one run is cut off after an hour (`RunTimeoutMinutes`).
+waiting in the chat: one run is cut off after a time limit (an hour by default).
 
-## Photos and Paperwork in Order
+## Photos and paperwork in order
 
 Photograph a receipt, a meter, a page of a contract or the whiteboard after a meeting, and send the
 picture to the bot with a caption saying what to do with it. The agent looks, and does that to the
@@ -91,13 +85,13 @@ files on the computer.
 - "Sort the photos in the `camera` folder by month, delete nothing"
 
 The picture lands in a temporary folder visible only to this chat, so it won't wander into the
-document archive. `/new` clears the folder, and files older than a day are removed when the gateway
-starts.
+document archive. `/new` clears the folder; the rest is removed after `Attachments:RetentionHours`
+(24 hours by default).
 
-**What to set up.** Nothing: PNG and JPEG up to 10 MB are accepted. If the text is small, send the
-photo "as a file" — Telegram compresses photos.
+**What to set up.** Nothing: PNG and JPEG are accepted up to the size set in `Attachments:MaxBytes`
+(10 MB by default). If the text is small, send the photo "as a file" — Telegram compresses photos.
 
-## What All of This Needs
+## What all of this needs
 
 - **A project.** The agent works in one project at a time, picked with `/project`. To make a folder
   appear in the list, add it to `Gateway:Projects`. The folders must exist, or the gateway will not
@@ -110,16 +104,19 @@ photo "as a file" — Telegram compresses photos.
 - **The computer on** and not asleep. If it sleeps on its own, turn that off — otherwise the message
   waits until morning.
 - **Topics.** If the bot's chat has topics on, each topic is its own work: its own project and
-  session. A topic without a project is a беседа — web search only, no files. A «Работа» topic
-  is remote work on the whole computer: commands, files, your MCP servers (say, the browser), search
-  and pictures. It is off until you allow your id in the config (`Work:AllowedUserIds`); read
-  [safety.md](safety.md) first. The chat outside topics is the лента: service messages go there.
+  session. A topic without a project is a беседа — web search only, no files, no cards, no pictures.
+  A «Работа» topic is remote work on the whole computer: commands, files, your MCP servers (say,
+  the browser), search and pictures. It has its own permanent folder, `/mode` is refused, cards come
+  with no «Всегда» button and opening a web page asks first. It is off until you allow your id in
+  the config (`Work:AllowedUserIds`); read [safety.md](safety.md) first. The chat outside topics is
+  the лента: service messages go there.
 - **One task at a time in a chat.** The rest wait in the queue. Topics run in parallel, but one
-  project takes one run at a time. `/status` shows what is running, `/stop` interrupts it (in a topic
-  only that topic, in the лента everything), `/new` starts a new session.
+  project takes one run at a time: the second topic waits with «⏳ В проекте идёт другой запуск».
+  `/status` shows what is running, `/stop` interrupts it (in a topic only that topic, in the лента
+  everything), `/new` starts a new session.
 - **Confirmations.** In the `default` mode anything that changes or deletes files and is not
-  already allowed by a rule arrives as a card with buttons. Read the card and don't press
-  «Всегда» ("Always") without looking.
+  already allowed by a rule arrives as a card with buttons. Read the card; see
+  [the risks](safety.md) before pressing «Всегда» ("Always").
 - **The session remembers the conversation** within a project, so you can follow up without
   repeating the setup.
 
@@ -133,7 +130,7 @@ photo "as a file" — Telegram compresses photos.
 | `/status` · `/usage` | what is running now: project, branch, context, queue · usage and the plan's limits |
 | `/new` · `/stop` | a new session · interrupt the run — both the task and the вопрос; in a topic only that topic, in the лента everything |
 | `/sessions` | the project's sessions: switch, start a new one, stop; shows how full the context is |
-| `/ask <question>` | a вопрос outside any session and project, on its own model (`Question:Model`, sonnet by default), with web search and no cards. Does not wait for the task and is answered as a reply to your message. Same as «💬 Задать вопрос» in the menu |
+| `/ask <question>` | a вопрос outside any session and project, on its own model (sonnet by default), with web search and no cards. Does not wait for the task and is answered as a reply to your message. Same as «💬 Задать вопрос» in the menu |
 | «📦 Контекст» in `/menu` | what the session's context consists of, compress it or start a new session |
 | `/agent` | model, effort, mode (or `/model`, `/effort`, `/mode` as text) |
 | `/project` | switch the project; its branch is shown next to it, worktrees are marked 🌳 |
@@ -144,25 +141,17 @@ photo "as a file" — Telegram compresses photos.
 | another `/command` | Claude Code's own command (`/init`, `/plugin:skill`) — goes to the agent as is |
 
 **The line under an answer:** the session (or «💬 вопрос»), the branch, the model that actually
-answered, with effort in brackets (`opus-5-5(H)`: L, M, H, XH, MAX — from low to max), the number
+answered, with effort in brackets (`opus-<version>(H)`: L, M, H, XH, MAX — from low to max), the number
 of turns, the time, and «🧊 кэш до 15:42» or «🧊 кэш остыл». If the agent switched the branch itself,
 it shows from where to where: `master → fix`. If it moved the session into a worktree, the branch
 everywhere is that worktree's, and «Статус» says «🌳 сессия в worktree». The gateway counts no
 money: usage is turns, tokens and time.
 
-**More on topics.** A беседа has no cards, files or pictures, and its mode does not change. «Работа» has its own permanent folder, and the mode
-is fixed at `default`: `/mode` is refused, cards come with no «Всегда» button, and opening a web page
-asks first. If two
-topics work in one project, the second waits with «⏳ В проекте идёт другой запуск». With topics on,
-Telegram moves whatever is typed in the лента into a new topic, while Telegram Desktop keeps only
-the commands from the «Меню» button in the лента.
+## How to make the plan's limit last
 
-## How to Make the Plan's Limit Last
-
-Every step of the agent reads the whole session context again. While you keep answering, the model
-keeps the session ready — that is the cache, and reading it is cheap. The cache lives about an hour
-after the last request, then goes cold, and the next run writes the whole context anew, which costs
-noticeably more. The deadline is under every answer ("🧊 кэш до 15:42") and in `/status`.
+The model keeps the session ready for about an hour after the last request — that is the cache, and
+reading it is cheap. After that the next run costs noticeably more: it writes the whole context
+anew. The deadline is under every answer ("🧊 кэш до 15:42") and in `/status`.
 
 - **One task — one session.** For a new subject — `/new`. The bigger the context, the dearer each step.
 - **Pick the model at the start.** A model switch resets the cache, and so does the `plan` mode.
@@ -175,7 +164,7 @@ noticeably more. The deadline is under every answer ("🧊 кэш до 15:42") a
 
 `/usage` shows the plan's windows, how much was read from the cache and how many misses there were.
 
-## What Else People Use It For
+## What else people use it for
 
 Sorting out the Downloads folder, batch-compressing photos and video, long conversions reporting
 back "when it's done", queries to a home database — and working with code, which is where the bot
