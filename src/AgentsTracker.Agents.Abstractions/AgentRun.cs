@@ -29,9 +29,10 @@ namespace AgentsTracker.Agents;
 /// Что за запуск. У <see cref="AgentRunKind.ContextReport"/> и <see cref="AgentRunKind.Compact"/>
 /// промпт бэкенд подставляет сам: команда своя у каждого агента.
 /// </param>
-/// <param name="WebOnly">
-/// Беседа вне проекта: инструменты — только поиск в сети, как у <see cref="AgentRunKind.Question"/>,
-/// но сессия ведётся. Признак, а не вид запуска: разбивка и сжатие беседы получают те же пределы.
+/// <param name="Toolset">
+/// Что агенту доступно. Отдельно от <paramref name="Kind"/>: разбивка и сжатие беседы или темы
+/// «Работа» получают те же инструменты, что и её задачи. У <see cref="AgentRunKind.Question"/>
+/// всегда <see cref="AgentToolset.WebOnly"/>, что бы ни пришло.
 /// </param>
 public sealed record AgentRunRequest(
     string RunId,
@@ -45,7 +46,26 @@ public sealed record AgentRunRequest(
     TimeSpan Timeout,
     string? AttachmentsPath = null,
     AgentRunKind Kind = AgentRunKind.Task,
-    bool WebOnly = false);
+    AgentToolset Toolset = AgentToolset.Project);
+
+/// <summary>Набор инструментов запуска.</summary>
+public enum AgentToolset
+{
+    /// <summary>Задача в проекте: все инструменты агента, политика — его настройки и карточки.</summary>
+    Project,
+
+    /// <summary>
+    /// Беседа: только поиск в сети и чтение страниц, но сессия ведётся. Файлов и команд нет —
+    /// агенту говорят об этом прямо, иначе он обещает их человеку.
+    /// </summary>
+    WebOnly,
+
+    /// <summary>
+    /// Тема «Работа»: все инструменты и MCP-серверы пользователя, а агенту сказано, что он
+    /// работает на компьютере удалённо. Проверку, кому это можно, делает хост до запуска.
+    /// </summary>
+    Machine,
+}
 
 public enum AgentRunKind
 {

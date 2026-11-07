@@ -17,7 +17,11 @@ public sealed record ChoiceResult(string Key, UserId User);
 /// его пустая рабочая папка: права вопроса остаются теми же, что были в общей очереди.
 /// </param>
 /// <param name="SessionId">Сессия для журнала; у вопроса null.</param>
-public sealed record RunScope(string RunId, ChatId Chat, MessageRef? ReplyTo, string ProjectPath, string? SessionId);
+/// <param name="Work">
+/// Запуск темы «Работа». Кнопки «Всегда» у его карточек нет: правило легло бы на папку темы, а
+/// действует агент на всей машине — одно нажатие пропускало бы команду везде и навсегда.
+/// </param>
+public sealed record RunScope(string RunId, ChatId Chat, MessageRef? ReplyTo, string ProjectPath, string? SessionId, bool Work = false);
 
 /// <summary>Что стало с текстом из чата, пока кто-то ждёт свободного ответа.</summary>
 public enum TextDelivery

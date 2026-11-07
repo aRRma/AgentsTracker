@@ -52,8 +52,22 @@ public sealed class SessionStore
     public static bool IsTalkFolder(string path) => ProjectCatalog.IsInside(ProjectCatalog.Normalize(path), TalkRoot);
 
     /// <summary>Своя папка у каждой темы: по пути папки CLI находит сессии беседы.</summary>
-    private static string TalkFolder(ChatId chat) =>
-        Path.Combine(TalkRoot, string.Concat(chat.Key.Select(c => char.IsAsciiLetterOrDigit(c) ? c : '_')));
+    private static string TalkFolder(ChatId chat) => Path.Combine(TalkRoot, FolderName(chat));
+
+    /// <summary>Корень папок тем «Работа» — из конфига, в отличие от бесед: эти папки не временные.</summary>
+    public string WorkRoot => _options.Work.Root;
+
+    /// <summary>
+    /// Путь внутри <see cref="WorkRoot"/> — папка темы «Работа»: запуск в ней идёт со всеми
+    /// инструментами, и только у тех, кому тема разрешена.
+    /// </summary>
+    public bool IsWorkFolder(string path) => ProjectCatalog.IsInside(ProjectCatalog.Normalize(path), WorkRoot);
+
+    /// <summary>Своя папка у каждой темы «Работа»: темы идут параллельно, а замок — на папку.</summary>
+    private string WorkFolder(ChatId chat) => ProjectCatalog.Normalize(Path.Combine(WorkRoot, FolderName(chat)));
+
+    private static string FolderName(ChatId chat) =>
+        string.Concat(chat.Key.Select(c => char.IsAsciiLetterOrDigit(c) ? c : '_'));
 
     /// <summary>
     /// Выбор одного чата: проект, активная сессия, модель, effort, режим. Тема без записи —
@@ -87,6 +101,15 @@ public sealed class SessionStore
         public bool IsTalk
         {
             get { lock (_store._gate) return IsTalkLocked(); }
+        }
+
+        /// <summary>
+        /// Тема «Работа»: весь компьютер, своя постоянная папка. Разрешена ли она этому человеку,
+        /// здесь не проверяется — это решает <see cref="WorkAccess"/> при выборе и перед запуском.
+        /// </summary>
+        public bool IsWork
+        {
+            get { lock (_store._gate) return IsWorkLocked(); }
         }
 
         /// <summary>Папка, в которой запускается агент: выбранная из чата либо из конфига.</summary>
@@ -141,8 +164,29 @@ public sealed class SessionStore
                 s.ProjectPath = value;
 
                 // Беседа режим не читает, а сохранённый до неё (/mode plan в новой теме) молча ожил
-                // бы, когда тему потом привяжут к проекту.
-                if (IsTopic && value is null) s.PermissionMode = null;
+                // бы, когда тему потом привяжут к проекту. Режим «Работы» закреплён, и уносить его в
+                // проект тоже незачем.
+                if (s is TopicState topic)
+                {
+                    if (value is null || topic.Work == true) s.PermissionMode = null;
+                    topic.Work = null;
+                }
+            }, typed: true);
+        }
+
+        /// <summary>
+        /// Делает тему темой «Работа». Режим пишется сразу закреплённым: экраны и журнал читают его
+        /// отсюда, а /mode в такой теме получает отказ.
+        /// </summary>
+        public void SetWork(string permissionMode)
+        {
+            if (!IsTopic) throw new InvalidOperationException("Тип «Работа» бывает только у темы.");
+
+            Write(s =>
+            {
+                s.ProjectPath = null;
+                s.PermissionMode = permissionMode;
+                ((TopicState)s).Work = true;
             }, typed: true);
         }
 
@@ -280,7 +324,9 @@ public sealed class SessionStore
         private IChatSelection? Selection() =>
             IsTopic ? _store._state.Topics.GetValueOrDefault(_chat!.Key) : _store._state;
 
-        private bool IsTalkLocked() => IsTopic && Selection()?.ProjectPath is not { Length: > 0 };
+        private bool IsTalkLocked() => IsTopic && Selection()?.ProjectPath is not { Length: > 0 } && !IsWorkLocked();
+
+        private bool IsWorkLocked() => IsTopic && _store._state.Topics.GetValueOrDefault(_chat!.Key) is { Work: true, Untyped: null };
 
         private bool IsNewTopicLocked() => IsTopic && _store._state.Topics.GetValueOrDefault(_chat!.Key) is null or { Untyped: true };
 
@@ -659,14 +705,19 @@ public sealed class SessionStore
         foreach (var record in stale) state.Sessions.Remove(record);
     }
 
-    /// <summary>Проект чата под замком; null — лента. Тема без проекта — беседа в своей папке.</summary>
+    /// <summary>
+    /// Проект чата под замком; null — лента. Тема без проекта — беседа или «Работа» в своей папке.
+    /// </summary>
     private string ProjectPathLocked(ChatId? chat = null)
     {
         if (chat is { IsTopic: true })
         {
-            return _state.Topics.GetValueOrDefault(chat.Key)?.ProjectPath is { Length: > 0 } topic
-                ? ProjectCatalog.Normalize(topic)
-                : TalkFolder(chat);
+            return _state.Topics.GetValueOrDefault(chat.Key) switch
+            {
+                { ProjectPath: { Length: > 0 } topic } => ProjectCatalog.Normalize(topic),
+                { Work: true, Untyped: null } => WorkFolder(chat),
+                _ => TalkFolder(chat),
+            };
         }
 
         return ProjectCatalog.Normalize(_state.ProjectPath is { Length: > 0 } p ? p : _options.ProjectPath);

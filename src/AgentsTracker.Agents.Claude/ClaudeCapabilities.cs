@@ -44,7 +44,9 @@ public static class ClaudeCapabilities
         Questions: true,
         // У plan другой набор инструментов, а инструменты стоят в начале запроса: кэш не читается
         // вовсе (проверено на CLI 2.1.292). default, acceptEdits и auto кэш делят.
-        OwnCacheModes: ["plan"]);
+        OwnCacheModes: ["plan"],
+        // default спрашивает всё, чего нет в allow; acceptEdits молча правил бы любой файл машины.
+        AskingPermissionMode: "default");
 
     /// <summary>
     /// Модель — любая непустая строка: CLI сам скажет, если такой нет. Алиас — в каноническом

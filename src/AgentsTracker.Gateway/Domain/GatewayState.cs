@@ -14,7 +14,8 @@ public interface IChatSelection
 
 /// <summary>
 /// Выбор темы. <see cref="ProjectPath"/> хранится полным путём даже при совпадении с конфигом:
-/// null у темы значит «беседа», а не «проект из конфига». Model, effort и режим null — по умолчанию.
+/// null у темы значит «беседа» (или «Работа» при <see cref="Work"/>), а не «проект из конфига».
+/// Model, effort и режим null — по умолчанию.
 /// </summary>
 public sealed class TopicState : IChatSelection
 {
@@ -28,6 +29,13 @@ public sealed class TopicState : IChatSelection
     /// null, а не false, — у выбранной темы поле не пишется в state.json.
     /// </summary>
     public bool? Untyped { get; set; }
+
+    /// <summary>
+    /// true — тема «Работа»: <see cref="ProjectPath"/> пуст, а папка темы лежит под корнем из
+    /// конфига. Отдельный признак, а не путь: путь пережил бы правку Gateway:Work:Folder и молча
+    /// стал бы обычным проектом со всеми правами, но без проверки доступа.
+    /// </summary>
+    public bool? Work { get; set; }
 }
 
 /// <summary>Всё, что шлюз помнит между перезапусками. Лежит в state.json.</summary>

@@ -25,6 +25,7 @@ public sealed class ChatWorker(
     ProjectTrustGate trust,
     SessionStore store,
     GitRepository git,
+    WorkAccess work,
     IOptions<GatewayOptions> options,
     IAuditLog audit,
     RunMonitor monitor,
@@ -259,6 +260,26 @@ public sealed class ChatWorker(
                 // могли привязать к проекту. Её папку чистим до проверки доверия, как папку вопроса.
                 if (SessionStore.IsTalkFolder(project)) EmptyFolder(project);
 
+                // «Работа» — тоже по итоговой папке, и доступ — до карточки доверия: тому, кому тема не
+                // разрешена, незачем и спрашивать доверие к её папке. Проверка здесь, а не только при
+                // выборе типа: id могли убрать из конфига, а тема осталась «Работой».
+                if (IsWorkRun(scope, project))
+                {
+                    if (!work.Allows(prompt.User))
+                    {
+                        Audit(prompt, AuditKinds.AccessRejected, "тема «Работа» не разрешена этому пользователю");
+                        await SendPlainAsync(prompt.Chat,
+                            "⛔ Тема «Работа» вам не разрешена: вашего id нет в Gateway:Work:AllowedUserIds. Выберите другой тип темы: /topic",
+                            prompt.ReplyTo, stoppingToken);
+                        await DropQueueAsync(lane, "после выбора другого типа темы", stoppingToken);
+                        return;
+                    }
+
+                    // CLI с несуществующей рабочей папкой не стартует, а создать её заранее негде: корень
+                    // берётся из конфига при первом запуске.
+                    Directory.CreateDirectory(project);
+                }
+
                 session = scope.SessionId;
                 // Папку запуска берём ту же, которой доверились: считай её заново после карточки, и
                 // worktree, появившийся за это время, запустился бы без проверки.
@@ -313,6 +334,7 @@ public sealed class ChatWorker(
         using var heldLock = folderLock;
 
         var talk = !question && SessionStore.IsTalkFolder(project);
+        var machine = !question && IsWorkRun(scope, project);
 
         // Вопрос идёт своей моделью из конфига, а не выбранной в меню: ради него и заведён
         // отдельный запуск — не тратить лимит тяжёлой модели на простой ответ.
@@ -378,7 +400,7 @@ public sealed class ChatWorker(
             NewSessionId: Guid.NewGuid().ToString(),
             Model: model,
             Effort: effort,
-            PermissionMode: PermissionMode(scope),
+            PermissionMode: machine ? work.PermissionMode : PermissionMode(scope),
             Timeout: TimeSpan.FromMinutes(options.Value.RunTimeoutMinutes),
             // Папка чата, а не проекта: пока сообщение ждало очереди, /project мог смениться,
             // а путь к картинке в промпте уже записан. Вопросу картинки не передаются —
@@ -386,7 +408,7 @@ public sealed class ChatWorker(
             // принимают, а лишняя папка — лишний доступ.
             AttachmentsPath: question || talk ? null : inbox.ChatDirectory(prompt.Chat),
             Kind: kind,
-            WebOnly: talk);
+            Toolset: talk ? AgentToolset.WebOnly : machine ? AgentToolset.Machine : AgentToolset.Project);
 
         // Тот же id нужен после запуска: активной станет только сессия, с которой он шёл,
         // иначе итог перетёр бы /new или смену сессии по ходу работы.
@@ -414,9 +436,10 @@ public sealed class ChatWorker(
             AgentRunKind.ContextReport => "контекст, ",
             AgentRunKind.Compact => "сжатие, ",
             _ => "",
-        } + (talk ? "беседа, " : "");
+        } + (talk ? "беседа, " : machine ? "работа, " : "");
+        // Режим — тот, с которым ушёл запуск: у «Работы» он закреплён мимо выбора темы.
         Audit(prompt, AuditKinds.RunStart,
-            $"{runKind}{modelLabel ?? "модель по умолчанию"}, {scope.EffectivePermissionMode}, effort {effort ?? "—"}"
+            $"{runKind}{modelLabel ?? "модель по умолчанию"}, {request.PermissionMode}, effort {effort ?? "—"}"
             + (startBranch is null ? "" : $", ветка {startBranch.Label}")
             + (lockWait >= TimeSpan.FromSeconds(1) ? $", ждал другой запуск {lockWait.Elapsed}" : ""),
             session);
@@ -443,7 +466,7 @@ public sealed class ChatWorker(
         {
             // Монитор показывает один запуск — первый из идущих; шаги и конец чужого его не трогают.
             watched = !question
-                && monitor.RunStarted(new RunStart(project, session, preview, modelLabel, scope.EffectivePermissionMode, effort, startBranch?.Label));
+                && monitor.RunStarted(new RunStart(project, session, preview, modelLabel, request.PermissionMode, effort, startBranch?.Label));
 
             // В state.json, а не только в памяти: если шлюз убьют посреди запуска, следующему
             // экземпляру нужно знать, кому и про что сказать «прервано».
@@ -454,7 +477,8 @@ public sealed class ChatWorker(
             registration = broker.BeginRun(new RunScope(
                 request.RunId, prompt.Chat, prompt.ReplyTo,
                 question ? scope.ProjectPath : project,
-                question ? null : runSessionId));
+                question ? null : runSessionId,
+                Work: machine));
 
             result = await agent.RunAsync(
                 request, new RunObserver(store, scope, watched ? monitor : null, request, runSessionId, folder, status), runCts.Token);
@@ -686,6 +710,13 @@ public sealed class ChatWorker(
         scope.PermissionMode is { Length: > 0 } mode && agent.Capabilities.PermissionMode.IsValid(mode)
             ? mode
             : options.Value.PermissionMode;
+
+    /// <summary>
+    /// Запуск темы «Работа»: тема так помечена и идёт в папке под корнем «Работы». Нужны оба: по
+    /// одной папке проект, лёгший под корень после правки конфига, получил бы все инструменты, а по
+    /// одной пометке — папка, которую тема сменила, пока задача ждала.
+    /// </summary>
+    private bool IsWorkRun(SessionStore.ChatScope scope, string project) => scope.IsWork && store.IsWorkFolder(project);
 
     /// <summary>
     /// Судьба активной сессии проекта по итогу запуска; возвращает приписку к ответу.

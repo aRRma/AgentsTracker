@@ -68,6 +68,68 @@ public sealed class QuestionOptions
     public string? Effort { get; set; }
 }
 
+/// <summary>
+/// Тема «Работа»: агенту доступен весь компьютер, а не одна папка проекта. Выключена, пока список
+/// пуст: доступ к боту не должен сам собой означать доступ ко всей машине — снять этот барьер
+/// можно только правкой конфига на ней.
+/// </summary>
+public sealed class WorkOptions
+{
+    /// <summary>
+    /// Кому можно тему «Работа»: id из <c>Channel:Settings:AllowedUserIds</c>. Число — id в канале
+    /// шлюза, строка «канал:id» — то же с именем канала (так адрес пишет журнал).
+    /// </summary>
+    public string[] AllowedUserIds { get; set; } = [];
+
+    /// <summary>
+    /// Корень папок тем «Работа»: у каждой темы своя подпапка, и её не чистят. null — папка
+    /// <c>AgentsTracker-work</c> в профиле пользователя.
+    /// </summary>
+    public string? Folder { get; set; }
+
+    /// <summary>Корень папок тем «Работа», нормализованный.</summary>
+    public string Root => ProjectCatalog.Normalize(Folder is { Length: > 0 } folder
+        ? folder
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AgentsTracker-work"));
+
+    public IReadOnlyList<string> Validate(GatewayOptions options)
+    {
+        var errors = new List<string>();
+        var key = $"{GatewayOptions.SectionName}:Work";
+
+        if (AllowedUserIds.Any(string.IsNullOrWhiteSpace))
+            errors.Add($"{key}:AllowedUserIds — пустой id.");
+
+        // Относительный путь разрешился бы от текущей папки процесса: у службы это System32.
+        if (Folder is { Length: > 0 } folder && !Path.IsPathFullyQualified(folder))
+        {
+            errors.Add($"{key}:Folder = «{folder}». Нужен полный путь.");
+            return errors;
+        }
+
+        var root = Root;
+
+        // Там state.json, токен MCP и секреты канала: агент со всеми инструментами в этой папке
+        // переписал бы себе правила и доверие.
+        var data = ProjectCatalog.Normalize(AppPaths.DataDirectory);
+        if (Overlaps(root, data))
+            errors.Add($"{key}:Folder ({root}) пересекается с папкой данных шлюза ({data}).");
+
+        // Тип запуска шлюз узнаёт по папке: проект внутри корня «Работы» шёл бы со всеми
+        // инструментами без проверки доступа, а папка «Работы» внутри проекта попала бы в его сессии.
+        foreach (var project in new[] { options.ProjectPath }.Concat(options.Projects).Where(p => p is { Length: > 0 }))
+        {
+            if (Overlaps(root, ProjectCatalog.Normalize(project)))
+                errors.Add($"{key}:Folder ({root}) пересекается с проектом {project}.");
+        }
+
+        return errors;
+    }
+
+    private static bool Overlaps(string left, string right) =>
+        ProjectCatalog.Same(left, right) || ProjectCatalog.IsInside(left, right) || ProjectCatalog.IsInside(right, left);
+}
+
 public sealed class GatewayOptions
 {
     public const string SectionName = "Gateway";
@@ -164,11 +226,15 @@ public sealed class GatewayOptions
     /// <summary>Вопрос вне сессии: его модель и effort.</summary>
     public QuestionOptions Question { get; set; } = new();
 
+    /// <summary>Тема «Работа»: кому она доступна и где её папки.</summary>
+    public WorkOptions Work { get; set; } = new();
+
     public IReadOnlyList<string> Validate()
     {
         var errors = new List<string>();
 
         errors.AddRange(Attachments.Validate());
+        errors.AddRange(Work.Validate(this));
 
         if (string.IsNullOrWhiteSpace(Channel.Type))
             errors.Add($"{SectionName}:Channel:Type не задан.");

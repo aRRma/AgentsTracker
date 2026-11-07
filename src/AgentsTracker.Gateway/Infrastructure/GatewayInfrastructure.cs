@@ -36,6 +36,7 @@ public static class GatewayInfrastructure
             services.AddSingleton<IAuditLog, JsonlAuditLog>();
             services.AddSingleton<SessionStore>();
             services.AddSingleton<ProjectCatalog>();
+            services.AddSingleton<WorkAccess>();
             services.AddSingleton<GitRepository>();
 
             services.AddSingleton<RunMonitor>();
@@ -108,6 +109,7 @@ public static class GatewayInfrastructure
             if (errors.Count == 0) errors = options.Validate();
             if (errors.Count == 0) errors = options.ValidateFor(agent.Capabilities);
             if (errors.Count == 0) errors = channel.Validate();
+            if (errors.Count == 0) errors = app.Services.GetRequiredService<WorkAccess>().Validate();
             if (errors.Count > 0)
             {
                 foreach (var error in errors) logger.LogCritical("{Error}", error);

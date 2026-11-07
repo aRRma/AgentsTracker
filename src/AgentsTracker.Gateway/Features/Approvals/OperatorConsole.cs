@@ -48,12 +48,25 @@ public sealed class OperatorConsole(
             return ApprovalDecision.Deny(UnknownRun);
         }
 
+        // Без карточки: в папке данных state.json с правилами «всегда» и доверием, конфиг с
+        // AllowedUserIds и режимом. Правка оттуда сняла бы все карточки разом, а одно «Разрешить»
+        // на усталом телефоне — это не решение отдать агенту шлюз. Команды оболочки так не
+        // разобрать — их держат карточка и deny пользователя.
+        if (DataDirectoryTarget(toolName, input, run.ProjectPath) is { } target)
+        {
+            logger.LogWarning("Правка папки данных шлюза отклонена без карточки: {Tool} {Path}", toolName, target);
+            Audit(run, AuditKinds.Approval, signature, "refused");
+            return ApprovalDecision.Deny(
+                $"Папка данных шлюза ({DataDirectory}) закрыта для правки агентом: там его настройки и правила. Не пытайтесь изменить её другим способом.");
+        }
+
         // Монитору та же строка, что и логу: в полном вводе Edit/Write лежит содержимое файлов.
         using var pending = monitor.Approval(toolName, brief);
 
         // Проект запуска, а не чата: /project, сменённый посреди задачи, иначе подставил бы ей
-        // правила другого проекта, а «Всегда» записало бы правило туда.
-        if (store.IsAlwaysAllowed(run.ProjectPath, signature))
+        // правила другого проекта, а «Всегда» записало бы правило туда. У «Работы» правил нет —
+        // и записанное руками в state.json не действует.
+        if (!run.Work && store.IsAlwaysAllowed(run.ProjectPath, signature))
         {
             logger.LogInformation("Автоматически разрешено по правилу «всегда»: {Tool} {Key}", toolName, brief);
             Audit(run, AuditKinds.Approval, signature, "rule");
@@ -81,13 +94,10 @@ public sealed class OperatorConsole(
         RunScope run, string toolName, JsonElement? input, string signature, IReadOnlyList<PersistentRule>? suggested,
         CancellationToken ct)
     {
-        var buttons = new List<ChoiceOption>
-        {
-            new("allow", "✅ Разрешить"),
-            new("always", "♾ Всегда"),
-            new("deny", "❌ Отклонить"),
-            new("reason", "✋ Отклонить с причиной"),
-        };
+        var buttons = new List<ChoiceOption> { new("allow", "✅ Разрешить") };
+        if (!run.Work) buttons.Add(new("always", "♾ Всегда"));
+        buttons.Add(new("deny", "❌ Отклонить"));
+        buttons.Add(new("reason", "✋ Отклонить с причиной"));
 
         var card = ApprovalCardRenderer.Render(toolName, input, signature, suggested, run.ProjectPath);
 
@@ -314,6 +324,38 @@ public sealed class OperatorConsole(
     }
 
     private static readonly string DataDirectory = ProjectCatalog.Normalize(AppPaths.DataDirectory);
+
+    /// <summary>Инструменты правки файлов и поле, где у каждого путь.</summary>
+    private static readonly Dictionary<string, string> EditTools = new(StringComparer.Ordinal)
+    {
+        ["Edit"] = "file_path",
+        ["MultiEdit"] = "file_path",
+        ["Write"] = "file_path",
+        ["NotebookEdit"] = "notebook_path",
+    };
+
+    /// <summary>
+    /// Путь правки внутри папки данных шлюза; null — правка не туда или это не правка. Относительный
+    /// путь — от папки запуска: от неё его разрешит и агент.
+    /// </summary>
+    private static string? DataDirectoryTarget(string toolName, JsonElement? input, string runFolder)
+    {
+        if (!EditTools.TryGetValue(toolName, out var field)
+            || input is not { ValueKind: JsonValueKind.Object } obj
+            || !obj.TryGetProperty(field, out var value) || value.ValueKind != JsonValueKind.String
+            || value.GetString() is not { Length: > 0 } path)
+            return null;
+
+        try
+        {
+            var full = ProjectCatalog.Normalize(Path.GetFullPath(path, runFolder));
+            return ProjectCatalog.Same(full, DataDirectory) || ProjectCatalog.IsInside(full, DataDirectory) ? full : null;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>
     /// Сам файл или любая папка между ним и корнем проекта — точка повторного разбора.

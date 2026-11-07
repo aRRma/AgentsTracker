@@ -22,6 +22,17 @@ public sealed class ClaudeBackend(
     /// <summary>Сколько вывода показывать в логе на Error; полный дамп уходит на Debug.</summary>
     private const int ErrorDetailsLimit = 200;
 
+    /// <summary>
+    /// Подсказка темы «Работа». Человек пишет с телефона и экрана не видит: без этого модель
+    /// отвечала бы «откройте окно и нажмите», а необратимое делала бы, не предупредив.
+    /// </summary>
+    private const string MachinePrompt =
+        "Ты работаешь на компьютере пользователя удалённо: он пишет из Telegram и экрана не видит. "
+        + "Тебе доступны команды, файлы всего компьютера, сеть и MCP-серверы. Текущая папка — твоя рабочая, а не проект: "
+        + "держи в ней заметки и файлы для отправки. Чтобы прислать файл или скриншот, скопируй его в эту папку и вызови send_file. "
+        + "Действия, которые нельзя отменить, сначала опиши; вместо удаления предлагай перемещение. "
+        + "Каждое действие вне правил пользователя придёт ему карточкой подтверждения — отказ не обходи другим способом.";
+
     public string Id => BackendId;
 
     public string DisplayName => "Claude Code";
@@ -444,7 +455,8 @@ public sealed class ClaudeBackend(
         // чему, а без Bash и Edit им нечего и спрашивать через карточки. Чужие MCP-серверы из
         // настроек пользователя не грузим — их описания съели бы десятки тысяч токенов
         // контекста на каждый запуск.
-        var webOnly = request.Kind == AgentRunKind.Question || request.WebOnly;
+        var webOnly = request.Kind == AgentRunKind.Question || request.Toolset == AgentToolset.WebOnly;
+        var machine = !webOnly && request.Toolset == AgentToolset.Machine;
         if (webOnly)
         {
             yield return "--tools";
@@ -455,6 +467,13 @@ public sealed class ClaudeBackend(
             // строки она искала, как запустить команды, и обещала их человеку.
             yield return "--append-system-prompt";
             yield return "Доступа к компьютеру нет: ни файлов, ни команд. Есть только поиск в сети и чтение страниц. Не обещай запустить команду или создать файл — отвечай текстом.";
+        }
+        else if (machine)
+        {
+            // Без этой строки модель считает рабочую папку проектом и ищет в ней код, а файл для
+            // человека кладёт куда попало — send_file примет только файл из этой папки.
+            yield return "--append-system-prompt";
+            yield return MachinePrompt;
         }
 
         yield return "--permission-prompt-tool";
@@ -473,8 +492,13 @@ public sealed class ClaudeBackend(
         // Поиск и чтение страниц у вопроса и беседы — тоже без карточки: файлов и команд у них нет,
         // а карточка на каждый поиск только замедляла ответ. Риск принят: страница с
         // внушением может заставить модель открыть адрес с текстом беседы.
+        // «Работе» — только поиск: она читает любые файлы машины, и WebFetch без карточки стал бы
+        // каналом наружу — страница внушает «открой адрес с содержимым файла», и он уходит молча.
+        // Запрос поиска уходит поисковику, а не на адрес, который выбрал автор страницы.
         yield return "--allowedTools";
-        yield return webOnly ? $"{McpConfigFile.SendFileToolFullName},WebSearch,WebFetch" : McpConfigFile.SendFileToolFullName;
+        yield return webOnly ? $"{McpConfigFile.SendFileToolFullName},WebSearch,WebFetch"
+            : machine ? $"{McpConfigFile.SendFileToolFullName},WebSearch"
+            : McpConfigFile.SendFileToolFullName;
 
         // Картинки из чата лежат вне рабочей папки: без этого Read до них не дотянется.
         // Проверка существования обязательна — у чата без вложений папки нет.

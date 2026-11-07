@@ -36,18 +36,23 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
             OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
     /// <summary>
-    /// Текущая папка всегда первая в списке, дальше — по алфавиту. null — текущей нет (беседа):
-    /// её временная папка проектом не станет.
+    /// Текущая папка всегда первая в списке, дальше — по алфавиту. null — текущей нет (беседа или
+    /// «Работа»): папка такой темы проектом не станет.
     /// </summary>
     public IReadOnlyList<string> List(string? current)
     {
         var found = new List<string>();
+        var work = _options.Work.Root;
 
         foreach (var path in Sources())
         {
             if (!Directory.Exists(path)) continue;
 
             var normalized = Normalize(path);
+
+            // Папку темы «Работа» агент может сам сделать репозиторием, и обход корня её найдёт. Выбранная
+            // проектом, она запускалась бы со всеми инструментами: тип запуска шлюз узнаёт по папке.
+            if (Same(normalized, work) || IsInside(normalized, work)) continue;
             if (!found.Contains(normalized, StringComparer.OrdinalIgnoreCase)) found.Add(normalized);
         }
 

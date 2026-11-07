@@ -39,10 +39,16 @@ public sealed record AgentSetting(
 /// Режимы со своим кэшем: переход в такой режим и выход из него заставляют следующий запуск
 /// записать контекст заново. Остальные режимы кэш делят. null — режим кэш не трогает.
 /// </param>
+/// <param name="AskingPermissionMode">
+/// Режим, в котором агент спрашивает про всё, что не разрешено правилами пользователя. Им
+/// закреплена тема «Работа»: со всем компьютером в руках режим без карточек из чата не выбрать.
+/// null — у агента такого режима нет, и темы «Работа» с ним не бывает.
+/// </param>
 public sealed record AgentCapabilities(
     AgentSetting Model,
     AgentSetting? Effort,
     AgentSetting PermissionMode,
     bool Context = false,
     bool Questions = false,
-    IReadOnlyList<string>? OwnCacheModes = null);
+    IReadOnlyList<string>? OwnCacheModes = null,
+    string? AskingPermissionMode = null);
