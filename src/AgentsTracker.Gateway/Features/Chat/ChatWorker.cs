@@ -739,7 +739,7 @@ public sealed class ChatWorker(
                 Directory.CreateDirectory(folder);
                 return true;
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
             {
                 // Без этого — «внутренняя ошибка» на каждую задачу из очереди по очереди.
                 logger.LogError(ex, "Папка темы «Работа» не создана: {Folder}", folder);

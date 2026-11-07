@@ -187,7 +187,7 @@ src/AgentsTracker.Gateway/
 [cli-contract.md](cli-contract.md), «Файл в чат».
 
 В любой теме `OperatorConsole.ApproveAsync` без карточки отказывает `Edit`/`MultiEdit`/`Write`/
-`NotebookEdit`, путь которого лежит внутри папки данных (`EditTarget`: префикс `\\?\` снимается,
+`NotebookEdit`, путь которого лежит внутри папки данных (`EditTarget`: префиксы `\\?\` и `\\.\` снимаются,
 `~/` и `/c/` раскрываются, относительный путь считается от папки запуска): там `state.json` и
 секреты, а карточка лишь приглашала бы нажать. В запуске «Работы» `ForbiddenEdit` отказывает и в
 правке настроек агента — `.claude/` и `.mcp.json` её папки, `~/.claude/settings*.json`,

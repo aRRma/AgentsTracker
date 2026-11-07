@@ -189,7 +189,7 @@ always a `{"sent":false,"reason":…}` answer, never an exception. The checks �
 "File to chat".
 
 In every topic `OperatorConsole.ApproveAsync` refuses with no card an `Edit`/`MultiEdit`/`Write`/
-`NotebookEdit` whose path is inside the data directory (`EditTarget`: the `\\?\` prefix is
+`NotebookEdit` whose path is inside the data directory (`EditTarget`: the `\\?\` and `\\.\` prefixes are
 stripped, `~/` and `/c/` are expanded, a relative path is taken from the run folder): there lie
 `state.json` and the secrets, and a card would only invite a tap. In a «Работа» run `ForbiddenEdit`
 also refuses an edit of the agent's settings — the folder's `.claude/` and `.mcp.json`,

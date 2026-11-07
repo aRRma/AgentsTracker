@@ -353,9 +353,11 @@ public sealed class OperatorConsole(
             || value.GetString() is not { Length: > 0 } path)
             return null;
 
-        // «\\?\C:\…» GetFullPath оставляет как есть, и сравнение с папками его бы не узнало.
-        const string Verbatim = @"\\?\";
-        if (path.StartsWith(Verbatim, StringComparison.Ordinal) && !path.StartsWith(Verbatim + "UNC", StringComparison.OrdinalIgnoreCase))
+        // «\\?\C:\…» и «\\.\C:\…» GetFullPath оставляет как есть, и сравнение с папками их бы не узнало.
+        // Оба префикса одной длины. Сетевые «…\UNC\…» не разбираем — такой путь получит обычную карточку.
+        const string Verbatim = @"\\?\", Device = @"\\.\";
+        if ((path.StartsWith(Verbatim, StringComparison.Ordinal) || path.StartsWith(Device, StringComparison.Ordinal))
+            && !path[Verbatim.Length..].StartsWith("UNC", StringComparison.OrdinalIgnoreCase))
             path = path[Verbatim.Length..];
 
         // «~/…» и «/c/…» агент раскрывает сам, а GetFullPath сделал бы из них папку внутри проекта.
