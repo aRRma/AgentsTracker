@@ -10,8 +10,7 @@ command in both shells.
 
 `Get-Process AgentsTracker.Gateway` shows the path, and everything else follows from it:
 
-- **a published release** (`C:\AgentsTracker-win-x64`) — how this machine is set up now:
-  the stable service the user chats with. Do not stop it and do not rebuild over it; a commit
+- **a published release** (its folder is in the path): the stable gateway the user chats with. Do not stop it and do not rebuild over it; a commit
   changes nothing in the chat, new code gets there only with the next release
   (`docs/en/deployment.md`). A change is checked live by a scratch instance, see below;
 - **`bin\Debug` of the main folder** — then the working gateway is the one being developed, and
@@ -22,7 +21,7 @@ command in both shells.
 Applies when the exe was started manually from `bin\Debug` and there is no Task Scheduler task.
 While it runs, `dotnet build` fails with `MSB3021` (the exe is locked). Both stop commands below
 (`Stop-Process`, `taskkill`) match by name only: with a release running alongside they take down
-the working service too — filter by `Path`.
+the working gateway too — filter by `Path`.
 
 ```powershell
 git status                                                # someone else's uncommitted changes may not build
@@ -53,14 +52,14 @@ cmd //c start "" "src/AgentsTracker.Gateway/bin/Debug/net10.0/AgentsTracker.Gate
   git worktree remove --force ../AgentsTracker-run
   ```
 - Do not restart from a session the gateway itself launched (from Telegram): `Stop-Process` would
-  kill the current `claude -p` too, and a deferred `schtasks /SC ONCE` did not work. Give the user
-  the commands above and ask them to run them by hand.
+  kill the current `claude -p` too. Give the user the commands above and ask them to run them by
+  hand.
 - Stopping the gateway kills all its `claude` processes and everything they started (the Job
   Object, `cli-contract.md`): a dev server or an emulator the agent brought up must be started
   again.
 - The log is in `<data directory>\logs\gateway-YYYY-MM-DD.log` (a scratch instance — in its own
   `Gateway__DataDirectory`): UTF-8, so read it with `Get-Content -Encoding utf8` or `grep` by the chat
-  key. An entry starts with the date (`YYYY-MM-DD HH:MM:SS.mmm +03:00 WRN Category: text`), a
+  key. An entry starts with the date (`YYYY-MM-DD HH:MM:SS.mmm <offset> WRN Category: text`), a
   continuation is indented by 4 spaces. The console outputs Russian text in cp866 — view it in PowerShell (Git Bash has no `iconv`).
 - After startup the bot posts «🔌 Шлюз запущен» ("Gateway started") with the build version
   (`0.0.0-dev` from source) — it shows the new exe came up. If the restart hit a running task, its
@@ -72,7 +71,7 @@ cmd //c start "" "src/AgentsTracker.Gateway/bin/Debug/net10.0/AgentsTracker.Gate
 Any config key can be overridden by an environment variable, so a second exe can run beside the
 working one. While the release is the working instance this is the only way to see a change live:
 the scratch instance is built into a separate folder and started on its own ports, so it touches
-neither `bin\Debug` nor the working service.
+neither `bin\Debug` nor the working gateway.
 
 ```powershell
 dotnet build src\AgentsTracker.Gateway -o $env:TEMP\at-build
@@ -85,7 +84,7 @@ $env:Gateway__McpPort = '5198'; $env:Gateway__MonitorPort = '5199'
 # own state.json, and the production appsettings.Local.json is not read
 $env:Gateway__DataDirectory = "$env:TEMP\at-scratch-data"
 # an existing folder: validation requires it, and the production config that has it is not read
-$env:Gateway__ProjectPath = 'C:\Users\aRRma99\source\repos\ME\AgentsTracker'
+$env:Gateway__ProjectPath = '<path to an existing folder>'
 & "$env:TEMP\at-build\AgentsTracker.Gateway.exe"
 ```
 
@@ -95,25 +94,23 @@ by path, not by name — `Get-Process AgentsTracker.Gateway | Where-Object { $_.
 "$env:TEMP*" } | Stop-Process -Force` — otherwise the working release goes down too; then delete
 the `Gateway__DataDirectory` folder.
 
-With its own `DataDirectory` the scratch instance neither disturbs the working gateway nor depends
-on the shape of its config. Without it `state.json` is shared: do not start the scratch instance
-while a task is in progress.
+Always set its own `Gateway__DataDirectory`: without it `state.json` is shared.
 
-With a **fake** token the scratch instance lives about a minute: `getMe` gets `Unauthorized`
-(`ChannelFailure.Unauthorized`), and after `UnauthorizedAttempts` (6, ten seconds apart) the host
-writes «не принимает токен бота» and exits with code 1. A network failure is different: the host
-waits 10 s, 20 s… up to 5 min between attempts and never gives up, so a scratch instance with an
-unreachable `Proxy` lives until stopped. A minute is enough for startup, the config and the
-monitor, and the working bot notices nothing. Anything longer, or a chat scenario, needs a
+With a **fake** token the scratch instance lives for a short time: `getMe` gets `Unauthorized`
+(`ChannelFailure.Unauthorized`), and after `UnauthorizedAttempts` attempts with a pause between them the
+host writes «не принимает токен бота» and exits with code 1. A network failure is different: the
+host retries forever with a growing pause, so a scratch instance with an unreachable `Proxy` lives
+until stopped. That is enough for startup, the config and the monitor, and the working bot notices
+nothing. Anything longer, or a chat scenario, needs a
 **separate test bot** from @BotFather: the working bot's token gives the second process a 409 on
 `getUpdates`, and the release loses its polling. The MCP config never conflicts: each instance
 has its own, `mcp-gateway-<pid>-<run>.json` per run.
 
 The scratch instance's monitor (`http://127.0.0.1:5199`) is the only place to see a change to the
-page: port `5100` belongs to the release and shows the old code. From a session read it with
-`monitor-api.ps1 "api/snapshot" -Port 5199`. Screenshots — `docs/en/monitor.md`.
+page: port `5100` belongs to the release and shows the old code. Reading it from a session
+(`-Port 5199`) and screenshots — `docs/en/monitor.md`, "How to look at the page".
 
-Smoke test after infrastructure changes: a scratchpad script, `pwsh -File`; after ~8 s check:
+Smoke test after infrastructure changes: a scratchpad script, `pwsh -File`; after startup check:
 
 - `/api/snapshot` — the `version` (gateway build), `agent`, `cliVersion` fields;
 - `/api/limits`;
@@ -137,9 +134,6 @@ Call `AppPaths.UseDirectory(<a temp folder>)` before anything else, then
 `IChatChannel`/`IAuditLog` (other channel methods — `throw new NotSupportedException()`). Put the
 file in the scratchpad and run `dotnet run check.cs`. One run covers, for example, incoming-file
 handling: signature sniffing, size caps, the retention sweep, refusals and the audit records.
-
-A junction left in the temp folder by a previous run makes `Directory.Delete(recursive: true)`
-fail with «Access to the path 'link' is denied» — remove the link itself before the folder.
 
 A harness that drives the real CLI (`ChatWorker` + `ClaudeBackend`) also needs
 `#:property PublishAot=false` and `#:property JsonSerializerIsReflectionEnabledByDefault=true`
@@ -171,11 +165,9 @@ Work in the new folder (from chat — `/project`, it has its own sessions). Merg
 `git status` before merging and before stopping the gateway: other sessions work in the main
 folder in parallel. Small changes in one or two commits go straight into the main folder.
 
-Call review skills with the branch name (`code-review medium --fix <branch>`): without an
-argument they take the main folder's uncommitted diff, not your branch, and fix someone else's
-work.
+Review skills: pass the branch name (`CLAUDE.md`, "Как работать").
 
-Traps that have already cost time or work:
+Pitfalls:
 
 - **Forward slashes only in Bash.** Git Bash turns `..\AgentsTracker-x` into `..AgentsTracker-x`,
   and the worktree ends up inside the repository.
@@ -240,28 +232,15 @@ GitHub creates the first page only through the web interface: until it exists, t
   `\n`, `\r` in paths get silently swallowed and look like a typo. Put a script in the scratchpad
   via Write, run it as a file, check the result with `grep … | cat -v` and by building.
 - Sources are UTF-8 **without BOM** (`utf-8-sig` adds one silently).
+- Undocumented CLI behaviour is quickest to check with a bare `claude -p … --output-format json`
+  and `permission_denials` in the answer (`claude` is not on PATH, see `CLAUDE.md`).
+- A long one-line PowerShell command in an approval prompt is easy to reject unread — put a
+  multi-step check into a script and run it with `pwsh -File`.
+- The monitor from a session (`curl` is in `deny`): `monitor.md`, "How to look at the page".
 - The PowerShell tool rejects a compound command where `Remove-Item` stands next to a path under
-  `C:\Program Files` (7-Zip, for example): the guard reads it as removing `C:\Program`. Split such
-  a command into separate calls.
-- `claude` is not on the tool shells' PATH: call it by full path — from Git Bash
-  `~/.local/bin/claude.exe --help`, from PowerShell `& "$env:USERPROFILE\.local\bin\claude.exe" --help`.
-  Undocumented CLI behaviour is quickest to check with a bare `claude -p … --output-format json`
-  and `permission_denials` in the answer — that is how `--add-dir` was verified not to raise an
-  approval card.
-- `git commit -F -` with a here-string gets no stdin in the PowerShell tool: put a long message
-  into a scratchpad file and use `git commit -F <file>`.
-- A reviewer subagent without Bash cannot run `git show`/`git diff`: dump old file versions into
-  the scratchpad (`git show <commit>:<path> > …`).
-- From a session over Telegram, `AskUserQuestion` and `ExitPlanMode` wait `ApprovalTimeoutMinutes`
-  (15): without a response, take the recommended option. A long one-line PowerShell command in an
-  approval prompt is easy to reject unread — put a multi-step check into a script and run it with
-  `pwsh -File`.
-- `curl`, `Invoke-WebRequest`, `Invoke-RestMethod` are in `deny`, for `127.0.0.1` too. A monitor
-  snapshot from a session: `pwsh -File scripts\monitor-api.ps1 "api/snapshot"` (loopback only,
-  allowed in `.claude/settings.json`) from the PowerShell tool: from Bash a leading `/` turns into
-  `C:/Program Files/Git/api/…` and the script refuses the argument. The whole page — Playwright's
-  `browser_run_code_unsafe`.
-- `modern-web-guidance` (`npx.cmd -y modern-web-guidance@latest search "…"`) — use the PowerShell
-  tool: from Git Bash `npx.cmd` silently returns empty output.
+  `C:\Program Files`: its guard reads it as removing `C:\Program`. Split such a command.
+- `git commit -F -` gets no stdin in the PowerShell tool: put the message into a file and use
+  `git commit -F <file>`.
+- `npx.cmd` from Git Bash silently returns empty output — run it from the PowerShell tool.
 - Production install and Docker (publishing, ports, secrets, update, why a task and not a
   service) — `deployment.md`.

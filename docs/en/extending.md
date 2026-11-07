@@ -2,8 +2,7 @@
 
 When to read this: you are adding a chat command, a settings screen, a feature, an agent, a
 channel, an MCP tool, a monitor endpoint, an exe command, an autostart mechanism or a config key.
-Every entry is a checklist — a missed step shows up as a silent startup failure or a feature nobody
-can reach. The project layout and the rules between projects are in `architecture.md`.
+The project layout and the rules between projects are in `architecture.md`.
 
 ## A chat command
 
@@ -11,21 +10,15 @@ A class implementing `IChatCommandHandler` in the feature folder, `AddSingleton`
 an entry in the `HelpCommandHandler` text and, if the command belongs in the «Меню» list below, in
 `ChatCommandCatalog` (`Infrastructure/Chat/`, the channel's command hints).
 
-Taken: `/start /help` (Help), `/new /stop` (Chat), `/ask` (Question), `/rules` (Approvals),
-`/audit` (Audit), `/menu /settings /status /sessions /agent /model /effort /mode /skills /project
-/usage` (Settings), `/topic` (Topics). **A duplicate across two features kills startup** (`ChatDispatcher` builds a
-dictionary of commands).
+Taken names: the `Commands` of each `IChatCommandHandler`. **A duplicate across two features kills
+startup** (`ChatDispatcher` builds a dictionary of commands).
 
-The «Меню» list holds `/menu`, `/stop`, the screens, `/ask`, `/rules`, `/audit` and `/help`, ordered
-by frequency. `/new /model /effort /mode` work as text but stay out of the list: buttons on
-«Сессии» and «Агент» do the same, and a long list reads worse. `/ask` is in because the question is
-typed right after the command, `/stop` because a run must be stopped fast. `RootScreen` has buttons
-for the screens only. With topics on, a command picked from «Меню» goes to the topic it was picked
-in; from the лента Telegram Desktop sends it to the лента, while the mobile client opens a new topic,
-as it does for anything typed there.
+The «Меню» list (`ChatCommandCatalog`) is short on purpose: `/new /model /effort /mode` work as text
+but stay out of it, buttons on «Сессии» and «Агент» do the same. `RootScreen` has buttons for the
+screens only. Where a command picked from «Меню» goes with topics on — `architecture.md`, "Topics".
 
-An unknown slash command goes to the CLI as-is: it is Claude Code's own. So «Контекст» has no
-`/context` command: it would shadow Claude Code's.
+«Контекст» has no `/context` command: an unknown slash command goes to the CLI, and it would shadow
+Claude Code's own.
 
 ## A settings screen
 
@@ -36,8 +29,8 @@ is registered by its module the same way — `TopicScreen` in `Topics`.
 - `Key` is the screen's callback prefix: a button carries `cfg:<Key>:<argument>`. It must be unique,
   and an unknown key silently opens `root`, so a mismatch looks like a button that does nothing.
 - `RenderAsync` is async because of the limits; `RenderFramesAsync` returns optional frames.
-  `StatusScreen` "fills" the `LimitBars` gauges with them: three frames 350 ms apart, more often
-  gets a 429 from Telegram. A frame identical to the previous one is skipped with its pause: the
+  `StatusScreen` "fills" the `LimitBars` gauges with them: a few frames
+  `LimitBars.FrameDelay` apart (more often gets a 429 from Telegram). A frame identical to the previous one is skipped with its pause: the
   bar of a barely used window does not move, and the edit would only earn «message is not modified».
 - Model, Effort and mode are one `AgentScreen` with the arguments `model:…`/`effort:…`/`mode:…`.
 - `Apply` receives the `ChatId`: a screen can enqueue work on `ChatWorker` (`SkillsScreen`), and
@@ -87,8 +80,7 @@ of «A project»). An `IAgentBackendModule` registers `IAgentBackend`, `IAgentLi
 `IOperatorConsole`. A line in the `agents` list in `Program.cs`.
 
 Every call into `IOperatorConsole` carries `AgentRunRequest.RunId` back, or it is refused
-(`architecture.md`). The backend must carry the id from the request to its confirmation channel
-itself (Claude puts it into a header of the run's own MCP config).
+(`architecture.md`): the backend carries the id to its confirmation channel itself.
 
 `AgentCapabilities.AskingPermissionMode` is the mode in which the agent asks about everything the user's rules do not allow; an
 agent with no such mode leaves it `null` and has no «Работа» topic (startup refuses a non-empty
@@ -115,14 +107,14 @@ by `Gateway:Channel:Type`).
 
 Replies (`architecture.md`): fill `IncomingMessage.Message` and `InReplyTo` (free text finds its
 card by it when several wait), honour `OutgoingMessage.ReplyTo` and the `replyTo` of the file
-methods — the answer to a вопрос is a reply. A reply to a deleted message must still be delivered
-(Telegram: `AllowSendingWithoutReply`). A messenger without replies may ignore `ReplyTo`.
+methods — the answer to a вопрос is a reply. A reply to a deleted message must still be delivered.
+A messenger without replies may ignore `ReplyTo`.
 
 Take the transport client **lazily**: the host creates the channel before it prints configuration
 errors, and a constructor failing on an empty token would hide a readable error behind a stack trace.
 
 `grep -rn Telegram src/AgentsTracker.Gateway --include=*.cs` must only find `Program.cs`, comments
-and a few message texts (help, `install`).
+and user-facing texts.
 
 ## An MCP tool
 
@@ -131,20 +123,18 @@ A class with `[McpServerToolType]` in `Agents.Claude/Mcp/`, the name as a consta
 `IOperatorConsole` (implemented in `OperatorConsole`, `Features/Approvals/`).
 
 A tool without an approval card goes into `--allowedTools` in `ClaudeBackend.BuildArguments`, and
-its whole policy becomes the gateway's. `mcp__tg__send_file` is there: the host checks the folder,
-the type and the size itself. A вопрос and a беседа also get `WebSearch,WebFetch` there — they have
-no files or commands. «Работа» gets only `WebSearch`: it reads every file of the machine, and a
-card-less `WebFetch` would be a silent way out for their contents. Nothing else belongs there — it
-bypasses the cards.
+its whole policy becomes the gateway's. Only `mcp__tg__send_file` and the web tools of a
+вопрос/беседа/«Работа» are there (`cli-contract.md`); nothing else belongs there — it bypasses the
+cards.
 
-The `send_file` type whitelist lives in several places — the map in `OperatorConsole`, the tool
-description in `ClaudeSendFileTool` (the CLI sees the description of the **running** gateway),
-`docs/cli-contract.md` and `docs/safety.md` with their twins in `docs/en/`, and the «Long documents»
-rule of `CLAUDE.md`. Change a type — change all of them.
+The `send_file` type whitelist lives in `OperatorConsole`; the tool description in
+`ClaudeSendFileTool` (the CLI sees the **running** gateway's) and `cli-contract.md`, "File to chat",
+repeat it — change them together.
 
 ## A monitor endpoint
 
-`api.MapGet` in `MonitorModule.MapEndpoints`, read-only — `monitor.md`.
+`api.MapGet` in `MonitorModule.MapEndpoints` with `Results.Json(..., Json)`, plus a section in
+`index.html`; read-only — `monitor.md`.
 
 ## An exe command
 
@@ -155,14 +145,14 @@ with a `public const string Name` and `Run(string[] args, TextWriter output)` �
 `PrintUsage`.
 
 Commands run before the host is built: DI and the channel are unavailable, the answer goes to
-`output` only, the exit code is 0 or 1. Taken: `protect-secrets`, `install`, `uninstall`, `help`.
+`output` only, the exit code is 0 or 1. The taken names are in `ConsoleCommands.TryRun`.
 An argument starting with a dash or a slash is configuration, not a command.
 
 ## An autostart mechanism (launchd, systemd)
 
 An `IAutostartInstaller` implementation (deriving from `ProcessAutostartInstaller`, whose `Run` is
 protected) in `Infrastructure/Autostart/` and a line in
-`AutostartInstaller.ForCurrentOs` (today only Windows; any other OS gets
+`AutostartInstaller.ForCurrentOs` (Windows only; any other OS gets
 `UnsupportedAutostartInstaller`). Drop a descriptor file and call the platform utility through
 `ProcessAutostartInstaller.Run` — decide by the exit code, the output is localized. The XML for
 `schtasks` is UTF-16: in UTF-8 the Cyrillic in the task description turns into mojibake.
