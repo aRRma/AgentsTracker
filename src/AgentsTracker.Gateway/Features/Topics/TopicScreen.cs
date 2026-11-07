@@ -24,7 +24,7 @@ public sealed class TopicScreen(SessionStore store, WorkAccess work, IAuditLog a
         var scope = store.For(chat);
         if (!scope.IsTopic) return null;
 
-        var previous = scope.IsNewTopic ? null : scope.IsTalk ? "беседа" : scope.IsWork ? "работа" : Path.GetFileName(scope.ProjectPath);
+        var previous = scope.IsNewTopic ? null : ScopeLabel.Name(scope, scope.ProjectPath);
 
         switch (argument)
         {

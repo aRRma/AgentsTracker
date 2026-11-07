@@ -97,29 +97,44 @@ public sealed class WorkOptions
 
     /// <summary>
     /// Пересечения корня проверяем, только когда тема включена: тот, кто ею не пользуется, не
-    /// должен после обновления упереться в отказ старта из-за папки, о которой не знает.
+    /// должен после обновления упереться в отказ старта из-за папки, о которой не знает. Сам путь —
+    /// всегда: тема, выбранная до выключения, осталась в state.json, и кривой путь ронял бы каждый
+    /// её экран.
     /// </summary>
     public IReadOnlyList<string> Validate(GatewayOptions options)
     {
         var errors = new List<string>();
         var key = $"{GatewayOptions.SectionName}:Work";
 
+        string root;
+        try
+        {
+            // Относительный путь разрешился бы от текущей папки процесса: у службы это System32.
+            if (Folder is { Length: > 0 } folder && !Path.IsPathFullyQualified(folder))
+            {
+                errors.Add($"{key}:Folder = «{folder}». Нужен полный путь.");
+                return errors;
+            }
+
+            root = Root;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            errors.Add($"{key}:Folder — некорректный путь: {ex.Message}");
+            return errors;
+        }
+
         if (!Enabled) return errors;
 
         if (AllowedUserIds.Any(string.IsNullOrWhiteSpace))
             errors.Add($"{key}:AllowedUserIds — пустой id.");
 
-        // Относительный путь разрешился бы от текущей папки процесса: у службы это System32.
-        if (Folder is { Length: > 0 } folder && !Path.IsPathFullyQualified(folder))
-        {
-            errors.Add($"{key}:Folder = «{folder}». Нужен полный путь.");
-            return errors;
-        }
+        // Без профиля (Linux без HOME) корень по умолчанию стал бы папкой внутри текущей.
+        if (Folder is not { Length: > 0 } && Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) is not { Length: > 0 })
+            errors.Add($"{key}:Folder не задан, а папки профиля нет — задайте полный путь.");
 
         try
         {
-            var root = Root;
-
             // Там state.json, токен MCP и секреты канала: агент со всеми инструментами в этой папке
             // переписал бы себе правила и доверие.
             var data = ProjectCatalog.Normalize(AppPaths.DataDirectory);
@@ -144,20 +159,19 @@ public sealed class WorkOptions
             // Корень обхода внутри корня «Работы»: список проектов молча опустел бы — папки «Работы»
             // из него вычёркиваются. Обратное (корень «Работы» внутри обхода) — обычное дело.
             if (options.ProjectsRoot is { Length: > 0 } projectsRoot
-                && ProjectCatalog.Normalize(projectsRoot) is var walked
-                && (ProjectCatalog.Same(walked, root) || ProjectCatalog.IsInside(walked, root)))
+                && ProjectCatalog.IsSameOrInside(ProjectCatalog.Normalize(projectsRoot), root))
                 errors.Add($"{key}:Folder ({root}) содержит ProjectsRoot ({projectsRoot}): список проектов был бы пуст.");
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {
-            errors.Add($"{key}:Folder или проект из конфига — некорректный путь: {ex.Message}");
+            errors.Add($"{key}: проект из конфига — некорректный путь: {ex.Message}");
         }
 
         return errors;
     }
 
     private static bool Overlaps(string left, string right) =>
-        ProjectCatalog.Same(left, right) || ProjectCatalog.IsInside(left, right) || ProjectCatalog.IsInside(right, left);
+        ProjectCatalog.IsSameOrInside(left, right) || ProjectCatalog.IsInside(right, left);
 }
 
 public sealed class GatewayOptions

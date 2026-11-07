@@ -86,7 +86,7 @@ public sealed class SessionsScreen(
                 (s.Id != active && scope.IsActiveElsewhere(s.Id) ? " · 🔒 в другой теме или ленте" : "")));
 
         var html = $"""
-            🧵 <b>Сессии</b> — {E(scope.IsTalk ? "беседа" : scope.IsWork ? "работа" : Path.GetFileName(project))}
+            🧵 <b>Сессии</b> — {E(ScopeLabel.Name(scope, project))}
 
             {now}
 

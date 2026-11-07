@@ -496,9 +496,7 @@ public sealed class ClaudeBackend(
         // каналом наружу — страница внушает «открой адрес с содержимым файла», и он уходит молча.
         // Запрос поиска уходит поисковику, а не на адрес, который выбрал автор страницы.
         yield return "--allowedTools";
-        yield return webOnly ? $"{McpConfigFile.SendFileToolFullName},WebSearch,WebFetch"
-            : machine ? $"{McpConfigFile.SendFileToolFullName},WebSearch"
-            : McpConfigFile.SendFileToolFullName;
+        yield return McpConfigFile.SendFileToolFullName + (webOnly ? ",WebSearch,WebFetch" : machine ? ",WebSearch" : "");
 
         // Картинки из чата лежат вне рабочей папки: без этого Read до них не дотянется.
         // Проверка существования обязательна — у чата без вложений папки нет.

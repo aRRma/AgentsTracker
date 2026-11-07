@@ -53,7 +53,7 @@ public sealed class OperatorConsole(
         // разобрать — их держат карточка и deny пользователя.
         if (EditTarget(toolName, input, run.ProjectPath) is { } target && ForbiddenEdit(target, run) is { } refusal)
         {
-            logger.LogWarning("Правка отклонена без карточки: {Tool} {Path}", toolName, target);
+            logger.LogWarning("Отказ в правке без карточки: {Tool} {Path}", toolName, target);
             Audit(run, AuditKinds.Approval, signature, "refused");
             return ApprovalDecision.Deny(refusal);
         }
@@ -104,15 +104,15 @@ public sealed class OperatorConsole(
             await broker.SendAttachmentAsync(run, attachment.FileName, attachment.Text, ct);
 
         var (key, user) = await broker.AskChoiceAsync(run, card.Html, buttons, ct);
+
+        // У «Работы» кнопки «Всегда» нет, но ключ приходит из нажатия: самодельный клиент прислал бы
+        // и его. Тогда это обычное «Разрешить» — и в журнале тоже, иначе там было бы правило, которого нет.
+        if (run.Work && key == "always") key = "allow";
         Audit(run, AuditKinds.Approval, signature, key, user);
 
         switch (key)
         {
             case "allow":
-                return ApprovalDecision.Allow();
-
-            // У «Работы» кнопки нет, но ключ приходит из нажатия: самодельный клиент прислал бы и его.
-            case "always" when run.Work:
                 return ApprovalDecision.Allow();
 
             case "always":
@@ -329,6 +329,9 @@ public sealed class OperatorConsole(
 
     private static readonly string DataDirectory = ProjectCatalog.Normalize(AppPaths.DataDirectory);
 
+    /// <summary>Профиль пользователя: там ~/.claude, чьи настройки агенту «Работы» править нельзя.</summary>
+    private static readonly string Home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
     /// <summary>Инструменты правки файлов и поле, где у каждого путь.</summary>
     private static readonly Dictionary<string, string> EditTools = new(StringComparer.Ordinal)
     {
@@ -378,18 +381,16 @@ public sealed class OperatorConsole(
     private static string? ForbiddenEdit(string full, RunScope run)
     {
         // В папке данных state.json с правилами «всегда» и доверием, конфиг с AllowedUserIds и режимом.
-        if (Within(full, DataDirectory))
+        if (ProjectCatalog.IsSameOrInside(full, DataDirectory))
             return $"Шлюз не даёт агенту править свою папку данных ({DataDirectory}): там его настройки и правила. Не пытайтесь изменить её другим способом.";
 
         // В «Работе» кнопки «Всегда» нет, но правило в настройках агента сделало бы то же самое — и
         // сразу для всей машины: allow в своей папке или в ~/.claude, хук, MCP-сервер.
-        if (run.Work && AgentSettings(run.ProjectPath).Any(guarded => ProjectCatalog.Same(full, guarded) || Within(full, guarded)))
+        if (run.Work && AgentSettings(run.ProjectPath).Any(guarded => ProjectCatalog.IsSameOrInside(full, ProjectCatalog.Normalize(guarded))))
             return "В теме «Работа» агент не правит настройки агента — ни в своей папке, ни в ~/.claude: правило оттуда снимало бы карточки на всей машине. Попросите пользователя сделать это самому.";
 
         return null;
     }
-
-    private static readonly string Home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
     /// <summary>Где лежат настройки агента, расширяющие его права: в папке запуска и у пользователя.</summary>
     private static IEnumerable<string> AgentSettings(string runFolder) =>
@@ -406,12 +407,6 @@ public sealed class OperatorConsole(
         Path.Combine(Home, ".claude", "plugins"),
         Path.Combine(Home, ".claude.json"),
     ];
-
-    private static bool Within(string full, string folder)
-    {
-        var normalized = ProjectCatalog.Normalize(folder);
-        return ProjectCatalog.Same(full, normalized) || ProjectCatalog.IsInside(full, normalized);
-    }
 
     /// <summary>
     /// Сам файл или любая папка между ним и корнем проекта — точка повторного разбора.

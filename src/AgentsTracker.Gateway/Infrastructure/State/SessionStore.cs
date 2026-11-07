@@ -55,7 +55,7 @@ public sealed class SessionStore
     private static string TalkFolder(ChatId chat) => Path.Combine(TalkRoot, FolderName(chat));
 
     /// <summary>Корень папок тем «Работа» — из конфига, в отличие от бесед: эти папки не временные.</summary>
-    public string WorkRoot => _options.Work.Root;
+    private string WorkRoot => _options.Work.Root;
 
     /// <summary>
     /// Путь внутри <see cref="WorkRoot"/> — папка темы «Работа»: запуск в ней идёт со всеми
@@ -65,6 +65,9 @@ public sealed class SessionStore
 
     /// <summary>Своя папка у каждой темы «Работа»: темы идут параллельно, а замок — на папку.</summary>
     private string WorkFolder(ChatId chat) => ProjectCatalog.Normalize(Path.Combine(WorkRoot, FolderName(chat)));
+
+    /// <summary>Тема «Работа» с выбранным типом: признак без Untyped — /model в новой теме тип не задаёт.</summary>
+    private static bool IsWorkTopic(TopicState? topic) => topic is { Work: true, Untyped: null };
 
     private static string FolderName(ChatId chat) =>
         string.Concat(chat.Key.Select(c => char.IsAsciiLetterOrDigit(c) ? c : '_'));
@@ -326,7 +329,7 @@ public sealed class SessionStore
 
         private bool IsTalkLocked() => IsTopic && Selection()?.ProjectPath is not { Length: > 0 } && !IsWorkLocked();
 
-        private bool IsWorkLocked() => IsTopic && _store._state.Topics.GetValueOrDefault(_chat!.Key) is { Work: true, Untyped: null };
+        private bool IsWorkLocked() => IsTopic && IsWorkTopic(_store._state.Topics.GetValueOrDefault(_chat!.Key));
 
         private bool IsNewTopicLocked() => IsTopic && _store._state.Topics.GetValueOrDefault(_chat!.Key) is null or { Untyped: true };
 
@@ -715,7 +718,7 @@ public sealed class SessionStore
             return _state.Topics.GetValueOrDefault(chat.Key) switch
             {
                 { ProjectPath: { Length: > 0 } topic } => ProjectCatalog.Normalize(topic),
-                { Work: true, Untyped: null } => WorkFolder(chat),
+                var topic when IsWorkTopic(topic) => WorkFolder(chat),
                 _ => TalkFolder(chat),
             };
         }

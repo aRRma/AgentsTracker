@@ -86,10 +86,7 @@ public sealed class StatusScreen(
             ? ""
             : $" · 🎚 {E(scope.EffectiveEffort ?? "по умолчанию")}";
 
-        var where = scope.IsNewTopic ? RootScreen.NewTopic
-            : scope.IsTalk ? "💬 <b>Беседа</b>"
-            : scope.IsWork ? $"💼 <b>Работа</b>\n<code>{E(project)}</code>"
-            : $"📁 <b>{E(Path.GetFileName(project))}</b>\n<code>{E(project)}</code>{Branch(project, store.SessionFolder(project, scope.SessionId))}";
+        var where = ScopeLabel.Where(scope, project, () => Branch(project, store.SessionFolder(project, scope.SessionId)));
 
         // «Работе» правил нет: кнопки «Всегда» у её карточек нет, и записанное в state.json не действует.
         var rules = scope.IsWork

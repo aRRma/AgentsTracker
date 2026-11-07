@@ -260,35 +260,16 @@ public sealed class ChatWorker(
         {
             while (true)
             {
-                // Беседа — по итоговой папке, а не по теме при постановке: пока задача ждала, тему
-                // могли привязать к проекту. Её папку чистим до проверки доверия, как папку вопроса.
-                if (SessionStore.IsTalkFolder(project)) EmptyFolder(project);
-
-                // «Работа» — тоже по итоговой папке, и доступ — до карточки доверия: тому, кому тема не
+                // «Работа» — по итоговой папке, и доступ — до карточки доверия: тому, кому тема не
                 // разрешена, незачем и спрашивать доверие к её папке. Проверка здесь, а не только при
                 // выборе типа: id могли убрать из конфига, а тема осталась «Работой».
                 workRun = IsWorkRun(scope, project);
-                if (workRun)
-                {
-                    if (!work.Allows(prompt.User))
-                    {
-                        // Причину — точно: «добавьте id» тому, у кого тема выключена целиком, увело бы искать
-                        // ошибку не там.
-                        var (journal, why) = work.Enabled
-                            ? ("тема «Работа» не разрешена этому пользователю", "вашего id нет в Gateway:Work:AllowedUserIds")
-                            : ("тема «Работа» выключена в конфиге", "она выключена в конфиге шлюза");
-                        Audit(prompt, AuditKinds.AccessRejected, journal);
-                        await SendPlainAsync(prompt.Chat,
-                            $"⛔ Тема «Работа» недоступна: {why}. Выберите другой тип темы: /topic",
-                            prompt.ReplyTo, stoppingToken);
-                        await DropQueueAsync(lane, "после выбора другого типа темы", stoppingToken);
-                        return;
-                    }
+                if (workRun && !await AdmitWorkAsync(lane, prompt, project, stoppingToken)) return;
 
-                    // CLI с несуществующей рабочей папкой не стартует, а создать её заранее негде: корень
-                    // берётся из конфига при первом запуске.
-                    Directory.CreateDirectory(project);
-                }
+                // Беседа — по итоговой папке, а не по теме при постановке: пока задача ждала, тему
+                // могли привязать к проекту. Её папку чистим до проверки доверия, как папку вопроса.
+                // Не у «Работы»: её корень, выключенный в конфиге без проверок, мог лечь во временные.
+                if (!workRun && !scope.IsWork && SessionStore.IsTalkFolder(project)) EmptyFolder(project);
 
                 session = scope.SessionId;
                 // Папку запуска берём ту же, которой доверились: считай её заново после карточки, и
@@ -344,7 +325,7 @@ public sealed class ChatWorker(
         using var heldLock = folderLock;
 
         var talk = !question && SessionStore.IsTalkFolder(project);
-        var machine = !question && workRun;
+        var machine = workRun;
 
         // Вопрос идёт своей моделью из конфига, а не выбранной в меню: ради него и заведён
         // отдельный запуск — не тратить лимит тяжёлой модели на простой ответ.
@@ -486,13 +467,13 @@ public sealed class ChatWorker(
             // send_file у вопроса — проект чата, как было, пока вопрос шёл общей очередью. Кроме
             // «Работы» без доступа: вопрос отдал бы из её папки заметки и файлы тому, у кого
             // доступ к теме сняли, — ему остаётся пустая папка вопроса.
-            var questionRoot = scope.IsWork && !work.Allows(prompt.User) ? project : scope.ProjectPath;
+            var questionInWork = question && scope.IsWork;
             registration = broker.BeginRun(new RunScope(
                 request.RunId, prompt.Chat, prompt.ReplyTo,
-                question ? questionRoot : project,
+                !question ? project : questionInWork && !work.Allows(prompt.User) ? project : scope.ProjectPath,
                 question ? null : runSessionId,
                 // Вопрос в теме «Работа» шлёт файлы из её папки — и «Всегда» ему тоже ни к чему.
-                Work: machine || (question && scope.IsWork)));
+                Work: machine || questionInWork));
 
             result = await agent.RunAsync(
                 request, new RunObserver(store, scope, watched ? monitor : null, request, runSessionId, folder, status), runCts.Token);
@@ -731,6 +712,48 @@ public sealed class ChatWorker(
     /// одной пометке — папка, которую тема сменила, пока задача ждала.
     /// </summary>
     private bool IsWorkRun(SessionStore.ChatScope scope, string project) => scope.IsWork && store.IsWorkFolder(project);
+
+    /// <summary>
+    /// Пускает задачу в тему «Работа»: доступ и папка. false — пользователю сказано почему, очередь
+    /// снята: каждая следующая задача упёрлась бы в то же самое.
+    /// </summary>
+    private async Task<bool> AdmitWorkAsync(Lane lane, QueuedPrompt prompt, string folder, CancellationToken ct)
+    {
+        string kind, journal, message;
+        if (!work.Allows(prompt.User))
+        {
+            // Причину — точно: «добавьте id» тому, у кого тема выключена целиком, увело бы искать
+            // ошибку не там.
+            kind = AuditKinds.AccessRejected;
+            (journal, message) = work.Enabled
+                ? ("тема «Работа» не разрешена этому пользователю", "вашего id нет в Gateway:Work:AllowedUserIds")
+                : ("тема «Работа» выключена в конфиге", "она выключена в конфиге шлюза");
+            message = $"⛔ Тема «Работа» недоступна: {message}. Выберите другой тип темы: /topic";
+        }
+        else
+        {
+            try
+            {
+                // CLI с несуществующей рабочей папкой не стартует, а создать её заранее негде: корень
+                // берётся из конфига при первом запуске.
+                Directory.CreateDirectory(folder);
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Без этого — «внутренняя ошибка» на каждую задачу из очереди по очереди.
+                logger.LogError(ex, "Папка темы «Работа» не создана: {Folder}", folder);
+                kind = AuditKinds.Gateway;
+                journal = $"папка темы «Работа» не создана: {ex.Message}";
+                message = $"⛔ Не удалось создать папку темы «Работа» {folder}: {ex.Message}. Проверьте Gateway:Work:Folder на машине.";
+            }
+        }
+
+        Audit(prompt, kind, journal, outcome: kind == AuditKinds.Gateway ? "error" : null);
+        await SendPlainAsync(prompt.Chat, message, prompt.ReplyTo, ct);
+        await DropQueueAsync(lane, kind == AuditKinds.Gateway ? "после исправления конфига" : "после выбора другого типа темы", ct);
+        return false;
+    }
 
     /// <summary>
     /// Судьба активной сессии проекта по итогу запуска; возвращает приписку к ответу.

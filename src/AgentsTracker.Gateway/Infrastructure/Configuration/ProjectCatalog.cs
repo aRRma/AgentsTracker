@@ -32,8 +32,14 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
     /// другая папка, и для проверки «файл из проекта» это не мелочь.
     /// </summary>
     public static bool IsInside(string path, string directory) =>
-        path.StartsWith(directory + Path.DirectorySeparatorChar,
-            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        // У корня диска («C:\», «/») разделитель уже на конце — второй сделал бы «C:\\», и внутри
+        // корня не оказалось бы ничего: проверки пересечения папок молча пропускали бы всё.
+        path.StartsWith(Path.EndsInDirectorySeparator(directory) ? directory : directory + Path.DirectorySeparatorChar,
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)
+        && path.Length > directory.Length;
+
+    /// <summary>Тот же путь или внутри папки; оба пути уже нормализованы.</summary>
+    public static bool IsSameOrInside(string path, string directory) => Same(path, directory) || IsInside(path, directory);
 
     /// <summary>
     /// Текущая папка всегда первая в списке, дальше — по алфавиту. null — текущей нет (беседа или
@@ -52,7 +58,7 @@ public sealed class ProjectCatalog(IOptions<GatewayOptions> options, ILogger<Pro
 
             // Папку темы «Работа» агент может сам сделать репозиторием, и обход корня её найдёт. Выбранная
             // проектом, она смешала бы сессии и доверие проекта с сессиями темы.
-            if (work is not null && (Same(normalized, work) || IsInside(normalized, work))) continue;
+            if (work is not null && IsSameOrInside(normalized, work)) continue;
             if (!found.Contains(normalized, StringComparer.OrdinalIgnoreCase)) found.Add(normalized);
         }
 
