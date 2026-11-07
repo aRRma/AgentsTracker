@@ -230,7 +230,7 @@ A topic deleted in the client sends nothing; sending to it gives «message threa
 
 The лента keeps the old root fields of `GatewayState`; a topic has a `TopicState` in
 `GatewayState.Topics` with the same `IChatSelection` shape. A topic's `ProjectPath` is always the full
-path: `null` there means «беседа», not «the config project». A topic with no record is new: its
+path: `null` there means «беседа» (or «Работа» with `Work = true`), not «the config project». A topic with no record is new: its
 text opens «Тип темы» (`TopicHandler`) instead of a run, and a command in it works as in a беседа,
 so it cannot touch somebody else's project. Only a type (the «Тип темы» screen or `/project`) makes a
 topic typed; `/model`, `/effort` or `/mode` before that create a record with `Untyped = true`, and the
@@ -269,7 +269,7 @@ work folders out while «Работа» is enabled, or they would show up as pro
   under the root (`IsWorkRun`). A refusal is a message, `access.rejected` in the journal and a
   dropped task queue. Startup checks run only with a non-empty list (`WorkAccess.Validate`,
   `WorkOptions.Validate`): the ids are among `Channel:Settings:AllowedUserIds`, `Folder` is a full
-  path that does not overlap the data directory, `%TEMP%`, `ProjectPath` or `Projects`. An agent
+  path that does not overlap the data directory, `%TEMP%`, `ProjectPath` or `Projects` and does not contain `ProjectsRoot`. An agent
   with no `AskingPermissionMode` has no «Работа».
 - **Mode.** Pinned to `AgentCapabilities.AskingPermissionMode` (Claude — `default`): `ChatWorker`
   passes it whatever is stored or configured, `/mode` and «Агент» refuse

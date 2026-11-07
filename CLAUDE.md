@@ -112,7 +112,7 @@ has a chat reads it through `store.For(chat)`** (`SessionStore.ChatScope`); `sto
 there is no chat (startup, the monitor) — otherwise a topic shows and changes the лента's project. A
 topic's active session is `ActiveSessions["<chat key>|<project>"]`; a session active in another chat
 cannot be picked (`ChatScope.IsActiveElsewhere`, «🔒» on «Сессии») — two topics would continue one
-session. A topic without a project is a
+session. A topic without a project (and without the «Работа» mark) is a
 «беседа»: its own folder under `SessionStore.TalkRoot`, emptied before every run, `AgentToolset.WebOnly`
 (the вопрос's tools, but a session). A new topic (no `TopicState`, or one with `Untyped` left by
 `/model`, `/effort`, `/mode`) shows «Тип темы» instead of running, and a skill there is refused; only

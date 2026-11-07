@@ -159,7 +159,7 @@ example the browser). Whoever gets into your Telegram account gets the PC. It is
   `~/.claude/settings.json` do not allow comes as a card. Keep `deny` for what must never run;
 - cards in «Работа» have no «Всегда» button: one tap would allow a command on the whole machine for
   good. `/rules` there says there are no rules;
-- web search runs with no card, but opening a page asks. The agent can read any file, and a page
+- web search runs with no card, but opening a page asks (unless you allowed `WebFetch` in your own rules). The agent can read any file, and a page
   could talk it into sending a file's contents to an address;
 - access is checked on the button and again before every task. If you remove an id from the config,
   the topic's tasks are refused with «⛔ Тема «Работа» недоступна», the queue is dropped and the

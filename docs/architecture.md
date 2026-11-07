@@ -226,7 +226,7 @@ src/AgentsTracker.Gateway/
 
 Лента хранит прежние корневые поля `GatewayState`; у темы есть `TopicState` в `GatewayState.Topics`
 с той же формой `IChatSelection`. `ProjectPath` темы — всегда полный путь: `null` там значит
-«беседа», а не «проект из конфига». Тема без записи новая: её текст открывает «Тип темы»
+«беседа» (или «Работа» при `Work = true`), а не «проект из конфига». Тема без записи новая: её текст открывает «Тип темы»
 (`TopicHandler`) вместо запуска, а команда в ней работает как в беседе, поэтому не может задеть
 чужой проект. Тип теме даёт только выбор типа (экран «Тип темы» или `/project`); `/model`, `/effort`
 или `/mode` до него заводят запись с `Untyped = true`, и тема остаётся новой — иначе следующий текст
@@ -264,7 +264,7 @@ true` (`ProjectPath` равен `null`, как у беседы; `SessionStore.Is
   Отказ — сообщение, `access.rejected` в журнале и снятая очередь задач. Проверки при старте идут
   только при непустом списке (`WorkAccess.Validate`, `WorkOptions.Validate`): id входят в
   `Channel:Settings:AllowedUserIds`, `Folder` — полный путь, не пересекающийся с папкой данных,
-  `%TEMP%`, `ProjectPath` и `Projects`. У агента без `AskingPermissionMode` «Работы» нет.
+  `%TEMP%`, `ProjectPath` и `Projects` и не содержит `ProjectsRoot`. У агента без `AskingPermissionMode` «Работы» нет.
 - **Режим.** Закреплён за `AgentCapabilities.AskingPermissionMode` (у Claude — `default`):
   `ChatWorker` передаёт его при любом сохранённом или заданном в конфиге режиме, `/mode` и «Агент»
   отказывают (`AgentScreen.ModeRefusal`), кнопки режима скрыты. `run.start` и монитор показывают

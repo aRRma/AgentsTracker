@@ -176,7 +176,7 @@ next to the exe.
 | `Attachments:Enabled`, `:MaxBytes`, `:RetentionHours` | pictures from the chat: accept them (yes), the size ceiling (10 MB; Telegram gives a bot at most 20 MB), how many hours to keep them (24) |
 | `Question:Model`, `Question:Effort` | model and effort for `/ask` and a беседа: `sonnet` and whatever Claude Code decides by default. Not changeable from the chat for `/ask`; in a беседа `/model` and `/effort` change them |
 | `Work:AllowedUserIds` | who may use the «Работа» topic (remote work on the whole computer): ids from `Channel:Settings:AllowedUserIds`, a number like `[123456789]` or `"telegram:123456789"`. Empty (default) — the button is shown to nobody. The gateway will not start if an id is not among the bot's users |
-| `Work:Folder` | the root of the «Работа» topics' folders, a full path; each topic gets its own subfolder that is never emptied. Default `%USERPROFILE%\AgentsTracker-work`. The gateway will not start if it overlaps the data folder, the temp folder, `ProjectPath` or `Projects`. Both keys are checked only when the list is non-empty |
+| `Work:Folder` | the root of the «Работа» topics' folders, a full path; each topic gets its own subfolder that is never emptied. Default `%USERPROFILE%\AgentsTracker-work`. The gateway will not start if it overlaps the data folder, the temp folder, `ProjectPath` or `Projects`, or contains `ProjectsRoot`. Both keys are checked only when the list is non-empty |
 
 ### Restart
 

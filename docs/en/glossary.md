@@ -29,7 +29,7 @@ English (`IAgentLimits`, `ProjectPath`, `audit\`) — the glossary is about text
 | A Telegram topic in the private chat with the bot: its own session, project, model, effort and mode | **тема** | тред, топик, ветка, чат |
 | The private chat outside any topic | **лента** («лента без темы») | общий чат, главная тема, General |
 | A topic with no project: web search only, a session of its own (`ProjectPath = null`) | **беседа** | чат, диалог, разговор, вопрос |
-| A topic for remote work on the whole computer: its own folder, every tool, approval cards as in a project; only for the users in `Gateway:Work:AllowedUserIds` | **работа** («тема «Работа»») | супер, супер-режим, режим работы, оператор, полный доступ |
+| A topic for remote work on the whole computer: its own folder, every tool, approval cards without the «Всегда» button; only for the users in `Gateway:Work:AllowedUserIds` | **работа** («тема «Работа»») | супер, супер-режим, режим работы, оператор, полный доступ |
 | What a topic works with: a project, a беседа or работа (the «Тип темы» screen) | **тип темы** | режим темы, вид темы |
 | The agent asking about an action | **подтверждение** | согласование, запрос разрешения, апрув |
 | The message with the decision buttons | **карточка подтверждения** | карточка согласования, запрос |
