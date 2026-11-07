@@ -116,11 +116,8 @@ session. A topic without a project (and without the «Работа» mark) is a
 «беседа»: its own folder under `SessionStore.TalkRoot`, emptied before every run, `AgentToolset.WebOnly`
 (the вопрос's tools, but a session). A new topic (no `TopicState`, or one with `Untyped` left by
 `/model`, `/effort`, `/mode`) shows «Тип темы» instead of running, and a skill there is refused; only
-`SetProjectPath` (or `SetWork`) gives a topic its type. A «Работа» topic (`TopicState.Work`,
-`ChatScope.IsWork`) is the whole machine: its own folder under `Gateway:Work:Folder` that is never
-emptied, every tool, the mode pinned; only for `Gateway:Work:AllowedUserIds` (`WorkAccess`), checked
-on the button and again before every run — the id may leave the config while the topic stays
-«Работа». A deleted topic is learned of only from a failed send
+`SetProjectPath` (or `SetWork`) gives a topic its type; «Работа» (`TopicState.Work`) — the bullet
+in the next section. A deleted topic is learned of only from a failed send
 (`ChannelFailure.CannotReach`): `ChatWorker.ConsumeAsync` drops that chat's task queue. Details —
 `docs/en/architecture.md`, "Topics".
 
@@ -144,7 +141,7 @@ A card finds its chat by the **run id**, not by a "current chat": each run gets 
 (same process). Do not bring back a single `ActiveChat` — a task and a вопрос run at once.
 
 - `-p` skips the CLI's workspace trust dialog: a project's `.claude/settings.json` hooks and
-  `.mcp.json` servers run with no card at all (verified live). So before a task's run
+  `.mcp.json` servers run with no card at all. So before a task's run
   `ProjectTrustGate` shows «Доверять проекту?» for whatever `IAgentBackend.InspectProject` finds and
   keeps the fingerprint in `GatewayState.TrustedProjects`; a change of those files asks again. Do not
   skip the gate for any kind that runs in the project folder (`/context` and `/compact` included).
@@ -182,7 +179,10 @@ A card finds its chat by the **run id**, not by a "current chat": each run gets 
   in its own folder under `SessionStore.TalkRoot`. Its mode is always the config's: choosing a беседа
   clears the saved mode (`SetProjectPath`) and `/mode` is refused — otherwise a `/mode plan` saved
   before the type was chosen would stick with no way to undo it.
-- «Работа» (`AgentToolset.Machine`) gets every tool and the user's MCP servers (no `--tools`, no
+- «Работа» (`TopicState.Work`, `AgentToolset.Machine`) is the whole machine, only for
+  `Gateway:Work:AllowedUserIds` (`WorkAccess`), checked on the button **and** before every run — the
+  id may leave the config while the topic stays «Работа». Its folder under `Gateway:Work:Folder` is
+  never emptied. It gets every tool and the user's MCP servers (no `--tools`, no
   `--strict-mcp-config`), an `--append-system-prompt` saying it works remotely and sends files by
   copying them into its folder, and the chat's `inbox` in `--add-dir`. Its mode is always
   `AgentCapabilities.AskingPermissionMode` (`default`), whatever is stored or configured; `/mode` is
@@ -190,7 +190,7 @@ A card finds its chat by the **run id**, not by a "current chat": each run gets 
   whole machine for good. Whether a run is «Работа» needs both the topic mark and a folder under the
   root (`ChatWorker.IsWorkRun`).
 - CLI arguments go through `ProcessStartInfo.ArgumentList`, do not concatenate a string.
-- The CLI's output is read until it ends or `DrainGrace` (5 s) after the exit, never by a bare
+- The CLI's output is read until it ends or `DrainGrace` after the exit, never by a bare
   `await` on the reader: a background process that escaped the CLI keeps the pipe open, and the task
   lane would hang past `/stop` and the run timeout. On Windows every `claude` sits in
   `ClaudeProcessJob` (a Job Object), so stopping the gateway kills it and everything it started; in a
@@ -254,7 +254,7 @@ numbers instead, remembering that usage inside one window never falls until the 
 ### Chat output
 
 `MarkdownRenderer` splits the **source markdown** into pieces of at most
-`IChatChannel.Limits.MessageLength` (3800 for Telegram) before converting each to `ChatHtml` (a piece
+`IChatChannel.Limits.MessageLength` before converting each to `ChatHtml` (a piece
 whose HTML is still too long is split again) — otherwise tags get torn apart. An oversized code block
 goes as a file. A 400 from the channel retries without markup; a 429 with a short `retry_after`
 (≤ 30 s) is waited out once and the same part repeated (`RateLimitRetry.OnceAsync`) — otherwise part
@@ -299,7 +299,7 @@ time — `DisplayFormat`; the renderer's quirks — `docs/en/architecture.md`.
   UTF-8 **without a BOM**. The rest about tooling — `docs/en/operations.md`.
 - Comments explain which failure the code prevents, not what it does.
 - From a session over Telegram `AskUserQuestion` and `ExitPlanMode` wait `ApprovalTimeoutMinutes`
-  (15 min by default) and a timeout comes back as a refusal: go on with the recommended option.
+  and a timeout comes back as a refusal: go on with the recommended option.
 - The monitor at `http://127.0.0.1:5100` is unreachable from a session via `curl`/`Invoke-RestMethod`
   — they are in `deny` for any address, do not try to work around it. A snapshot and the other
   `/api/*` — `pwsh -File scripts\monitor-api.ps1 "api/snapshot"` from the **PowerShell** tool, no
@@ -351,8 +351,7 @@ Rules from the user; every session reads this file.
   build and test `master`.
 - **A review in a worktree needs the branch name.** `/code-review` without an argument works on the
   main folder: its uncommitted diff, or — when the tree is clean — the commits ahead of
-  `origin/master`, never the worktree branch. On 07.09.2026 it reviewed and fixed another session's
-  changes in `master` that way. Call `code-review medium --fix <branch>`.
+  `origin/master`, never the worktree branch — it would review and «fix» another session's changes in `master`. Call `code-review medium --fix <branch>`.
 - **After changes — the documentation.** Check CLAUDE.md, the README and the config comments: new
   flags and commands, changes to the CLI contract, non-obvious decisions and their reasons. Do not
   add what is obvious from the code, or a history of the edits.
