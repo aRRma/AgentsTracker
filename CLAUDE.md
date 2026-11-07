@@ -113,15 +113,19 @@ there is no chat (startup, the monitor) — otherwise a topic shows and changes 
 topic's active session is `ActiveSessions["<chat key>|<project>"]`; a session active in another chat
 cannot be picked (`ChatScope.IsActiveElsewhere`, «🔒» on «Сессии») — two topics would continue one
 session. A topic without a project is a
-«беседа»: its own folder under `SessionStore.TalkRoot`, emptied before every run, `AgentRunRequest.WebOnly`
+«беседа»: its own folder under `SessionStore.TalkRoot`, emptied before every run, `AgentToolset.WebOnly`
 (the вопрос's tools, but a session). A new topic (no `TopicState`, or one with `Untyped` left by
 `/model`, `/effort`, `/mode`) shows «Тип темы» instead of running, and a skill there is refused; only
-`SetProjectPath` gives a topic its type. A deleted topic is learned of only from a failed send
+`SetProjectPath` (or `SetWork`) gives a topic its type. A «Работа» topic (`TopicState.Work`,
+`ChatScope.IsWork`) is the whole machine: its own folder under `Gateway:Work:Folder` that is never
+emptied, every tool, the mode pinned; only for `Gateway:Work:AllowedUserIds` (`WorkAccess`), checked
+on the button and again before every run — the id may leave the config while the topic stays
+«Работа». A deleted topic is learned of only from a failed send
 (`ChannelFailure.CannotReach`): `ChatWorker.ConsumeAsync` drops that chat's task queue. Details —
 `docs/en/architecture.md`, "Topics".
 
 Pictures go through `AttachmentInbox` into `<data directory>\inbox\<chat>\<project>\`; a task run gets
-the chat folder in `--add-dir` (a вопрос and a беседа get none, a беседа refuses pictures). A command wins over a picture: `/stop` works with one attached, the
+the chat folder in `--add-dir` (a вопрос and a беседа get none, a беседа refuses pictures, «Работа» gets it like a task). A command wins over a picture: `/stop` works with one attached, the
 picture is dropped and the user is told so. Details — `docs/en/architecture.md`.
 
 ### The gateway → CLI → gateway loop
@@ -155,11 +159,14 @@ A card finds its chat by the **run id**, not by a "current chat": each run gets 
   other tools there — that bypasses the cards past the machine's config. The one exception: a вопрос
   and a беседа also get `WebSearch,WebFetch` there: they have no files and no commands, and a card
   per search only slowed the answer. Accepted risk: a page talking the model into opening an address
-  with the conversation in it.
+  with the conversation in it. «Работа» gets only `WebSearch`: it reads every file of the machine,
+  and a card-less `WebFetch` would be a silent way out for them.
 - `--add-dir` carries exactly one folder — the chat's `inbox`. Never the data directory itself
   (`state.json`, `appsettings.Local.json` with the secrets, the MCP token) and never the project
   subfolder: `/project` may change while the message waits in the queue. A вопрос (`/ask`) and a
-  беседа get no `--add-dir` at all.
+  беседа get no `--add-dir` at all. An `Edit`/`Write`/`MultiEdit`/`NotebookEdit` card into the data
+  directory is refused without a card in every topic (`OperatorConsole.DataDirectoryTarget`); shell
+  commands are not parsed — only the card and the user's `deny` hold them.
 - A вопрос (`AgentRunKind.Question`) runs with `--no-session-persistence`, `--tools WebSearch,WebFetch`
   and `--strict-mcp-config` in an empty `%TEMP%\AgentsTracker-question`, recreated before every
   вопрос (a task could plant a hook there, and the trust gate skips вопросы) — never in the project or the
@@ -168,10 +175,17 @@ A card finds its chat by the **run id**, not by a "current chat": each run gets 
   access — the user's `CLAUDE.md` still loads and promises a shell. The permission tool, the `tg`
   server and `send_file` (checked against the chat's project) stay. Details —
   `docs/en/cli-contract.md`, "A question with no session".
-- A беседа (`AgentRunRequest.WebOnly`) gets the вопрос's tools and prompt line but keeps its session,
+- A беседа (`AgentToolset.WebOnly`) gets the вопрос's tools and prompt line but keeps its session,
   in its own folder under `SessionStore.TalkRoot`. Its mode is always the config's: choosing a беседа
   clears the saved mode (`SetProjectPath`) and `/mode` is refused — otherwise a `/mode plan` saved
   before the type was chosen would stick with no way to undo it.
+- «Работа» (`AgentToolset.Machine`) gets every tool and the user's MCP servers (no `--tools`, no
+  `--strict-mcp-config`), an `--append-system-prompt` saying it works remotely and sends files by
+  copying them into its folder, and the chat's `inbox` in `--add-dir`. Its mode is always
+  `AgentCapabilities.AskingPermissionMode` (`default`), whatever is stored or configured; `/mode` is
+  refused and its cards have no «Всегда» (`RunScope.Work`) — one tap would allow a command on the
+  whole machine for good. Whether a run is «Работа» needs both the topic mark and a folder under the
+  root (`ChatWorker.IsWorkRun`).
 - CLI arguments go through `ProcessStartInfo.ArgumentList`, do not concatenate a string.
 - The CLI's output is read until it ends or `DrainGrace` (5 s) after the exit, never by a bare
   `await` on the reader: a background process that escaped the CLI keeps the pipe open, and the task
@@ -186,14 +200,14 @@ Without the flag `permissions.defaultMode` from `~/.claude/settings.json` applie
 `ClaudeBackend.BuildArguments`. Only `PermissionModes.Selectable` (`plan`/`default`/`acceptEdits`/
 `auto`, seen by the host as `AgentCapabilities.PermissionMode.Selectable`) can be switched from the
 chat; `dontAsk` and `bypassPermissions` are excluded deliberately — turning approvals off entirely
-stays a config edit on the machine. The values are checked by `GatewayOptions.ValidateFor(capabilities)`
+stays a config edit on the machine. A «Работа» topic ignores both the chat and the config mode (see above). The values are checked by `GatewayOptions.ValidateFor(capabilities)`
 from `ValidateStartup`, not by `GatewayOptions.Validate` (the agent is not chosen yet).
 
 ### Sessions, state, audit
 
 Sessions are keyed by the **normalized project path** (a topic's — by `<chat key>|<path>`). A лента
 **project** equal to the config is stored as `null` (`ChatScope.SetProjectPath`), or a config edit
-would be silently overridden — a topic always stores the full path, its `null` is a беседа;
+would be silently overridden — a topic always stores the full path, its `null` is a беседа (or «Работа» with `TopicState.Work`);
 model, effort and mode are stored as picked until «по умолчанию»/«из конфига» or `reset` clears them.
 State, secrets, the `audit\` journal and the `logs\` log live in `%LOCALAPPDATA%\AgentsTracker\`;
 config layers end with the `Gateway__*` environment variables. The audit is what a human answers for
