@@ -483,10 +483,13 @@ public sealed class ChatWorker(
             store.BeginRun(active);
 
             // Карточки и файлы запуска — в его чат, а не туда, где идёт другой. Проект для
-            // send_file у вопроса — проект чата, как было, пока вопрос шёл общей очередью.
+            // send_file у вопроса — проект чата, как было, пока вопрос шёл общей очередью. Кроме
+            // «Работы» без доступа: вопрос отдал бы из её папки заметки и файлы тому, у кого
+            // доступ к теме сняли, — ему остаётся пустая папка вопроса.
+            var questionRoot = scope.IsWork && !work.Allows(prompt.User) ? project : scope.ProjectPath;
             registration = broker.BeginRun(new RunScope(
                 request.RunId, prompt.Chat, prompt.ReplyTo,
-                question ? scope.ProjectPath : project,
+                question ? questionRoot : project,
                 question ? null : runSessionId,
                 // Вопрос в теме «Работа» шлёт файлы из её папки — и «Всегда» ему тоже ни к чему.
                 Work: machine || (question && scope.IsWork)));

@@ -399,6 +399,11 @@ public sealed class OperatorConsole(
         Path.Combine(Home, ".claude", "settings.json"),
         Path.Combine(Home, ".claude", "settings.local.json"),
         Path.Combine(Home, ".claude", "hooks"),
+        // Сабагент несёт свой режим, скилл и команда — allowed-tools, плагин — свои хуки и серверы.
+        Path.Combine(Home, ".claude", "agents"),
+        Path.Combine(Home, ".claude", "skills"),
+        Path.Combine(Home, ".claude", "commands"),
+        Path.Combine(Home, ".claude", "plugins"),
         Path.Combine(Home, ".claude.json"),
     ];
 

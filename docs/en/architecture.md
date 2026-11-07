@@ -193,7 +193,7 @@ In every topic `OperatorConsole.ApproveAsync` refuses with no card an `Edit`/`Mu
 stripped, `~/` and `/c/` are expanded, a relative path is taken from the run folder): there lie
 `state.json` and the secrets, and a card would only invite a tap. In a «Работа» run `ForbiddenEdit`
 also refuses an edit of the agent's settings — the folder's `.claude/` and `.mcp.json`,
-`~/.claude/settings*.json`, `~/.claude/hooks`, `~/.claude.json`: with no «Всегда» button an allow
+`~/.claude/settings*.json`, `~/.claude/hooks`, `agents`, `skills`, `commands`, `plugins`, `~/.claude.json`: with no «Всегда» button an allow
 rule written there would do the same for the whole machine. The refusal goes to the journal as
 `approval` `refused`. The limits: only these four tools, only when the CLI asks — an `allow` rule
 skips the card and the check — and only path strings (a junction or an 8.3 name gets an ordinary
