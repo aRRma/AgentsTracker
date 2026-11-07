@@ -48,16 +48,14 @@ public sealed class OperatorConsole(
             return ApprovalDecision.Deny(UnknownRun);
         }
 
-        // Без карточки: в папке данных state.json с правилами «всегда» и доверием, конфиг с
-        // AllowedUserIds и режимом. Правка оттуда сняла бы все карточки разом, а одно «Разрешить»
-        // на усталом телефоне — это не решение отдать агенту шлюз. Команды оболочки так не
+        // Без карточки: такая правка сняла бы карточки разом, а одно «Разрешить» на усталом
+        // телефоне — это не решение отдать агенту шлюз или машину. Команды оболочки так не
         // разобрать — их держат карточка и deny пользователя.
-        if (DataDirectoryTarget(toolName, input, run.ProjectPath) is { } target)
+        if (EditTarget(toolName, input, run.ProjectPath) is { } target && ForbiddenEdit(target, run) is { } refusal)
         {
-            logger.LogWarning("Правка папки данных шлюза отклонена без карточки: {Tool} {Path}", toolName, target);
+            logger.LogWarning("Правка отклонена без карточки: {Tool} {Path}", toolName, target);
             Audit(run, AuditKinds.Approval, signature, "refused");
-            return ApprovalDecision.Deny(
-                $"Шлюз не даёт агенту править свою папку данных ({DataDirectory}): там его настройки и правила. Не пытайтесь изменить её другим способом.");
+            return ApprovalDecision.Deny(refusal);
         }
 
         // Монитору та же строка, что и логу: в полном вводе Edit/Write лежит содержимое файлов.
@@ -111,6 +109,10 @@ public sealed class OperatorConsole(
         switch (key)
         {
             case "allow":
+                return ApprovalDecision.Allow();
+
+            // У «Работы» кнопки нет, но ключ приходит из нажатия: самодельный клиент прислал бы и его.
+            case "always" when run.Work:
                 return ApprovalDecision.Allow();
 
             case "always":
@@ -337,10 +339,10 @@ public sealed class OperatorConsole(
     };
 
     /// <summary>
-    /// Путь правки внутри папки данных шлюза; null — правка не туда или это не правка. Относительный
-    /// путь — от папки запуска: от неё его разрешит и агент.
+    /// Полный путь, который правит инструмент; null — это не правка или путь не разобрать.
+    /// Относительный путь — от папки запуска: от неё его разрешит и агент.
     /// </summary>
-    private static string? DataDirectoryTarget(string toolName, JsonElement? input, string runFolder)
+    private static string? EditTarget(string toolName, JsonElement? input, string runFolder)
     {
         if (!EditTools.TryGetValue(toolName, out var field)
             || input is not { ValueKind: JsonValueKind.Object } obj
@@ -348,20 +350,62 @@ public sealed class OperatorConsole(
             || value.GetString() is not { Length: > 0 } path)
             return null;
 
-        // «\\?\C:\…» GetFullPath оставляет как есть, и сравнение с папкой данных его бы не узнало.
+        // «\\?\C:\…» GetFullPath оставляет как есть, и сравнение с папками его бы не узнало.
         const string Verbatim = @"\\?\";
         if (path.StartsWith(Verbatim, StringComparison.Ordinal) && !path.StartsWith(Verbatim + "UNC", StringComparison.OrdinalIgnoreCase))
             path = path[Verbatim.Length..];
 
+        // «~/…» и «/c/…» агент раскрывает сам, а GetFullPath сделал бы из них папку внутри проекта.
+        if (path == "~" || path.StartsWith("~/", StringComparison.Ordinal) || path.StartsWith(@"~\", StringComparison.Ordinal))
+            path = Path.Join(Home, path[1..].TrimStart('/', '\\'));
+        else if (OperatingSystem.IsWindows() && path.Length >= 3 && path[0] == '/' && char.IsAsciiLetter(path[1]) && path[2] == '/')
+            path = $@"{char.ToUpperInvariant(path[1])}:\{path[3..]}";
+
         try
         {
-            var full = ProjectCatalog.Normalize(Path.GetFullPath(path, runFolder));
-            return ProjectCatalog.Same(full, DataDirectory) || ProjectCatalog.IsInside(full, DataDirectory) ? full : null;
+            return ProjectCatalog.Normalize(Path.GetFullPath(path, runFolder));
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Причина отказа без карточки; null — правку можно показать карточкой. Сравниваются строки
+    /// путей: junction и короткие имена 8.3 проходят мимо — их ловит уже обычная карточка.
+    /// </summary>
+    private static string? ForbiddenEdit(string full, RunScope run)
+    {
+        // В папке данных state.json с правилами «всегда» и доверием, конфиг с AllowedUserIds и режимом.
+        if (Within(full, DataDirectory))
+            return $"Шлюз не даёт агенту править свою папку данных ({DataDirectory}): там его настройки и правила. Не пытайтесь изменить её другим способом.";
+
+        // В «Работе» кнопки «Всегда» нет, но правило в настройках агента сделало бы то же самое — и
+        // сразу для всей машины: allow в своей папке или в ~/.claude, хук, MCP-сервер.
+        if (run.Work && AgentSettings(run.ProjectPath).Any(guarded => ProjectCatalog.Same(full, guarded) || Within(full, guarded)))
+            return "В теме «Работа» агент не правит настройки агента — ни в своей папке, ни в ~/.claude: правило оттуда снимало бы карточки на всей машине. Попросите пользователя сделать это самому.";
+
+        return null;
+    }
+
+    private static readonly string Home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+    /// <summary>Где лежат настройки агента, расширяющие его права: в папке запуска и у пользователя.</summary>
+    private static IEnumerable<string> AgentSettings(string runFolder) =>
+    [
+        Path.Combine(runFolder, ".claude"),
+        Path.Combine(runFolder, ".mcp.json"),
+        Path.Combine(Home, ".claude", "settings.json"),
+        Path.Combine(Home, ".claude", "settings.local.json"),
+        Path.Combine(Home, ".claude", "hooks"),
+        Path.Combine(Home, ".claude.json"),
+    ];
+
+    private static bool Within(string full, string folder)
+    {
+        var normalized = ProjectCatalog.Normalize(folder);
+        return ProjectCatalog.Same(full, normalized) || ProjectCatalog.IsInside(full, normalized);
     }
 
     /// <summary>
