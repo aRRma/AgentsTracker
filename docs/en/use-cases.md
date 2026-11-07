@@ -110,8 +110,10 @@ photo "as a file" — Telegram compresses photos.
 - **The computer on** and not asleep. If it sleeps on its own, turn that off — otherwise the message
   waits until morning.
 - **Topics.** If the bot's chat has topics on, each topic is its own work: its own project and
-  session. A topic without a project is a беседа — web search only, no files. The chat outside
-  topics is the лента: service messages go there.
+  session. A topic without a project is a беседа — web search only, no files. A «Работа» topic
+  is remote work on the whole computer: commands, files, your MCP servers (say, the browser), search
+  and pictures. It is off until you allow your id in the config (`Work:AllowedUserIds`); read
+  [safety.md](safety.md) first. The chat outside topics is the лента: service messages go there.
 - **One task at a time in a chat.** The rest wait in the queue. Topics run in parallel, but one
   project takes one run at a time. `/status` shows what is running, `/stop` interrupts it (in a topic
   only that topic, in the лента everything), `/new` starts a new session.
@@ -136,7 +138,7 @@ photo "as a file" — Telegram compresses photos.
 | `/agent` | model, effort, mode (or `/model`, `/effort`, `/mode` as text) |
 | `/project` | switch the project; its branch is shown next to it, worktrees are marked 🌳 |
 | `/skills` | Claude Code skills and plugins |
-| `/topic` | the topic type: a project or a беседа |
+| `/topic` | the topic type: a project, a беседа or «Работа» (only if allowed) |
 | `/rules` | the «всегда» rules the gateway keeps; `/rules del <n>` and `/rules clear` remove them |
 | `/audit [n]` · `/help` | the latest actions: each run's usage, why it stopped, answers that did not get through · help (`/start` gives it too) |
 | another `/command` | Claude Code's own command (`/init`, `/plugin:skill`) — goes to the agent as is |
@@ -148,7 +150,9 @@ it shows from where to where: `master → fix`. If it moved the session into a w
 everywhere is that worktree's, and «Статус» says «🌳 сессия в worktree». The gateway counts no
 money: usage is turns, tokens and time.
 
-**More on topics.** A беседа has no cards, files or pictures, and its mode does not change. If two
+**More on topics.** A беседа has no cards, files or pictures, and its mode does not change. «Работа» has its own permanent folder, and the mode
+is fixed at `default`: `/mode` is refused, cards come with no «Всегда» button, and opening a web page
+asks first. If two
 topics work in one project, the second waits with «⏳ В проекте идёт другой запуск». With topics on,
 Telegram moves whatever is typed in the лента into a new topic, while Telegram Desktop keeps only
 the commands from the «Меню» button in the лента.

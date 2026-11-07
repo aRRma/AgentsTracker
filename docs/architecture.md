@@ -10,8 +10,8 @@
 ```
 src/AgentsTracker.Agents.Abstractions/   контракты агента, без Telegram и без конкретного CLI
   IAgentBackend         Probe(), RunAsync(AgentRunRequest, IAgentRunObserver), InspectProject (отпечаток и пункты настроек агента в проекте)
-  AgentRun.cs           запрос (промпт, папка, сессия, модель, effort, режим, таймаут, папка вложений, вид), наблюдатель, результат
-  AgentCapabilities     модели/effort/режимы, которые поддерживает агент (effort null — не поддерживает)
+  AgentRun.cs           запрос (промпт, папка, сессия, модель, effort, режим, таймаут, папка вложений, вид, Toolset), наблюдатель, результат
+  AgentCapabilities     модели/effort/режимы, которые поддерживает агент (effort null — не поддерживает); AskingPermissionMode — режим, который спрашивает про всё, что не разрешено правилами (null — «Работы» нет)
   IOperatorConsole      что агент просит у человека: ApproveAsync, AskAsync, SendFileAsync; PersistentRule — правило «всегда»
   IAgentLimits, IAgentSkillCatalog, IAgentBackendModule (AddServices + MapEndpoints; AgentHost — папка данных, порт, прокси, таймаут карточки)
   RunUsage, RunActivity, LimitMath (единственная формула процента), Text (обрезка, Text.Redact)
@@ -38,7 +38,7 @@ src/AgentsTracker.Gateway/
   Program.cs            папка данных, служебные команды, списки агентов (Gateway:Agent), каналов (Gateway:Channel:Type) и фич
   Domain/               чистые модели: GatewayState (state.json), AuditEvent и AuditKinds
   Infrastructure/       GatewayInfrastructure.cs (слои конфигурации, DI, Kestrel, ValidateStartup, MapFeatures), AppPaths, Modules/IFeatureModule,
-                        Configuration (GatewayOptions, ProjectCatalog), State (SessionStore, CacheGuard), Git, Audit, Monitoring (RunMonitor, RingBufferLog, LogFile),
+                        Configuration (GatewayOptions, ProjectCatalog, WorkAccess — кому можно «Работу»), State (SessionStore, CacheGuard), Git, Audit, Monitoring (RunMonitor, RingBufferLog, LogFile),
                         Chat (ChatGatewayService, ChatDispatcher, DisplayFormat, MarkdownRenderer,
                         StartupNotice — «запущен»/«прерван» после перезапуска, ChatCommandCatalog — список команд «Меню»,
                         Dispatch/ — контракты обработчиков),
@@ -186,6 +186,13 @@ src/AgentsTracker.Gateway/
 ответ `{"sent":false,"reason":…}`, никогда не исключение. Сами проверки —
 [cli-contract.md](cli-contract.md), «Файл в чат».
 
+В любой теме `OperatorConsole.ApproveAsync` без карточки отказывает `Edit`/`MultiEdit`/`Write`/
+`NotebookEdit`, путь которого лежит внутри папки данных (`DataDirectoryTarget`: префикс `\\?\`
+снимается, относительный путь считается от папки запуска): там `state.json` и секреты, а карточка
+лишь приглашала бы нажать. Отказ пишется в журнал как `approval` `refused`. Границы: только эти
+четыре инструмента и только когда CLI спрашивает — правило `allow` пропускает и карточку, и проверку;
+команды оболочки не разбираются; чтение папки данных не закрыто.
+
 `McpConfigFile`, `SessionStore` и `ClaudeProcessJob` — единственные с классическим конструктором:
 побочный эффект (уборка старых файлов конфигурации, чтение файла состояния, создание Job Object)
 должен случиться ровно один раз, при создании синглтона.
@@ -233,13 +240,38 @@ src/AgentsTracker.Gateway/
 
 Беседа идёт в своей папке `SessionStore.TalkRoot\<ключ чата>` (`%TEMP%\AgentsTracker-talk`), её
 очищают перед каждым запуском и до проверки доверия, как папку вопроса; `--resume` находит сессию по
-пути папки, а не по её содержимому. Запуск несёт `AgentRunRequest.WebOnly`: бэкенд даёт ему набор
+пути папки, а не по её содержимому. Запуск несёт `AgentRunRequest.Toolset =
+AgentToolset.WebOnly` (вопрос всегда `WebOnly`, задача — `Project`): бэкенд даёт ему набор
 инструментов вопроса ([cli-contract.md](cli-contract.md), «Вопрос без сессии»), но сохраняет сессию,
 в том числе для `/context` и `/compact`. Картинки отказываются до скачивания, и отказ пишется в
 журнал как `file.receive` `refused`. Модель и effort по умолчанию — `Gateway:Question`; режим —
 всегда из конфига (выбор беседы стирает сохранённый, `/mode` в ней получает отказ). Беседа ли это,
 решает итоговая папка запуска (`IsTalkFolder`), а не тема на момент постановки в очередь: пока
 задача ждёт, у темы может появиться проект.
+
+Тема «Работа» — третий тип, для удалённой работы на всём компьютере. Метка темы — `TopicState.Work =
+true` (`ProjectPath` равен `null`, как у беседы; `SessionStore.IsWork`, ставит `SetWork`). Запуск идёт
+в `<WorkRoot>\<ключ чата, не-буквы и не-цифры → _>` (`Gateway:Work:Folder`, по умолчанию
+`%USERPROFILE%\AgentsTracker-work`): папку создают до запуска и никогда не очищают, а сессия, замок
+папки и ворота доверия работают как у проекта. Пока «Работа» включена, `ProjectCatalog.List`
+пропускает рабочие папки, иначе они попали бы в список проектов. Запуск несёт `AgentToolset.Machine`:
+все инструменты и MCP-серверы пользователя ([cli-contract.md](cli-contract.md), «Работа»).
+
+- **Доступ.** Только id из `Gateway:Work:AllowedUserIds` (`WorkAccess`; пустой список — кнопку не
+  видит никто). Его проверяют на кнопке «Работа» (`TopicScreen.Apply`) и снова перед каждым запуском в
+  `ChatWorker.ProcessAsync`, до карточки доверия: id мог уйти из конфига, а тема осталась «Работой».
+  Запуск считается «Работой», если у темы есть метка **и** её папка лежит под корнем (`IsWorkRun`).
+  Отказ — сообщение, `access.rejected` в журнале и снятая очередь задач. Проверки при старте идут
+  только при непустом списке (`WorkAccess.Validate`, `WorkOptions.Validate`): id входят в
+  `Channel:Settings:AllowedUserIds`, `Folder` — полный путь, не пересекающийся с папкой данных,
+  `%TEMP%`, `ProjectPath` и `Projects`. У агента без `AskingPermissionMode` «Работы» нет.
+- **Режим.** Закреплён за `AgentCapabilities.AskingPermissionMode` (у Claude — `default`):
+  `ChatWorker` передаёт его при любом сохранённом или заданном в конфиге режиме, `/mode` и «Агент»
+  отказывают (`AgentScreen.ModeRefusal`), кнопки режима скрыты. `run.start` и монитор показывают
+  `request.PermissionMode` — режим, который действительно использован.
+- **Без «Всегда».** `RunScope.Work` заставляет `ApprovalCardRenderer.Render(alwaysButton: false)`
+  убрать кнопку и добавить строку об этом; правила шлюза «всегда» не применяются, а `/rules` и
+  «Статус» сообщают, что у «Работы» их нет. Каждое такое действие спрашивает снова.
 
 Об удалённой теме шлюз узнаёт только по отправке: Telegram отвечает «message thread not found», канал
 отдаёт `CannotReach`. Первая отправка запуска — карточка «Доверять проекту?» (если её задают) или
@@ -376,7 +408,7 @@ Slack, JWT), `Authorization`/`Bearer`, пароль в адресе и знач�
 
 Что оставляет запуск, цифры — первыми: предел в 200 знаков режет хвост, а `/audit` показывает 160:
 
-- `run.start` — вид (`вопрос`, `контекст`, `сжатие`, `беседа`), модель, режим, effort, ветка и
+- `run.start` — вид (`вопрос`, `контекст`, `сжатие`, `беседа`, `работа`), модель, режим, который действительно использован, effort, ветка и
   `ждал другой запуск N`, если замок папки ждали секунду и дольше. Ожидание в очереди — промежуток
   между `message` и `run.start` одного чата.
 - `run.end` — время, ходы, токены на входе и выходе, `кэш` — чтение и запись (во вход не входят) и

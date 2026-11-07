@@ -138,7 +138,8 @@ a server failure, and the agent doesn't understand what went wrong. The policy l
   with outcome `refused`.
 
 The tool is passed in `--allowedTools mcp__tg__send_file` (a вопрос and a беседа also get
-`WebSearch,WebFetch` there — "A question with no session") so the CLI doesn't call
+`WebSearch,WebFetch` there — "A question with no session"; «Работа» gets `WebSearch` only —
+"«Работа»") so the CLI doesn't call
 `mcp__tg__approve` on every send: the gateway checks the folder, type, and size itself.
 Verified on CLI 2.1.261 with a scratch instance: `tools/list` returns both tools, `claude -p`
 with this flag calls `send_file` directly and never `approve` (`permission_denials` is empty).
@@ -187,7 +188,7 @@ removed — rejected by API»: real screenshots go through, an artificial one in
 `--permission-mode`, `--mcp-config` and `--allowedTools mcp__tg__send_file`. Conditionally:
 `--resume <id>` or `--session-id <uuid>`, `--add-dir` (only if the chat folder exists, never for a
 вопрос or a беседа), `--model`, `--effort`. A вопрос and a беседа get their own set, with a longer
-`--allowedTools` — "A question with no session" below.
+`--allowedTools` — "A question with no session" below; «Работа» gets another one — "«Работа»".
 
 `ClaudeBackend.StreamCollector` parses stdout line by line (`ClaudeStreamEvent.Classify`): tool
 calls → `IAgentRunObserver.Activity`, everything else is discarded — in a long run that's
@@ -342,7 +343,8 @@ user's `~/.claude/CLAUDE.md` still loads, and without the line the model looked 
 commands. No `--add-dir`. The working folder is an empty `%TEMP%\AgentsTracker-question`: not the
 project (its CLAUDE.md would load) and not the data directory (secrets).
 
-A беседа (a topic without a project) gets the same set through `AgentRunRequest.WebOnly`, but keeps
+A беседа (a topic without a project) gets the same set through `AgentRunRequest.Toolset =
+AgentToolset.WebOnly` (a вопрос is always `WebOnly`), but keeps
 its session (`--session-id`/`--resume`) in its own folder `%TEMP%\AgentsTracker-talk\<chat key>`
 (`telegram_123_42`), emptied before each run: `--resume` finds the session after the folder is
 deleted and created again — the transcript is keyed by the path. A беседа always runs in the
@@ -354,6 +356,25 @@ search and page reads, which need no card, its permissions are a task's: cards a
 (checked against the chat's project) work as before, the two processes' cards told apart by the run
 id in the `X-AgentsTracker-Run` header of each run's own `--mcp-config` file. There is no `Agent` tool among `--tools`, so a вопрос has no
 subagents.
+
+## «Работа» (`Toolset = Machine`)
+
+A topic for remote work on the whole computer (`architecture.md`, "Topics"). `ClaudeBackend.
+BuildArguments` for `AgentToolset.Machine`:
+
+- No `--tools` (every built-in tool) and no `--strict-mcp-config`: the user's own MCP servers load.
+- `--append-system-prompt` `MachinePrompt`: this is remote work and the person cannot see the screen;
+  the working directory is the topic's own folder, not a project; to give a file, copy it into this
+  folder and call `send_file`; describe an irreversible action first; move instead of deleting; do
+  not work around a refusal. Without it the model took the folder for a project and put files for
+  the person anywhere — `send_file` accepts only a file from this folder.
+- `--allowedTools mcp__tg__send_file,WebSearch`. `WebFetch` is **not** pre-allowed, so it asks with a
+  card: every file of the machine is readable, and a page could talk the model into fetching an
+  address that carries the contents of a file. A search query goes to the search engine, not to an
+  address the page's author chose.
+- `--add-dir` — the chat's `inbox` as for a task; pictures are accepted.
+- `--permission-mode` is pinned to `AgentCapabilities.AskingPermissionMode` (`default`), and the card
+  has no «Всегда» button — each action asks again.
 
 ## Plan limits
 

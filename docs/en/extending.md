@@ -90,6 +90,10 @@ Every call into `IOperatorConsole` carries `AgentRunRequest.RunId` back, or it i
 (`architecture.md`). The backend must carry the id from the request to its confirmation channel
 itself (Claude puts it into a header of the run's own MCP config).
 
+`AgentCapabilities.AskingPermissionMode` is the mode in which the agent asks about everything the user's rules do not allow; an
+agent with no such mode leaves it `null` and has no «Работа» topic (startup refuses a non-empty
+`Gateway:Work:AllowedUserIds`).
+
 `IAgentBackend.InspectProject` returns everything the agent would run from the project folder on
 its own, with a fingerprint; `null` only when there is nothing of the kind (`cli-contract.md`). A
 backend that returns `null` while its CLI reads such files silently reopens the hole the
@@ -129,7 +133,9 @@ A class with `[McpServerToolType]` in `Agents.Claude/Mcp/`, the name as a consta
 A tool without an approval card goes into `--allowedTools` in `ClaudeBackend.BuildArguments`, and
 its whole policy becomes the gateway's. `mcp__tg__send_file` is there: the host checks the folder,
 the type and the size itself. A вопрос and a беседа also get `WebSearch,WebFetch` there — they have
-no files or commands. Nothing else belongs there — it bypasses the cards.
+no files or commands. «Работа» gets only `WebSearch`: it reads every file of the machine, and a
+card-less `WebFetch` would be a silent way out for their contents. Nothing else belongs there — it
+bypasses the cards.
 
 The `send_file` type whitelist lives in several places — the map in `OperatorConsole`, the tool
 description in `ClaudeSendFileTool` (the CLI sees the description of the **running** gateway),

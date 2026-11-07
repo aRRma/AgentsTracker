@@ -9,8 +9,8 @@ contract — `cli-contract.md`; the words used in buttons, messages and here —
 ```
 src/AgentsTracker.Agents.Abstractions/   agent contracts, no Telegram and no specific CLI
   IAgentBackend         Probe(), RunAsync(AgentRunRequest, IAgentRunObserver), InspectProject (fingerprint + items of the project's agent settings)
-  AgentRun.cs           request (prompt, folder, session, model, effort, mode, timeout, attachments folder, kind), observer, result
-  AgentCapabilities     models/efforts/modes the agent supports (effort null — not supported)
+  AgentRun.cs           request (prompt, folder, session, model, effort, mode, timeout, attachments folder, kind, Toolset), observer, result
+  AgentCapabilities     models/efforts/modes the agent supports (effort null — not supported); AskingPermissionMode — the mode that asks about everything the rules do not allow (null — no «Работа»)
   IOperatorConsole      what the agent asks a human: ApproveAsync, AskAsync, SendFileAsync; PersistentRule — an "always" rule
   IAgentLimits, IAgentSkillCatalog, IAgentBackendModule (AddServices + MapEndpoints; AgentHost — data directory, port, proxy, card timeout)
   RunUsage, RunActivity, LimitMath (the one percent formula), Text (clipping, Text.Redact)
@@ -37,7 +37,7 @@ src/AgentsTracker.Gateway/
   Program.cs            data directory, service commands, lists of agents (Gateway:Agent), channels (Gateway:Channel:Type) and features
   Domain/               pure models: GatewayState (state.json), AuditEvent and AuditKinds
   Infrastructure/       GatewayInfrastructure.cs (config layers, DI, Kestrel, ValidateStartup, MapFeatures), AppPaths, Modules/IFeatureModule,
-                        Configuration (GatewayOptions, ProjectCatalog), State (SessionStore, CacheGuard), Git, Audit, Monitoring (RunMonitor, RingBufferLog, LogFile),
+                        Configuration (GatewayOptions, ProjectCatalog, WorkAccess — who may use «Работа»), State (SessionStore, CacheGuard), Git, Audit, Monitoring (RunMonitor, RingBufferLog, LogFile),
                         Chat (ChatGatewayService, ChatDispatcher, DisplayFormat, MarkdownRenderer,
                         StartupNotice — «запущен»/«прерван» after a restart, ChatCommandCatalog — the «Меню» command list,
                         Dispatch/ — handler contracts),
@@ -188,6 +188,13 @@ The second tool, `mcp__tg__send_file` (`ClaudeSendFileTool`), goes `IOperatorCon
 always a `{"sent":false,"reason":…}` answer, never an exception. The checks — `cli-contract.md`,
 "File to chat".
 
+In every topic `OperatorConsole.ApproveAsync` refuses with no card an `Edit`/`MultiEdit`/`Write`/
+`NotebookEdit` whose path is inside the data directory (`DataDirectoryTarget`: the `\\?\` prefix is
+stripped, a relative path is taken from the run folder): there lie `state.json` and the secrets, and
+a card would only invite a tap. The refusal goes to the journal as `approval` `refused`. The limits:
+only these four tools, and only when the CLI asks — an `allow` rule skips the card and the check;
+shell commands are not parsed; reading the data directory is not blocked.
+
 `McpConfigFile`, `SessionStore` and `ClaudeProcessJob` are the only classes with a classic
 constructor: the side effect (sweeping stale config files, reading the state file, creating the Job
 Object) must happen exactly once, when the singleton is created.
@@ -238,13 +245,39 @@ one session.
 
 A беседа runs in its own folder `SessionStore.TalkRoot\<chat key>` (`%TEMP%\AgentsTracker-talk`),
 emptied before each run, before the trust check, like the вопрос folder; `--resume` finds the session
-by the folder path, not its contents. The run carries `AgentRunRequest.WebOnly`: the backend gives it
+by the folder path, not its contents. The run carries `AgentRunRequest.Toolset =
+AgentToolset.WebOnly` (a вопрос is always `WebOnly`; a task is `Project`): the backend gives it
 the вопрос's tool set (`cli-contract.md`, "A question with no session") but keeps the session, also
 for `/context` and `/compact`. Pictures are refused before download, and the refusal goes to the
 journal as `file.receive` `refused`. The default model and effort are `Gateway:Question`; the mode
 is always the config's (choosing a беседа clears the saved one, `/mode` there is refused). Whether a
 run is a беседа is decided by its final folder (`IsTalkFolder`), not by the topic at enqueue time:
 the topic may get a project while the task waits.
+
+A «Работа» topic is the third type, for remote work on the whole computer. The topic's mark is
+`TopicState.Work = true` (`ProjectPath` is `null`, as in a беседа; `SessionStore.IsWork`, set by
+`SetWork`). It runs in `<WorkRoot>\<chat key, non-alphanumerics → _>` (`Gateway:Work:Folder`, by
+default `%USERPROFILE%\AgentsTracker-work`), which is created before the run and never emptied; a
+session, the folder lock and the trust gate work as for a project. `ProjectCatalog.List` leaves the
+work folders out while «Работа» is enabled, or they would show up as projects. The run carries
+`AgentToolset.Machine`: every tool, the user's MCP servers (`cli-contract.md`, "«Работа»").
+
+- **Access.** Only the ids in `Gateway:Work:AllowedUserIds` (`WorkAccess`; empty list — the button
+  is shown to nobody). It is checked on the «Работа» button (`TopicScreen.Apply`) and again before
+  every run in `ChatWorker.ProcessAsync`, before the trust card: the id may leave the config while
+  the topic stays «Работа». A run is «Работа» when the topic carries the mark **and** its folder is
+  under the root (`IsWorkRun`). A refusal is a message, `access.rejected` in the journal and a
+  dropped task queue. Startup checks run only with a non-empty list (`WorkAccess.Validate`,
+  `WorkOptions.Validate`): the ids are among `Channel:Settings:AllowedUserIds`, `Folder` is a full
+  path that does not overlap the data directory, `%TEMP%`, `ProjectPath` or `Projects`. An agent
+  with no `AskingPermissionMode` has no «Работа».
+- **Mode.** Pinned to `AgentCapabilities.AskingPermissionMode` (Claude — `default`): `ChatWorker`
+  passes it whatever is stored or configured, `/mode` and «Агент» refuse
+  (`AgentScreen.ModeRefusal`), the mode buttons are hidden. `run.start` and the monitor show
+  `request.PermissionMode`, the mode actually used.
+- **No «Всегда».** `RunScope.Work` makes `ApprovalCardRenderer.Render(alwaysButton: false)` drop the
+  button and add a line saying so; the gateway's «всегда» rules are not applied, and `/rules` and
+  «Статус» say «Работа» has none. Every such action asks again.
 
 A deleted topic is learned of only from a send: Telegram answers «message thread not found», the
 channel gives `CannotReach`. The first send of a run is the «Доверять проекту?» card (when it is
@@ -383,7 +416,7 @@ a human is answerable for, `ILogger` gets what is needed for debugging.
 
 What a run leaves, numbers first — the 200-character limit cuts the tail and `/audit` shows 160:
 
-- `run.start` — the kind (`вопрос`, `контекст`, `сжатие`, `беседа`), model, mode, effort, branch, and
+- `run.start` — the kind (`вопрос`, `контекст`, `сжатие`, `беседа`, `работа`), model, the mode actually used, effort, branch, and
   `ждал другой запуск N` when the folder lock took a second or more. The queue wait is the gap
   between `message` and `run.start` of the same chat.
 - `run.end` — time, turns, tokens in/out, `кэш` read/write (not part of the input) and the model

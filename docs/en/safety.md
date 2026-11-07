@@ -143,6 +143,35 @@ history and the journal to anyone logged into this computer.
 - after `install` (or `protect-secrets`) the bot token on disk is encrypted (DPAPI), and only your
   account on this machine can decrypt it. A container has no DPAPI, so keep its `.env` to yourself.
 
+## 9. The «Работа» Topic Opens the Whole Computer
+
+A «Работа» topic is remote work on the computer: commands, any files, your MCP servers (for
+example the browser). Whoever gets into your Telegram account gets the PC. It is off by default.
+
+**How to close it:**
+
+- the topic type is turned on only by editing the config on the machine: `Gateway:Work:AllowedUserIds`
+  lists who may use it. Empty means nobody sees the button. Keep the list to the people who really
+  need it;
+- turn on two-step verification in Telegram (the cloud password): it protects the account that
+  controls the PC;
+- the mode is fixed at `default` and `/mode` is refused there. What your own rules in
+  `~/.claude/settings.json` do not allow comes as a card. Keep `deny` for what must never run;
+- cards in «Работа» have no «Всегда» button: one tap would allow a command on the whole machine for
+  good. `/rules` there says there are no rules;
+- web search runs with no card, but opening a page asks. The agent can read any file, and a page
+  could talk it into sending a file's contents to an address;
+- access is checked on the button and again before every task. If you remove an id from the config,
+  the topic's tasks are refused with «⛔ Тема «Работа» недоступна», the queue is dropped and the
+  journal records it. Choose another type with `/topic`;
+- the gateway refuses, with no card, an edit of files in its own data folder (state, settings, the
+  token) in any topic. It does not see shell commands, so those rely on the card and your `deny`
+  rules. Reading that folder is not blocked: keep secrets out of reach with `deny`;
+- the agent sends a file or screenshot only from the topic's own folder (it copies it there first),
+  with the same type limits;
+- admin rights are not available: the gateway runs as your account without elevation and cannot
+  answer a Windows UAC prompt. In Docker «the whole computer» is only the container.
+
 ## The Five-Minute Checklist
 
 1. `AllowedUserIds` is filled in, and the token is not lying around in the open.
@@ -152,3 +181,5 @@ history and the journal to anyone logged into this computer.
 5. `/rules` and `.claude/settings.local.json` are empty or make sense.
 6. You trust a foreign project only after reading its `.claude/settings.json`.
 7. A backup of what you'd miss exists and does not depend on this machine.
+8. `Work:AllowedUserIds` is empty or holds only the people who need it, and Telegram has the cloud
+   password on.
