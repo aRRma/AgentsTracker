@@ -103,7 +103,7 @@ public sealed class SettingsCommandHandler(
     /// </summary>
     private string ChangeMode(string argument, UserId user, ChatId chat)
     {
-        if (store.For(chat).IsChosenTalk) return AgentScreen.TalkModeRefusal + ".";
+        if (AgentScreen.ModeRefusal(store.For(chat)) is { } refusal) return refusal + ".";
 
         if (argument.Equals("reset", StringComparison.OrdinalIgnoreCase))
         {

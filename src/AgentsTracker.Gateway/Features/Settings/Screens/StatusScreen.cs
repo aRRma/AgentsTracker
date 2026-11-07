@@ -88,7 +88,13 @@ public sealed class StatusScreen(
 
         var where = scope.IsNewTopic ? RootScreen.NewTopic
             : scope.IsTalk ? "💬 <b>Беседа</b>"
+            : scope.IsWork ? $"💼 <b>Работа</b>\n<code>{E(project)}</code>"
             : $"📁 <b>{E(Path.GetFileName(project))}</b>\n<code>{E(project)}</code>{Branch(project, store.SessionFolder(project, scope.SessionId))}";
+
+        // «Работе» правил нет: кнопки «Всегда» у её карточек нет, и записанное в state.json не действует.
+        var rules = scope.IsWork
+            ? "♾ Правил «всегда» в «Работе» нет: каждое действие вне ваших правил — карточкой"
+            : $"♾ Правил «всегда» {(scope.IsTalk ? "в беседе" : "в проекте")}: {scope.AlwaysAllowRules().Count}";
 
         var html = $"""
             📟 <b>Статус</b> — {E(agent.DisplayName)}
@@ -101,7 +107,7 @@ public sealed class StatusScreen(
             📦 Контекст: {(session is { ContextTokens: > 0, ContextWindow: > 0 } ? ContextScreen.Fill(session, bar: false) : "—")}
             🧊 Кэш: {ContextScreen.Cache(session, ContextScreen.Mismatch(store, scope, agent, session))}
             🧠 {E(store.ModelLabel(scope.EffectiveModel, agent.Capabilities.Model) ?? "модель по умолчанию")}{effort} · 🔐 {E(scope.EffectivePermissionMode)}
-            ♾ Правил «всегда» {(scope.IsTalk ? "в беседе" : "в проекте")}: {scope.AlwaysAllowRules().Count}
+            {rules}
 
             🚦 <b>Лимиты тарифа</b>
             {LimitBars.Render(view, progress)}

@@ -55,7 +55,7 @@ public sealed class ProjectScreen(
 
         var scope = store.For(chat);
         var previous = Current(scope);
-        var fromLabel = scope.IsNewTopic ? null : previous is null ? "беседа" : Path.GetFileName(previous);
+        var fromLabel = scope.IsNewTopic ? null : scope.IsWork ? "работа" : previous is null ? "беседа" : Path.GetFileName(previous);
 
         // По ключу, а не по номеру: между отрисовкой и нажатием список мог измениться,
         // и номер указал бы на другой путь.
@@ -82,8 +82,11 @@ public sealed class ProjectScreen(
     public Task<(string Html, Keyboard Keyboard)> RenderAsync(ChatId chat, CancellationToken ct) =>
         Task.FromResult(Render(chat));
 
-    /// <summary>Проект чата; null — беседа: её временная папка в список проектов не попадает.</summary>
-    private static string? Current(SessionStore.ChatScope scope) => scope.IsTalk ? null : scope.ProjectPath;
+    /// <summary>
+    /// Проект чата; null — беседа или «Работа»: папка такой темы в список проектов не попадает, а
+    /// выбранная проектом запускалась бы со всеми её правами.
+    /// </summary>
+    private static string? Current(SessionStore.ChatScope scope) => scope.IsTalk || scope.IsWork ? null : scope.ProjectPath;
 
     private static bool IsCurrent(string path, string? current) => current is not null && ProjectCatalog.Same(path, current);
 
@@ -104,14 +107,14 @@ public sealed class ProjectScreen(
         if (opened is null)
         {
             _nav.Reset(chat);
-            return RenderGroups(chat, groups, current, position.Page);
+            return RenderGroups(chat, groups, current, store.For(chat).IsWork, position.Page);
         }
 
         return RenderProjects(chat, opened.Projects, opened.Name, current, position.Page);
     }
 
     private (string Html, Keyboard Keyboard) RenderGroups(
-        ChatId chat, IReadOnlyList<ProjectGroup> groups, string? current, int pageIndex)
+        ChatId chat, IReadOnlyList<ProjectGroup> groups, string? current, bool work, int pageIndex)
     {
         // Папок-владельцев тоже бывает больше, чем влезает в клавиатуру: под корнем с
         // вложенностью группа — это каждая ветка дерева.
@@ -122,7 +125,9 @@ public sealed class ProjectScreen(
             $"{Marker(group.Projects.Any(p => IsCurrent(p, current)))} "
             + $"<b>{E(group.Name)}</b> — {group.Projects.Count}");
 
-        var now = current is null ? "💬 <b>беседа</b>" : $"<b>{E(Path.GetFileName(current))}</b>\n<code>{E(current)}</code>";
+        var now = current is not null ? $"<b>{E(Path.GetFileName(current))}</b>\n<code>{E(current)}</code>"
+            : work ? "💼 <b>работа</b>"
+            : "💬 <b>беседа</b>";
 
         var html = $"""
             📁 <b>Проект</b>

@@ -95,7 +95,7 @@ public sealed class ContextScreen(
         if (active is not null && _confirmations.Asked(chat) is { } asked)
             return Confirmation(asked, session);
 
-        var title = $"📦 <b>Контекст</b> — {E(scope.IsTalk ? "беседа" : Path.GetFileName(scope.ProjectPath))}";
+        var title = $"📦 <b>Контекст</b> — {E(scope.IsTalk ? "беседа" : scope.IsWork ? "работа" : Path.GetFileName(scope.ProjectPath))}";
 
         if (active is null)
         {

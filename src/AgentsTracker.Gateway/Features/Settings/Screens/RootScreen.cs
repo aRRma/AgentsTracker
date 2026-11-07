@@ -38,7 +38,10 @@ public sealed class RootScreen(
             ? $"\n🎚 Effort: <b>{E(scope.EffectiveEffort ?? "по умолчанию")}</b>"
             : "";
 
-        var where = scope.IsNewTopic ? NewTopic : scope.IsTalk ? "💬 <b>Беседа</b>" : $"📁 <b>{E(Path.GetFileName(project))}</b>\n<code>{E(project)}</code>";
+        var where = scope.IsNewTopic ? NewTopic
+            : scope.IsTalk ? "💬 <b>Беседа</b>"
+            : scope.IsWork ? $"💼 <b>Работа</b>\n<code>{E(project)}</code>"
+            : $"📁 <b>{E(Path.GetFileName(project))}</b>\n<code>{E(project)}</code>";
 
         // Вопрос идёт параллельно задаче: без своей строки «простаивает» при идущем вопросе
         // выглядело бы так, будто ответа не будет.

@@ -26,6 +26,11 @@ public sealed class RulesCommandHandler(IChatChannel channel, SessionStore store
     {
         var argument = context.Argument;
         var scope = store.For(context.Chat);
+
+        // Правил у «Работы» не бывает: «Всегда» там нет, и чужое правило шлюз в ней не применяет.
+        if (scope.IsWork)
+            return "В теме «Работа» правил «всегда» нет — каждое действие вне ваших правил спрашивается кнопками.";
+
         var rules = scope.AlwaysAllowRules();
         // У беседы вместо имени — слово: имя её временной папки («telegram_123_42») человеку ни о чём.
         var name = Path.GetFileName(scope.ProjectPath);

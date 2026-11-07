@@ -103,9 +103,19 @@ public sealed class AgentScreen(
     /// </summary>
     public const string TalkModeRefusal = "В беседе режим не меняется: поиск и сайты идут без карточек всегда";
 
+    /// <summary>
+    /// Отказ на смену режима в теме «Работа»: со всем компьютером в руках агент спрашивает про
+    /// всё, что не разрешено правилами, и снять это из чата нельзя.
+    /// </summary>
+    public const string WorkModeRefusal = "В теме «Работа» режим закреплён: всё вне ваших правил — карточкой";
+
+    /// <summary>Отказ на смену режима в теме, где режим не выбирается; null — выбирается.</summary>
+    public static string? ModeRefusal(SessionStore.ChatScope scope) =>
+        scope.IsWork ? WorkModeRefusal : scope.IsChosenTalk ? TalkModeRefusal : null;
+
     private string ApplyMode(string value, UserId user, ChatId chat, SessionStore.ChatScope scope)
     {
-        if (scope.IsChosenTalk) return TalkModeRefusal;
+        if (ModeRefusal(scope) is { } refusal) return refusal;
 
         var previous = scope.EffectivePermissionMode;
 
@@ -159,8 +169,8 @@ public sealed class AgentScreen(
                 break;
 
             case "mode":
-                // В беседе смена режима получит отказ — спрашивать про кэш ради отказа незачем.
-                if (scope.IsChosenTalk) return null;
+                // В беседе и «Работе» смена режима получит отказ — спрашивать про кэш ради отказа незачем.
+                if (ModeRefusal(scope) is not null) return null;
                 var mode = IsReset(value) ? options.Value.PermissionMode : caps.PermissionMode.Resolve(value);
                 if (mode is null) return null;
                 toMode = CacheGuard.ModeScope(caps, mode);
@@ -211,7 +221,7 @@ public sealed class AgentScreen(
             🤖 <b>Агент</b> — {E(agent.DisplayName)}
 
             🧠 Модель: <b>{E(store.ModelLabel(model, caps.Model) ?? "по умолчанию")}</b>{effortLine}
-            🔐 Режим: <b>{E(caps.PermissionMode.Describe(mode))}</b>
+            🔐 Режим: <b>{E(caps.PermissionMode.Describe(mode))}</b>{(scope.IsWork ? " — закреплён темой «Работа»" : "")}
 
             <i>На кнопках — последние версии моделей: выйдет новая — кнопка сама перейдёт
             на неё. Другую модель — командой
@@ -234,8 +244,12 @@ public sealed class AgentScreen(
             rows.Add([Button($"🎚 {Marker(effort is null)} по умолчанию", "agent:effort:reset")]);
         }
 
-        rows.AddRange(Group("🔐", caps.PermissionMode, mode, "mode", 2));
-        rows.Add([Button($"🔐 {Marker(scope.PermissionMode is null)} из конфига ({options.Value.PermissionMode})", "agent:mode:reset")]);
+        // В «Работе» кнопки режима только вели бы к отказу: режим там закреплён.
+        if (!scope.IsWork)
+        {
+            rows.AddRange(Group("🔐", caps.PermissionMode, mode, "mode", 2));
+            rows.Add([Button($"🔐 {Marker(scope.PermissionMode is null)} из конфига ({options.Value.PermissionMode})", "agent:mode:reset")]);
+        }
 
         rows.Add([BackButton]);
 
