@@ -245,6 +245,10 @@ public sealed class ChatWorker(
         IDisposable? folderLock = null;
         var lockWait = TimeSpan.Zero;
 
+        // «Работа» ли запуск — по той же проверке, что пустила к папке: тему могли переключить, пока
+        // проверяли лимит, и по свежему признаку запуск в папке «Работы» ушёл бы без закреплённого режима.
+        var workRun = false;
+
         // Чат — раньше токена: /stop читает их в этом порядке и иначе мог бы снять чужой вопрос.
         void Arm()
         {
@@ -263,7 +267,8 @@ public sealed class ChatWorker(
                 // «Работа» — тоже по итоговой папке, и доступ — до карточки доверия: тому, кому тема не
                 // разрешена, незачем и спрашивать доверие к её папке. Проверка здесь, а не только при
                 // выборе типа: id могли убрать из конфига, а тема осталась «Работой».
-                if (IsWorkRun(scope, project))
+                workRun = IsWorkRun(scope, project);
+                if (workRun)
                 {
                     if (!work.Allows(prompt.User))
                     {
@@ -339,7 +344,7 @@ public sealed class ChatWorker(
         using var heldLock = folderLock;
 
         var talk = !question && SessionStore.IsTalkFolder(project);
-        var machine = !question && IsWorkRun(scope, project);
+        var machine = !question && workRun;
 
         // Вопрос идёт своей моделью из конфига, а не выбранной в меню: ради него и заведён
         // отдельный запуск — не тратить лимит тяжёлой модели на простой ответ.
