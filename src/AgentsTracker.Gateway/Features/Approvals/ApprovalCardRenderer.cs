@@ -88,8 +88,13 @@ public static class ApprovalCardRenderer
     /// Правила, которые агент запишет у себя по кнопке «Всегда». Если они есть, показываем
     /// их вместо сигнатуры шлюза: правило агента префиксное и шире точного совпадения.
     /// </param>
+    /// <param name="alwaysButton">
+    /// Есть ли у карточки кнопка «Всегда». В теме «Работа» её нет — и подпись про неё обещала бы
+    /// кнопку, которую человек будет искать.
+    /// </param>
     public static ApprovalCard Render(
-        string toolName, JsonElement? input, string signature, IReadOnlyList<PersistentRule>? suggested, string projectPath)
+        string toolName, JsonElement? input, string signature, IReadOnlyList<PersistentRule>? suggested, string projectPath,
+        bool alwaysButton = true)
     {
         var obj = input is { ValueKind: JsonValueKind.Object } o ? o : (JsonElement?)null;
         var card = new StringBuilder();
@@ -112,7 +117,11 @@ public static class ApprovalCardRenderer
         if (attachment is not null)
             card.Append("\n⚠️ <b>Показано не всё</b> — полный текст в файле выше. Не разрешайте, не прочитав его.\n");
         var rules = ShownRules(suggested)?.Select(rule => rule.Display).ToList() ?? [];
-        if (rules.Count > 0)
+        if (!alwaysButton)
+        {
+            card.Append("\n<i>Тема «Работа»: кнопки «Всегда» нет — каждое такое действие спросит снова.</i>");
+        }
+        else if (rules.Count > 0)
         {
             card.Append("\n<i>Кнопка «Всегда» запишет в настройки проекта у агента:</i>\n");
             foreach (var rule in rules)

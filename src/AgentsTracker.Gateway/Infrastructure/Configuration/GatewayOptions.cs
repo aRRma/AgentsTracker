@@ -87,15 +87,24 @@ public sealed class WorkOptions
     /// </summary>
     public string? Folder { get; set; }
 
+    /// <summary>Тема «Работа» включена в конфиге: в списке есть хоть один id.</summary>
+    public bool Enabled => AllowedUserIds.Any(id => !string.IsNullOrWhiteSpace(id));
+
     /// <summary>Корень папок тем «Работа», нормализованный.</summary>
     public string Root => ProjectCatalog.Normalize(Folder is { Length: > 0 } folder
         ? folder
         : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AgentsTracker-work"));
 
+    /// <summary>
+    /// Пересечения корня проверяем, только когда тема включена: тот, кто ею не пользуется, не
+    /// должен после обновления упереться в отказ старта из-за папки, о которой не знает.
+    /// </summary>
     public IReadOnlyList<string> Validate(GatewayOptions options)
     {
         var errors = new List<string>();
         var key = $"{GatewayOptions.SectionName}:Work";
+
+        if (!Enabled) return errors;
 
         if (AllowedUserIds.Any(string.IsNullOrWhiteSpace))
             errors.Add($"{key}:AllowedUserIds — пустой id.");
@@ -107,20 +116,34 @@ public sealed class WorkOptions
             return errors;
         }
 
-        var root = Root;
-
-        // Там state.json, токен MCP и секреты канала: агент со всеми инструментами в этой папке
-        // переписал бы себе правила и доверие.
-        var data = ProjectCatalog.Normalize(AppPaths.DataDirectory);
-        if (Overlaps(root, data))
-            errors.Add($"{key}:Folder ({root}) пересекается с папкой данных шлюза ({data}).");
-
-        // Тип запуска шлюз узнаёт по папке: проект внутри корня «Работы» шёл бы со всеми
-        // инструментами без проверки доступа, а папка «Работы» внутри проекта попала бы в его сессии.
-        foreach (var project in new[] { options.ProjectPath }.Concat(options.Projects).Where(p => p is { Length: > 0 }))
+        try
         {
-            if (Overlaps(root, ProjectCatalog.Normalize(project)))
-                errors.Add($"{key}:Folder ({root}) пересекается с проектом {project}.");
+            var root = Root;
+
+            // Там state.json, токен MCP и секреты канала: агент со всеми инструментами в этой папке
+            // переписал бы себе правила и доверие.
+            var data = ProjectCatalog.Normalize(AppPaths.DataDirectory);
+            if (Overlaps(root, data))
+                errors.Add($"{key}:Folder ({root}) пересекается с папкой данных шлюза ({data}).");
+
+            // Во временных лежат папки бесед и вопросов, которые шлюз стирает перед запуском, — стёр бы
+            // и папку «Работы», а беседа взяла бы верх и запуск ушёл бы без инструментов. Да и чистка
+            // временных файлов Windows прошлась бы по заметкам агента.
+            var temp = ProjectCatalog.Normalize(Path.GetTempPath());
+            if (Overlaps(root, temp))
+                errors.Add($"{key}:Folder ({root}) пересекается с временной папкой ({temp}).");
+
+            // Тип запуска шлюз узнаёт и по папке: проект внутри корня «Работы» выпал бы из списка
+            // проектов, а папка «Работы» внутри проекта попала бы в его сессии и доверие.
+            foreach (var project in new[] { options.ProjectPath }.Concat(options.Projects).Where(p => p is { Length: > 0 }))
+            {
+                if (Overlaps(root, ProjectCatalog.Normalize(project)))
+                    errors.Add($"{key}:Folder ({root}) пересекается с проектом {project}.");
+            }
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            errors.Add($"{key}:Folder или проект из конфига — некорректный путь: {ex.Message}");
         }
 
         return errors;

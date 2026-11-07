@@ -57,7 +57,7 @@ public sealed class OperatorConsole(
             logger.LogWarning("Правка папки данных шлюза отклонена без карточки: {Tool} {Path}", toolName, target);
             Audit(run, AuditKinds.Approval, signature, "refused");
             return ApprovalDecision.Deny(
-                $"Папка данных шлюза ({DataDirectory}) закрыта для правки агентом: там его настройки и правила. Не пытайтесь изменить её другим способом.");
+                $"Шлюз не даёт агенту править свою папку данных ({DataDirectory}): там его настройки и правила. Не пытайтесь изменить её другим способом.");
         }
 
         // Монитору та же строка, что и логу: в полном вводе Edit/Write лежит содержимое файлов.
@@ -99,7 +99,7 @@ public sealed class OperatorConsole(
         buttons.Add(new("deny", "❌ Отклонить"));
         buttons.Add(new("reason", "✋ Отклонить с причиной"));
 
-        var card = ApprovalCardRenderer.Render(toolName, input, signature, suggested, run.ProjectPath);
+        var card = ApprovalCardRenderer.Render(toolName, input, signature, suggested, run.ProjectPath, alwaysButton: !run.Work);
 
         // Обрезанный вход — файлом до карточки: команду без видимого хвоста разрешать нельзя.
         if (card.Attachment is { } attachment)
@@ -345,6 +345,11 @@ public sealed class OperatorConsole(
             || !obj.TryGetProperty(field, out var value) || value.ValueKind != JsonValueKind.String
             || value.GetString() is not { Length: > 0 } path)
             return null;
+
+        // «\\?\C:\…» GetFullPath оставляет как есть, и сравнение с папкой данных его бы не узнало.
+        const string Verbatim = @"\\?\";
+        if (path.StartsWith(Verbatim, StringComparison.Ordinal) && !path.StartsWith(Verbatim + "UNC", StringComparison.OrdinalIgnoreCase))
+            path = path[Verbatim.Length..];
 
         try
         {

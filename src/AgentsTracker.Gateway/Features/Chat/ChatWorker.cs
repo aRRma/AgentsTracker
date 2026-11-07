@@ -267,9 +267,14 @@ public sealed class ChatWorker(
                 {
                     if (!work.Allows(prompt.User))
                     {
-                        Audit(prompt, AuditKinds.AccessRejected, "тема «Работа» не разрешена этому пользователю");
+                        // Причину — точно: «добавьте id» тому, у кого тема выключена целиком, увело бы искать
+                        // ошибку не там.
+                        var (journal, why) = work.Enabled
+                            ? ("тема «Работа» не разрешена этому пользователю", "вашего id нет в Gateway:Work:AllowedUserIds")
+                            : ("тема «Работа» выключена в конфиге", "она выключена в конфиге шлюза");
+                        Audit(prompt, AuditKinds.AccessRejected, journal);
                         await SendPlainAsync(prompt.Chat,
-                            "⛔ Тема «Работа» вам не разрешена: вашего id нет в Gateway:Work:AllowedUserIds. Выберите другой тип темы: /topic",
+                            $"⛔ Тема «Работа» недоступна: {why}. Выберите другой тип темы: /topic",
                             prompt.ReplyTo, stoppingToken);
                         await DropQueueAsync(lane, "после выбора другого типа темы", stoppingToken);
                         return;

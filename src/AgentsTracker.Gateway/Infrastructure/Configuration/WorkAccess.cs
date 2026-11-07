@@ -20,9 +20,6 @@ public sealed class WorkAccess(IOptions<GatewayOptions> options, IChatChannel ch
     public string PermissionMode => agent.Capabilities.AskingPermissionMode
         ?? throw new InvalidOperationException("У агента нет режима, которым можно закрепить тему «Работа».");
 
-    /// <summary>Корень папок тем «Работа».</summary>
-    public string Root => options.Value.Work.Root;
-
     public bool Allows(UserId user) => Enabled && _keys.Contains(user.Key);
 
     /// <summary>
