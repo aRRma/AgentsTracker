@@ -167,7 +167,7 @@ A card finds its chat by the **run id**, not by a "current chat": each run gets 
   беседа get no `--add-dir` at all. An `Edit`/`Write`/`MultiEdit`/`NotebookEdit` card into the data
   directory is refused without a card in every topic, and in «Работа» also one into the agent's
   settings (its folder's `.claude/` and `.mcp.json`, `~/.claude/settings*.json`, `~/.claude/hooks`,
-  `~/.claude.json`) — an allow rule there would be «Всегда» for the whole machine
+  `agents`, `skills`, `commands`, `plugins`, `~/.claude.json`) — an allow rule there would be «Всегда» for the whole machine
   (`OperatorConsole.EditTarget`/`ForbiddenEdit`, path strings only); shell commands are not parsed —
   only the card and the user's `deny` hold them.
 - A вопрос (`AgentRunKind.Question`) runs with `--no-session-persistence`, `--tools WebSearch,WebFetch`
