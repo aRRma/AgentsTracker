@@ -165,8 +165,11 @@ A card finds its chat by the **run id**, not by a "current chat": each run gets 
   (`state.json`, `appsettings.Local.json` with the secrets, the MCP token) and never the project
   subfolder: `/project` may change while the message waits in the queue. A вопрос (`/ask`) and a
   беседа get no `--add-dir` at all. An `Edit`/`Write`/`MultiEdit`/`NotebookEdit` card into the data
-  directory is refused without a card in every topic (`OperatorConsole.DataDirectoryTarget`); shell
-  commands are not parsed — only the card and the user's `deny` hold them.
+  directory is refused without a card in every topic, and in «Работа» also one into the agent's
+  settings (its folder's `.claude/` and `.mcp.json`, `~/.claude/settings*.json`, `~/.claude/hooks`,
+  `~/.claude.json`) — an allow rule there would be «Всегда» for the whole machine
+  (`OperatorConsole.EditTarget`/`ForbiddenEdit`, path strings only); shell commands are not parsed —
+  only the card and the user's `deny` hold them.
 - A вопрос (`AgentRunKind.Question`) runs with `--no-session-persistence`, `--tools WebSearch,WebFetch`
   and `--strict-mcp-config` in an empty `%TEMP%\AgentsTracker-question`, recreated before every
   вопрос (a task could plant a hook there, and the trust gate skips вопросы) — never in the project or the

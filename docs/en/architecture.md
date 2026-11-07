@@ -189,11 +189,15 @@ always a `{"sent":false,"reason":…}` answer, never an exception. The checks �
 "File to chat".
 
 In every topic `OperatorConsole.ApproveAsync` refuses with no card an `Edit`/`MultiEdit`/`Write`/
-`NotebookEdit` whose path is inside the data directory (`DataDirectoryTarget`: the `\\?\` prefix is
-stripped, a relative path is taken from the run folder): there lie `state.json` and the secrets, and
-a card would only invite a tap. The refusal goes to the journal as `approval` `refused`. The limits:
-only these four tools, and only when the CLI asks — an `allow` rule skips the card and the check;
-shell commands are not parsed; reading the data directory is not blocked.
+`NotebookEdit` whose path is inside the data directory (`EditTarget`: the `\\?\` prefix is
+stripped, `~/` and `/c/` are expanded, a relative path is taken from the run folder): there lie
+`state.json` and the secrets, and a card would only invite a tap. In a «Работа» run `ForbiddenEdit`
+also refuses an edit of the agent's settings — the folder's `.claude/` and `.mcp.json`,
+`~/.claude/settings*.json`, `~/.claude/hooks`, `~/.claude.json`: with no «Всегда» button an allow
+rule written there would do the same for the whole machine. The refusal goes to the journal as
+`approval` `refused`. The limits: only these four tools, only when the CLI asks — an `allow` rule
+skips the card and the check — and only path strings (a junction or an 8.3 name gets an ordinary
+card); shell commands are not parsed; reading the data directory is not blocked.
 
 `McpConfigFile`, `SessionStore` and `ClaudeProcessJob` are the only classes with a classic
 constructor: the side effect (sweeping stale config files, reading the state file, creating the Job

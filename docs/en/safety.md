@@ -157,6 +157,10 @@ example the browser). Whoever gets into your Telegram account gets the PC. It is
   controls the PC;
 - the mode is fixed at `default` and `/mode` is refused there. What your own rules in
   `~/.claude/settings.json` do not allow comes as a card. Keep `deny` for what must never run;
+- everything your rules `allow` runs in «Работа» with no card too — now on the whole machine.
+  Before you turn it on, read your `allow` list: `Read(**/*)` reads any file, a wildcard over an MCP
+  server (say, the browser's `mcp__…playwright__*`) opens any site with no card. Deny reading the
+  gateway's data folder and `~/.claude/settings.json`, and keep tokens out of the `env` there;
 - cards in «Работа» have no «Всегда» button: one tap would allow a command on the whole machine for
   good. `/rules` there says there are no rules;
 - web search runs with no card, but opening a page asks (unless you allowed `WebFetch` in your own rules). The agent can read any file, and a page
@@ -165,8 +169,10 @@ example the browser). Whoever gets into your Telegram account gets the PC. It is
   the topic's tasks are refused with «⛔ Тема «Работа» недоступна», the queue is dropped and the
   journal records it. Choose another type with `/topic`;
 - the gateway refuses, with no card, an edit of files in its own data folder (state, settings, the
-  token) in any topic. It does not see shell commands, so those rely on the card and your `deny`
-  rules. Reading that folder is not blocked: keep secrets out of reach with `deny`;
+  token) in any topic, and in «Работа» also an edit of the agent's own settings (`.claude`,
+  `~/.claude/settings.json` and the like) — a rule written there would be a «Всегда» for the whole
+  machine. It does not see shell commands, so those rely on the card and your `deny` rules. Reading
+  that folder is not blocked: keep secrets out of reach with `deny`;
 - the agent sends a file or screenshot only from the topic's own folder (it copies it there first),
   with the same type limits;
 - admin rights are not available: the gateway runs as your account without elevation and cannot
