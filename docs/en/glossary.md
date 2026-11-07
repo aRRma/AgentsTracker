@@ -29,7 +29,8 @@ English (`IAgentLimits`, `ProjectPath`, `audit\`) — the glossary is about text
 | A Telegram topic in the private chat with the bot: its own session, project, model, effort and mode | **тема** | тред, топик, ветка, чат |
 | The private chat outside any topic | **лента** («лента без темы») | общий чат, главная тема, General |
 | A topic with no project: web search only, a session of its own (`ProjectPath = null`) | **беседа** | чат, диалог, разговор, вопрос |
-| What a topic works with: a project or a беседа (the «Тип темы» screen) | **тип темы** | режим темы, вид темы |
+| A topic for remote work on the whole computer: its own folder, every tool, approval cards as in a project; only for the users in `Gateway:Work:AllowedUserIds` | **работа** («тема «Работа»») | супер, супер-режим, режим работы, оператор, полный доступ |
+| What a topic works with: a project, a беседа or работа (the «Тип темы» screen) | **тип темы** | режим темы, вид темы |
 | The agent asking about an action | **подтверждение** | согласование, запрос разрешения, апрув |
 | The message with the decision buttons | **карточка подтверждения** | карточка согласования, запрос |
 | What the «Всегда» button writes down | **правило «всегда»** | разрешение, allow-правило |
@@ -103,6 +104,12 @@ runs in parallel with a задача and is answered as a reply to the message t
 
 **вопрос / беседа.** A беседа is a тема without a project; unlike a вопрос, it keeps its own
 сессия, so the next message continues it. Both see only web search, not files.
+
+**беседа / работа / проект.** Работа is the opposite of a беседа: a тема whose agent has the whole
+computer — commands, files, the user's MCP servers — in a folder of its own that is not emptied. It
+differs from a проект in purpose, not in reach: a проект is one folder of work, работа is the
+machine. The режим there is always `default` and the cards have no «Всегда» button. Работа is a
+тип темы, not a режим: «режим» belongs to `--permission-mode`.
 
 **лимит / предел.** A лимит belongs to the subscription: «Лимит тарифа исчерпан», the windows,
 the bars. A предел is technical and has nothing to do with money: a file size, a message length,
