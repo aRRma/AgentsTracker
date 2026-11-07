@@ -12,11 +12,7 @@ namespace AgentsTracker.Gateway.Features.Settings.Screens;
 public sealed class SkillsScreen(
     SessionStore store, IAgentSkillCatalog catalog, SkillLauncher launcher, IAuditLog audit) : ISettingsScreen
 {
-    /// <summary>Префиксы callback-ов: не hex, чтобы не спутать с 12-значным ключом.</summary>
-    private const string PagePrefix = "p";
-
-    private const string GroupPrefix = "g";
-
+    /// <summary>Префиксы callback-ов: не hex, чтобы не спутать с 12-значным ключом (общие — в <see cref="SettingsKeyboard"/>).</summary>
     private const string CardPrefix = "o";
 
     private const string RunPrefix = "r";
@@ -24,8 +20,6 @@ public sealed class SkillsScreen(
     private const string AskPrefix = "w";
 
     private const string TogglePrefix = "t";
-
-    private const string UpArgument = "up";
 
     private const string ListArgument = "list";
 
@@ -81,8 +75,7 @@ public sealed class SkillsScreen(
             return null;
         }
 
-        if (argument.StartsWith(PagePrefix, StringComparison.Ordinal)
-            && int.TryParse(argument[PagePrefix.Length..], out var page))
+        if (TryPage(argument, out var page))
         {
             _nav.Update(chat, p => p with { Page = page });
             return null;

@@ -38,12 +38,12 @@ public sealed class OperatorConsole(
         var signature = BuildSignature(toolName, input);
 
         // Только начало и с маской: в полной команде может быть токен из заголовка curl.
-        var brief = Text.Preview(Highlight(toolName, input) ?? "");
+        var brief = Text.Preview(Highlight(input) ?? "");
         logger.LogInformation("Запрошено подтверждение: {Tool} {Key}", toolName, brief);
 
         if (broker.Run(runId) is not { } run)
         {
-            logger.LogWarning("Подтверждение на {Tool} от неизвестного запуска «{RunId}» отклонено", toolName, runId);
+            logger.LogWarning("Подтверждение на {Tool} от неизвестного запуска «{RunId}»: отказ", toolName, runId);
             Audit(null, AuditKinds.Approval, signature, "unknown-run");
             return ApprovalDecision.Deny(UnknownRun);
         }
@@ -140,7 +140,7 @@ public sealed class OperatorConsole(
 
         if (broker.Run(runId) is not { } run)
         {
-            logger.LogWarning("Вопрос агента от неизвестного запуска «{RunId}» отклонён", runId);
+            logger.LogWarning("Вопрос агента от неизвестного запуска «{RunId}»: отказ", runId);
             Audit(null, AuditKinds.Approval, $"AskUserQuestion({brief})", "unknown-run");
             return QuestionResult.Refused(UnknownRun);
         }
@@ -425,7 +425,7 @@ public sealed class OperatorConsole(
     }
 
     /// <summary>Самое важное поле инструмента — команда или путь к файлу.</summary>
-    private static string? Highlight(string toolName, JsonElement? input)
+    private static string? Highlight(JsonElement? input)
     {
         if (input is not { ValueKind: JsonValueKind.Object } obj) return null;
 
@@ -447,7 +447,7 @@ public sealed class OperatorConsole(
     /// </summary>
     private static string BuildSignature(string toolName, JsonElement? input)
     {
-        var key = Highlight(toolName, input)?.Trim();
+        var key = Highlight(input)?.Trim();
         if (key is { Length: > 0 }) return $"{toolName}({key})";
 
         // Ключевого поля нет (WebSearch, MCP-инструменты) — берём вход целиком: голое имя

@@ -25,14 +25,14 @@ public sealed class ChatEnqueueTextHandler(
             // не осталось бы ни следа, и по журналу не понять, почему агент её не видел.
             audit.Write(AuditEvent.Now(AuditKinds.FileReceive, $"беседа не принимает картинки ({message.Attachments.Count} шт.)",
                 user, chat, scope.ProjectPath, scope.SessionId, "refused"));
-            await channel.SendAsync(chat, new OutgoingMessage(
-                "⚠️ Беседа не принимает картинки — только текст. Картинку можно прислать в теме с проектом.", Rich: false), ct);
+            await channel.SayAsync(chat,
+                "⚠️ Беседа не принимает картинки — только текст. Картинку можно прислать в теме с проектом.", ct);
         }
 
         var attachments = await inbox.StoreAsync(chat, user, talk ? [] : message.Attachments, ct);
 
         if (attachments.Refusal is { Length: > 0 } refusal)
-            await channel.SendAsync(chat, new OutgoingMessage(refusal, Rich: false), ct);
+            await channel.SayAsync(chat, refusal, ct);
 
         var text = Compose(message.Text, attachments.Paths);
 
@@ -55,7 +55,7 @@ public sealed class ChatEnqueueTextHandler(
         worker.Enqueue(chat, user, text);
 
         if (wasBusy)
-            await channel.SendAsync(chat, new OutgoingMessage("📥 Добавлено в очередь — отвечу, как освобожусь.", Rich: false), ct);
+            await channel.SayAsync(chat, "📥 Добавлено в очередь — отвечу, как освобожусь.", ct);
 
         return true;
     }

@@ -16,14 +16,6 @@ public sealed class ProjectScreen(
     IOptions<GatewayOptions> options,
     ILogger<ProjectScreen> logger) : ISettingsScreen
 {
-    /// <summary>Префиксы callback-ов: не hex, чтобы не спутать с 12-значным ключом.</summary>
-    private const string PagePrefix = "p";
-
-    private const string GroupPrefix = "g";
-
-    /// <summary>Возврат от проектов к списку папок.</summary>
-    private const string UpArgument = "up";
-
     private readonly ScreenNavigation _nav = new();
 
     public string Key => "proj";
@@ -46,8 +38,7 @@ public sealed class ProjectScreen(
             return null;
         }
 
-        if (argument.StartsWith(PagePrefix, StringComparison.Ordinal)
-            && int.TryParse(argument[PagePrefix.Length..], out var page))
+        if (TryPage(argument, out var page))
         {
             _nav.Update(chat, p => p with { Page = page });
             return null;
@@ -169,7 +160,7 @@ public sealed class ProjectScreen(
 
         var buttons = page
             .Select(path => Button(
-                $"{(IsCurrent(path, current) ? "▶ " : "")}{Path.GetFileName(path)}",
+                $"{Chosen(IsCurrent(path, current))}{Path.GetFileName(path)}",
                 $"{Key}:{Key12(ProjectCatalog.Normalize(path))}"))
             .Chunk(2)
             .ToList();

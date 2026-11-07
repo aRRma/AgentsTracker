@@ -35,6 +35,9 @@ public sealed class AttachmentInbox(
     /// <summary>Сколько байт хватает, чтобы отличить PNG от JPEG.</summary>
     private const int SignatureLength = 8;
 
+    // Один текст на оба отказа (не картинка, тип не опознан): человеку разница ни к чему.
+    private const string OnlyImages = "Понимаю только картинки: PNG и JPEG.";
+
     private readonly AttachmentOptions _options = options.Value.Attachments;
 
     private static string Root => Path.Combine(AppPaths.DataDirectory, "inbox");
@@ -85,7 +88,7 @@ public sealed class AttachmentInbox(
         // Тип проверяем по байтам после скачивания, но голос и видео качать незачем:
         // канал уже сказал, что это не картинка.
         if (attachment.Kind == AttachmentKind.Other)
-            return (null, Refuse(chat, user, project, "не картинка", "Понимаю только картинки: PNG и JPEG."));
+            return (null, Refuse(chat, user, project, "не картинка", OnlyImages));
 
         var limit = Math.Min(_options.MaxBytes, channel.Limits.AttachmentBytes);
 
@@ -108,7 +111,7 @@ public sealed class AttachmentInbox(
             if (extension is null)
             {
                 Delete(temp);
-                return (null, Refuse(chat, user, project, "тип не опознан", "Понимаю только картинки: PNG и JPEG."));
+                return (null, Refuse(chat, user, project, "тип не опознан", OnlyImages));
             }
 
             var name = $"{DateTimeOffset.Now:yyyyMMdd-HHmmss}-{Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(4))}{extension}";
@@ -266,7 +269,7 @@ public sealed class AttachmentInbox(
     /// <summary>Отказ тоже в журнал: попытка прислать чужой файл важнее удачного приёма.</summary>
     private string Refuse(ChatId chat, UserId user, string project, string reason, string reply)
     {
-        logger.LogInformation("Вложение отклонено: {Reason}", reason);
+        logger.LogInformation("Отказ во вложении: {Reason}", reason);
         audit.Write(AuditEvent.Now(AuditKinds.FileReceive, reason, user, chat, project, store.For(chat).SessionId, "refused"));
         return reply;
     }

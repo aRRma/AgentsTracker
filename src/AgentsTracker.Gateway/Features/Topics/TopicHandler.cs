@@ -12,13 +12,13 @@ public sealed class TopicHandler(SessionStore store, SettingsMenuCoordinator men
     public IReadOnlyCollection<string> Commands { get; } = ["/topic"];
 
     public Task HandleAsync(ChatCommandContext context, CancellationToken ct) =>
-        menu.OpenAsync(context.Chat, context.User, ct, TopicScreen.ScreenKey);
+        menu.OpenAsync(context.Chat, ct, TopicScreen.ScreenKey);
 
     public async Task<bool> TryHandleAsync(IncomingMessage message, CancellationToken ct)
     {
         if (!store.For(message.Chat).IsNewTopic) return false;
 
-        await menu.OpenAsync(message.Chat, message.User, ct, TopicScreen.ScreenKey);
+        await menu.OpenAsync(message.Chat, ct, TopicScreen.ScreenKey);
         return true;
     }
 }

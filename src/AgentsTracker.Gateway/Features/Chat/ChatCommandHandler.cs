@@ -17,7 +17,7 @@ public sealed class ChatCommandHandler(
     {
         var reply = context.Command == "/new" ? StartNew(context) : Stop(context);
 
-        await channel.SendAsync(context.Chat, new OutgoingMessage(reply, Rich: false), ct);
+        await channel.SayAsync(context.Chat, reply, ct);
     }
 
     private string StartNew(ChatCommandContext context)
@@ -33,12 +33,6 @@ public sealed class ChatCommandHandler(
         return "🆕 Начата новая сессия — прошлый контекст забыт.";
     }
 
-    private string Stop(ChatCommandContext context)
-    {
-        var stopped = worker.Stop(context.Chat);
-        var scope = store.For(context.Chat);
-        audit.Write(AuditEvent.Now(AuditKinds.Gateway, "/stop", context.User, context.Chat, scope.ProjectPath, scope.SessionId,
-            stopped ? "stopped" : "idle"));
-        return stopped ? "🛑 Остановлено." : "Сейчас ничего не выполняется.";
-    }
+    private string Stop(ChatCommandContext context) =>
+        worker.StopBy(context.Chat, context.User) ? "🛑 Остановлено." : "Сейчас ничего не выполняется.";
 }

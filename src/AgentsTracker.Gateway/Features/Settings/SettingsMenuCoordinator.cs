@@ -18,7 +18,7 @@ public sealed class SettingsMenuCoordinator(
     public ISettingsScreen Screen(string key) => _screens.GetValueOrDefault(key) ?? _screens["root"];
 
     /// <summary>Показывает меню новым сообщением. screen — экран, с которого начать.</summary>
-    public async Task OpenAsync(ChatId chat, UserId user, CancellationToken ct, string screen = "root")
+    public async Task OpenAsync(ChatId chat, CancellationToken ct, string screen = "root")
     {
         var target = Screen(screen);
         target.Open(chat);

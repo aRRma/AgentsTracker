@@ -18,9 +18,12 @@ public sealed class ContextScreen(
     private const string NewSession = "new";
     private const string Compact = "compact";
 
+    // Константа, а не литерал в каждой кнопке: переименование ключа молча сломало бы нажатия.
+    private const string ScreenKey = "ctx";
+
     private readonly PendingConfirmations _confirmations = new();
 
-    public string Key => "ctx";
+    public string Key => ScreenKey;
 
     public void Open(ChatId chat) => _confirmations.Cancel(chat);
 
@@ -41,7 +44,7 @@ public sealed class ContextScreen(
                 if (argument == Compact && worker.IsBusy(chat)) return "Идёт запуск — сжать можно, когда он закончится";
 
                 // Сессию запоминаем вместе с вопросом: если её сменят до «Да», подтверждение
-                // не сработает по чужой ветке.
+                // не сработает по чужой сессии.
                 _confirmations.Ask(chat, argument, session);
                 return null;
 
@@ -50,7 +53,7 @@ public sealed class ContextScreen(
                 return null;
 
             case "yes:" + NewSession:
-                if (session is null || !_confirmations.TryConfirm(chat, NewSession, session)) return Stale;
+                if (session is null || !_confirmations.TryConfirm(chat, NewSession, session)) return PendingConfirmations.Stale;
 
                 scope.SetSessionId(null);
                 // Как и /new: прошлый контекст забыт, картинки к нему больше не нужны.
@@ -59,7 +62,7 @@ public sealed class ContextScreen(
                 return "🆕 Следующее сообщение начнёт новую сессию";
 
             case "yes:" + Compact:
-                if (!_confirmations.TryConfirm(chat, Compact, session)) return Stale;
+                if (!_confirmations.TryConfirm(chat, Compact, session)) return PendingConfirmations.Stale;
                 if (worker.IsBusy(chat)) return "Идёт запуск — сжать можно, когда он закончится";
 
                 return Enqueue(chat, user, AgentRunKind.Compact, "контекст: сжать",
@@ -69,8 +72,6 @@ public sealed class ContextScreen(
                 return null;
         }
     }
-
-    private const string Stale = "Подтверждение устарело — нажмите кнопку ещё раз";
 
     private string Enqueue(ChatId chat, UserId user, AgentRunKind kind, string label, string reply)
     {
@@ -120,8 +121,8 @@ public sealed class ContextScreen(
 
         var rows = new List<KeyboardButton[]>();
         if (agent.Capabilities.Context)
-            rows.Add([Button("📋 Подробно", "ctx:info"), Button("🗜 Сжать", $"ctx:{Compact}")]);
-        rows.Add([Button("🆕 Новая сессия", $"ctx:{NewSession}")]);
+            rows.Add([Button("📋 Подробно", $"{ScreenKey}:info"), Button("🗜 Сжать", $"{ScreenKey}:{Compact}")]);
+        rows.Add([Button("🆕 Новая сессия", $"{ScreenKey}:{NewSession}")]);
         rows.Add([BackButton]);
 
         return (html, new Keyboard(rows));
@@ -140,6 +141,13 @@ public sealed class ContextScreen(
         var measured = session.ContextUtc is { } at ? $"\n<i>Замер после запуска {E(at.Ago)}.</i>" : "";
         return $"<code>{LimitBars.Bar(used)}</code> {line}{measured}";
     }
+
+    /// <summary>
+    /// Одна строка заполненности для сводок («Корень», «Статус»): без замера — прочерк. Условие
+    /// «есть замер» живёт только здесь, рядом с <see cref="Share"/>.
+    /// </summary>
+    internal static string Line(SessionRecord? session) =>
+        session is not null && Share(session) is not null ? Fill(session, bar: false) : "—";
 
     /// <summary>
     /// Сколько ещё живёт кэш сессии. Единственное место, где срок превращается в текст: «Статус»
@@ -214,6 +222,6 @@ public sealed class ContextScreen(
 
         var yes = action == Compact ? "✅ Да, сжать" : "✅ Да, новая сессия";
 
-        return (html, new Keyboard([[Button(yes, $"ctx:yes:{action}"), Button("↩️ Нет", "ctx:no")]]));
+        return (html, new Keyboard([[Button(yes, $"{ScreenKey}:yes:{action}"), Button("↩️ Нет", $"{ScreenKey}:no")]]));
     }
 }

@@ -21,9 +21,8 @@ public sealed class ApprovalTextHandler(ApprovalBroker broker, IChatChannel chan
         // дальше тоже нельзя — текст стал бы новой задачей.
         if (delivery == TextDelivery.Ambiguous)
         {
-            await channel.SendAsync(message.Chat, new OutgoingMessage(
-                "⚠️ Текста ждут сразу несколько карточек — ответьте (reply) на сообщение той, которой он адресован.",
-                Rich: false), ct);
+            await channel.SayAsync(message.Chat,
+                "⚠️ Текста ждут сразу несколько карточек — ответьте (reply) на сообщение той, которой он адресован.", ct);
             return true;
         }
 
@@ -36,7 +35,7 @@ public sealed class ApprovalTextHandler(ApprovalBroker broker, IChatChannel chan
                 ? "⚠️ Картинка в ответ на карточку не идёт — принята только подпись."
                 : "⚠️ Карточка ждёт текстового ответа — напишите его сообщением.";
 
-            await channel.SendAsync(message.Chat, new OutgoingMessage(reply, Rich: false), ct);
+            await channel.SayAsync(message.Chat, reply, ct);
         }
 
         return message.Text.Length == 0 || delivery == TextDelivery.Delivered;

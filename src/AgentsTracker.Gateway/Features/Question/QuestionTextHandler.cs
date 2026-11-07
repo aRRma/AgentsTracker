@@ -8,8 +8,6 @@ namespace AgentsTracker.Gateway.Features.Question;
 /// </summary>
 public sealed class QuestionTextHandler(IChatChannel channel, QuestionLauncher launcher) : IChatTextHandler
 {
-    private static readonly string[] CancelWords = ["отмена", "-", "cancel"];
-
     public async Task<bool> TryHandleAsync(IncomingMessage message, CancellationToken ct)
     {
         var (chat, user) = (message.Chat, message.User);
@@ -22,14 +20,14 @@ public sealed class QuestionTextHandler(IChatChannel channel, QuestionLauncher l
 
         var text = message.Text.Trim();
 
-        if (text.Length == 0 || CancelWords.Contains(text, StringComparer.OrdinalIgnoreCase))
+        if (text.Length == 0 || CancelWords.Matches(text))
         {
-            await channel.SendAsync(chat, new OutgoingMessage("Вопрос не задан.", Rich: false), ct);
+            await channel.SayAsync(chat, "Вопрос не задан.", ct);
             return true;
         }
 
         var accepted = launcher.Ask(chat, user, text, message.Message);
-        await channel.SendAsync(chat, new OutgoingMessage(accepted, Rich: false, ReplyTo: message.Message), ct);
+        await channel.SayAsync(chat, accepted, ct, message.Message);
         return true;
     }
 }

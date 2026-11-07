@@ -8,7 +8,7 @@ public sealed class HelpCommandHandler(IChatChannel channel, IAgentBackend agent
     public IReadOnlyCollection<string> Commands { get; } = ["/start", "/help"];
 
     public async Task HandleAsync(ChatCommandContext context, CancellationToken ct) =>
-        await channel.SendAsync(context.Chat, new OutgoingMessage(Text(work.Allows(context.User)), Rich: false), ct);
+        await channel.SayAsync(context.Chat, Text(work.Allows(context.User)), ct);
 
     /// <param name="workAllowed">
     /// Говорить ли о теме «Работа»: тому, кому она не разрешена, строка про неё — только вопрос

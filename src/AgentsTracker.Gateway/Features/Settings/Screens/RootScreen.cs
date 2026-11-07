@@ -42,9 +42,7 @@ public sealed class RootScreen(
 
         // Вопрос идёт параллельно задаче: без своей строки «простаивает» при идущем вопросе
         // выглядело бы так, будто ответа не будет.
-        var questions = worker.IsAnsweringFor(chat)
-            ? $"\n💬 Идёт вопрос{(worker.QuestionQueueLength > 0 ? $", ещё в очереди: {worker.QuestionQueueLength}" : "")}"
-            : "";
+        var questions = worker.IsAnsweringFor(chat) ? ScopeLabel.Answering(worker) : "";
 
         var html = $"""
             ⚙️ <b>Настройки</b> — {E(agent.DisplayName)}
@@ -53,7 +51,7 @@ public sealed class RootScreen(
             🧠 Модель: <b>{E(store.ModelLabel(scope.EffectiveModel, agent.Capabilities.Model) ?? "по умолчанию")}</b>{effort}
             🔐 Режим: <b>{E(scope.EffectivePermissionMode)}</b>
             🧵 Сессия: {(session is null ? "<i>новая</i>" : $"<b>{E(session.Title)}</b>")}
-            📦 Контекст: {(session is { ContextTokens: > 0, ContextWindow: > 0 } ? ContextScreen.Fill(session, bar: false) : "—")}
+            📦 Контекст: {ContextScreen.Line(session)}
             🚦 Осталось: <b>{E(plan.Length > 0 ? plan : "—")}</b>
             ⚙️ {(worker.IsBusy(chat) ? "выполняется" : "простаивает")}, в очереди: {worker.QueueLength(chat)}{questions}
             """;

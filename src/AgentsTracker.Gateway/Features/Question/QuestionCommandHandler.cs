@@ -14,12 +14,12 @@ public sealed class QuestionCommandHandler(
     {
         if (context.Argument.Length == 0)
         {
-            await channel.SendAsync(context.Chat, new OutgoingMessage(Prompt(context.Chat), Rich: false), ct);
+            await channel.SayAsync(context.Chat, Prompt(context.Chat), ct);
             return;
         }
 
         var accepted = launcher.Ask(context.Chat, context.User, context.Argument, context.Message);
-        await channel.SendAsync(context.Chat, new OutgoingMessage(accepted, Rich: false, ReplyTo: context.Message), ct);
+        await channel.SayAsync(context.Chat, accepted, ct, context.Message);
     }
 
     private string Prompt(ChatId chat)

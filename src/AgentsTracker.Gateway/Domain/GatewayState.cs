@@ -50,7 +50,7 @@ public sealed class GatewayState : IChatSelection
     public DateTimeOffset? LastActivityUtc { get; set; }
 
     /// <summary>
-    /// Последний известный срок кэша основной ветки. Общий, а не у сессии: он зависит от
+    /// Последний известный срок кэша основного потока. Общий, а не у сессии: он зависит от
     /// подписки (час, сверх неё — пять минут), а не от разговора. Запуск, который только читал
     /// кэш, срок не сообщает — даже первый в новой сессии, если её начало уже было в кэше.
     /// </summary>
@@ -72,7 +72,7 @@ public sealed class GatewayState : IChatSelection
     /// <summary>Режим работы агента, выставленный командой /mode. null = из конфига.</summary>
     public string? PermissionMode { get; set; }
 
-    /// <summary>Уровень усилий, выставленный из чата. null = из конфига.</summary>
+    /// <summary>Effort, выставленный из чата. null = из конфига.</summary>
     public string? Effort { get; set; }
 
     /// <summary>

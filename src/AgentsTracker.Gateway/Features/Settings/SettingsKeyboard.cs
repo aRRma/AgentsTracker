@@ -15,11 +15,33 @@ internal static class SettingsKeyboard
     /// <summary>Строк на странице списка: больше — и сообщение с клавиатурой уже не прочитать.</summary>
     public const int PageSize = 12;
 
+    /// <summary>
+    /// Префиксы аргументов страниц и папок у экранов-списков: не hex, чтобы не спутать с 12-значным
+    /// ключом (<see cref="Key12"/>) — иначе значение кнопки разобралось бы как чужой ключ.
+    /// </summary>
+    public const string PagePrefix = "p";
+
+    public const string GroupPrefix = "g";
+
+    /// <summary>Возврат от списка внутри папки к списку папок.</summary>
+    public const string UpArgument = "up";
+
+    /// <summary>Разбор аргумента перелистывания «p3»; false — аргумент не про страницу.</summary>
+    public static bool TryPage(string argument, out int page)
+    {
+        page = 0;
+        return argument.StartsWith(PagePrefix, StringComparison.Ordinal)
+            && int.TryParse(argument[PagePrefix.Length..], out page);
+    }
+
     public static KeyboardButton Button(string label, string data) => new(label, CallbackPrefix + data);
 
     public static KeyboardButton BackButton => Button("◀️ Назад", "root");
 
     public static string Marker(bool selected) => selected ? "▶" : "·";
+
+    /// <summary>Отметка выбранного на кнопке без точки для невыбранного: «▶ имя» против «имя».</summary>
+    public static string Chosen(bool selected) => selected ? "▶ " : "";
 
     public static string E(string text) => ChatHtml.Escape(text);
 

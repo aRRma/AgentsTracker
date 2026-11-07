@@ -20,7 +20,7 @@ public sealed class RulesCommandHandler(IChatChannel channel, SessionStore store
     public IReadOnlyCollection<string> Commands { get; } = ["/rules"];
 
     public async Task HandleAsync(ChatCommandContext context, CancellationToken ct) =>
-        await channel.SendAsync(context.Chat, new OutgoingMessage(Manage(context), Rich: false), ct);
+        await channel.SayAsync(context.Chat, Manage(context), ct);
 
     private string Manage(ChatCommandContext context)
     {
@@ -29,7 +29,7 @@ public sealed class RulesCommandHandler(IChatChannel channel, SessionStore store
 
         // Правил у «Работы» не бывает: «Всегда» там нет, и чужое правило шлюз в ней не применяет.
         if (scope.IsWork)
-            return "В теме «Работа» правил «всегда» нет — каждое действие вне ваших правил спрашивается кнопками.";
+            return "В теме «Работа» правил «всегда» нет — каждое действие вне ваших правил — карточкой.";
 
         var rules = scope.AlwaysAllowRules();
         // У беседы вместо имени — слово: имя её временной папки («telegram_123_42») человеку ни о чём.
@@ -43,7 +43,7 @@ public sealed class RulesCommandHandler(IChatChannel channel, SessionStore store
             if (removed > 0) Audit(context, $"clear ({removed})");
             return removed == 0
                 ? $"Правил «всегда» {where} и не было."
-                : $"♾ Снято правил {where}: {removed}. Теперь всё снова спрашивается кнопками.";
+                : $"♾ Снято правил {where}: {removed}. Теперь всё снова — карточкой.";
         }
 
         if (argument.StartsWith("del", StringComparison.OrdinalIgnoreCase))
@@ -60,7 +60,7 @@ public sealed class RulesCommandHandler(IChatChannel channel, SessionStore store
         }
 
         if (rules.Count == 0)
-            return $"Правил «всегда» для {project} нет — каждое действие спрашивается кнопками." + CliNote;
+            return $"Правил «всегда» для {project} нет — каждое действие — карточкой." + CliNote;
 
         // Правил может накопиться сколько угодно, а сообщение в чате ограничено:
         // набираем список по бюджету, остаток показываем числом.

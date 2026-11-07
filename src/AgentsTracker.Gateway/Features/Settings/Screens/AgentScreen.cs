@@ -22,11 +22,14 @@ public sealed class AgentScreen(
     internal const string Now = "now:";
 
     private const string Yes = "yes:";
-    private const string Stale = "Подтверждение устарело — нажмите кнопку ещё раз";
 
     private readonly PendingConfirmations _confirmations = new();
 
-    public string Key => "agent";
+    // Константа, а не литерал в каждой кнопке: статические Confirmation и Group не видят Key, а
+    // переименование ключа молча сломало бы нажатия.
+    private const string ScreenKey = "agent";
+
+    public string Key => ScreenKey;
 
     public void Open(ChatId chat) => _confirmations.Cancel(chat);
 
@@ -46,8 +49,8 @@ public sealed class AgentScreen(
         {
             argument = argument[Yes.Length..];
             // Сессию сверяем с той, о которой спрашивали: после смены сессии «Да» сбросил бы
-            // кэш другой ветки, про которую вопроса не было.
-            if (!_confirmations.TryConfirm(chat, argument, scope.SessionId)) return Stale;
+            // кэш другой сессии, про которую вопроса не было.
+            if (!_confirmations.TryConfirm(chat, argument, scope.SessionId)) return PendingConfirmations.Stale;
         }
         else if (!now && CacheWarning(argument, chat) is not null)
         {
@@ -85,11 +88,11 @@ public sealed class AgentScreen(
 
     private string ApplyEffort(string value, UserId user, SessionStore.ChatScope scope)
     {
-        if (agent.Capabilities.Effort is not { } setting) return $"{agent.DisplayName} не поддерживает уровень усилий";
+        if (agent.Capabilities.Effort is not { } setting) return $"{agent.DisplayName} не поддерживает effort";
 
         var reset = IsReset(value);
         var effort = reset ? null : setting.Resolve(value);
-        if (!reset && effort is null) return "Не знаю такой уровень";
+        if (!reset && effort is null) return "Не знаю такой effort";
 
         var previous = scope.Effort;
         scope.SetEffort(effort);
@@ -203,7 +206,7 @@ public sealed class AgentScreen(
             {E(warning)}
             """;
 
-        return (html, new Keyboard([[Button("✅ Да, сменить", $"agent:{Yes}{asked}"), Button("↩️ Нет", "agent:no")]]));
+        return (html, new Keyboard([[Button("✅ Да, сменить", $"{ScreenKey}:{Yes}{asked}"), Button("↩️ Нет", $"{ScreenKey}:no")]]));
     }
 
     private (string Html, Keyboard Keyboard) Render(SessionStore.ChatScope scope)
@@ -234,21 +237,21 @@ public sealed class AgentScreen(
 
         // На кнопке версия, в нажатии — алиас: он и уходит агенту.
         rows.AddRange(caps.Model.Selectable
-            .Select(value => Button($"🧠 {Marker(value == model)} {store.ModelLabel(value, caps.Model)}", $"agent:model:{value}"))
+            .Select(value => Button($"🧠 {Marker(value == model)} {store.ModelLabel(value, caps.Model)}", $"{ScreenKey}:model:{value}"))
             .Chunk(3));
-        rows.Add([Button($"🧠 {Marker(model is null)} по умолчанию", "agent:model:reset")]);
+        rows.Add([Button($"🧠 {Marker(model is null)} по умолчанию", $"{ScreenKey}:model:reset")]);
 
         if (caps.Effort is { } effortSetting)
         {
             rows.AddRange(Group("🎚", effortSetting, effort, "effort", 3));
-            rows.Add([Button($"🎚 {Marker(effort is null)} по умолчанию", "agent:effort:reset")]);
+            rows.Add([Button($"🎚 {Marker(effort is null)} по умолчанию", $"{ScreenKey}:effort:reset")]);
         }
 
         // В «Работе» кнопки режима только вели бы к отказу: режим там закреплён.
         if (!scope.IsWork)
         {
             rows.AddRange(Group("🔐", caps.PermissionMode, mode, "mode", 2));
-            rows.Add([Button($"🔐 {Marker(scope.PermissionMode is null)} из конфига ({options.Value.PermissionMode})", "agent:mode:reset")]);
+            rows.Add([Button($"🔐 {Marker(scope.PermissionMode is null)} из конфига ({options.Value.PermissionMode})", $"{ScreenKey}:mode:reset")]);
         }
 
         rows.Add([BackButton]);
@@ -260,6 +263,6 @@ public sealed class AgentScreen(
     private static IEnumerable<KeyboardButton[]> Group(
         string icon, AgentSetting setting, string? current, string kind, int perRow) =>
         setting.Selectable
-            .Select(value => Button($"{icon} {Marker(value == current)} {value}", $"agent:{kind}:{value}"))
+            .Select(value => Button($"{icon} {Marker(value == current)} {value}", $"{ScreenKey}:{kind}:{value}"))
             .Chunk(perRow);
 }

@@ -85,9 +85,9 @@ public sealed class TopicScreen(SessionStore store, WorkAccess work, IAuditLog a
         List<KeyboardButton> row =
         [
             Button("📁 Проект", "proj"),
-            Button($"{(scope.IsChosenTalk ? "▶ " : "")}💬 Беседа", $"{ScreenKey}:{Talk}"),
+            Button($"{Chosen(scope.IsChosenTalk)}💬 Беседа", $"{ScreenKey}:{Talk}"),
         ];
-        if (work.Enabled) row.Add(Button($"{(scope.IsWork ? "▶ " : "")}💼 Работа", $"{ScreenKey}:{Work}"));
+        if (work.Enabled) row.Add(Button($"{Chosen(scope.IsWork)}💼 Работа", $"{ScreenKey}:{Work}"));
 
         return (html, new Keyboard([row, [BackButton]]));
     }

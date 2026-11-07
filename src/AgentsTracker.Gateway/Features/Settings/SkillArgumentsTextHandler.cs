@@ -8,8 +8,6 @@ namespace AgentsTracker.Gateway.Features.Settings;
 /// </summary>
 public sealed class SkillArgumentsTextHandler(IChatChannel channel, SkillLauncher launcher) : IChatTextHandler
 {
-    private static readonly string[] CancelWords = ["отмена", "-", "cancel"];
-
     public async Task<bool> TryHandleAsync(IncomingMessage message, CancellationToken ct)
     {
         var (chat, user) = (message.Chat, message.User);
@@ -23,13 +21,13 @@ public sealed class SkillArgumentsTextHandler(IChatChannel channel, SkillLaunche
 
         var trimmed = message.Text.Trim();
 
-        if (CancelWords.Contains(trimmed, StringComparer.OrdinalIgnoreCase))
+        if (CancelWords.Matches(trimmed))
         {
-            await channel.SendAsync(chat, new OutgoingMessage($"Запуск {command} отменён.", Rich: false), ct);
+            await channel.SayAsync(chat, $"Запуск {command} отменён.", ct);
             return true;
         }
 
-        await channel.SendAsync(chat, new OutgoingMessage(launcher.Launch(chat, user, command, trimmed), Rich: false), ct);
+        await channel.SayAsync(chat, launcher.Launch(chat, user, command, trimmed), ct);
         return true;
     }
 }

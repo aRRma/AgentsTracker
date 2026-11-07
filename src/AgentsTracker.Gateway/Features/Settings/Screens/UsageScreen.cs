@@ -65,7 +65,7 @@ public sealed class UsageScreen(SessionStore store, IAgentLimits limits, IAuditL
             {(models.Any() ? string.Join("\n", models) : "<i>пусто</i>")}
             """;
 
-        return (html, new Keyboard([[Button("♻️ Сбросить", "usage:reset")], [BackButton]]));
+        return (html, new Keyboard([[Button("♻️ Сбросить", $"{Key}:reset")], [BackButton]]));
     }
 
     /// <summary>

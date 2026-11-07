@@ -16,77 +16,71 @@ public sealed class SettingsCommandHandler(
     ChatWorker worker,
     IOptions<GatewayOptions> options) : IChatCommandHandler
 {
+    // Команды, которые просто открывают экран меню. Список Commands собран из этого же словаря:
+    // новая команда, правленная в двух местах, либо не дошла бы сюда, либо ничего не открыла бы.
+    private static readonly Dictionary<string, string> ScreenCommands = new()
+    {
+        ["/status"] = "status",
+        ["/sessions"] = "sess",
+        ["/skills"] = "skills",
+        ["/project"] = "proj",
+        ["/usage"] = "usage",
+    };
+
     public IReadOnlyCollection<string> Commands { get; } =
-        ["/menu", "/settings", "/status", "/sessions", "/agent", "/model", "/effort", "/mode", "/skills", "/project", "/usage"];
+        ["/menu", "/settings", .. ScreenCommands.Keys, "/agent", "/model", "/effort", "/mode"];
 
     public async Task HandleAsync(ChatCommandContext context, CancellationToken ct)
     {
         var (chat, user, command, argument, _) = context;
 
+        if (ScreenCommands.TryGetValue(command, out var screen))
+        {
+            await menu.OpenAsync(chat, ct, screen);
+            return;
+        }
+
         switch (command)
         {
             case "/menu" or "/settings":
-                await menu.OpenAsync(chat, user, ct);
-                break;
-
-            case "/status":
-                await menu.OpenAsync(chat, user, ct, "status");
-                break;
-
-            case "/sessions":
-                await menu.OpenAsync(chat, user, ct, "sess");
-                break;
-
-            case "/skills":
-                await menu.OpenAsync(chat, user, ct, "skills");
-                break;
-
-            case "/project":
-                await menu.OpenAsync(chat, user, ct, "proj");
-                break;
-
-            case "/usage":
-                await menu.OpenAsync(chat, user, ct, "usage");
+                await menu.OpenAsync(chat, ct);
                 break;
 
             // Без аргумента открываем тот же экран с кнопками: набирать значение руками
             // после текстовой подсказки — лишний шаг с телефона.
             case "/agent":
             case "/model" or "/effort" or "/mode" when argument.Length == 0:
-                await menu.OpenAsync(chat, user, ct, "agent");
+                await menu.OpenAsync(chat, ct, "agent");
                 break;
 
             case "/model":
                 var warning = CacheNote(Agent().CacheWarning("model:" + argument, chat));
-                await ReplyAsync(chat, (Agent().Apply(AgentScreen.Now + "model:" + argument, user, chat) ?? "") + warning, ct);
+                await channel.SayAsync(chat, (Agent().Apply(AgentScreen.Now + "model:" + argument, user, chat) ?? "") + warning, ct);
                 break;
 
             case "/effort":
-                await ReplyAsync(chat, ChangeEffort(argument, user, chat), ct);
+                await channel.SayAsync(chat, ChangeEffort(argument, user, chat), ct);
                 break;
 
             case "/mode":
-                await ReplyAsync(chat, ChangeMode(argument, user, chat), ct);
+                await channel.SayAsync(chat, ChangeMode(argument, user, chat), ct);
                 break;
         }
     }
-
-    private Task ReplyAsync(ChatId chat, string text, CancellationToken ct) =>
-        channel.SendAsync(chat, new OutgoingMessage(text, Rich: false), ct);
 
     private AgentScreen Agent() => (AgentScreen)menu.Screen("agent");
 
     /// <summary>Предупреждение о кэше к ответу команды — её уже выполнили, так что это не вопрос, а факт.</summary>
     private static string CacheNote(string? warning) => warning is null ? "" : $"\n🧊 {warning}";
 
-    /// <summary>Меняет уровень усилий модели. Применяется со следующего запуска.</summary>
+    /// <summary>Меняет effort. Применяется со следующего запуска.</summary>
     private string ChangeEffort(string argument, UserId user, ChatId chat)
     {
         if (agent.Capabilities.Effort is not { } setting)
-            return $"{agent.DisplayName} не поддерживает уровень усилий.";
+            return $"{agent.DisplayName} не поддерживает effort.";
 
         if (!argument.Equals("reset", StringComparison.OrdinalIgnoreCase) && setting.Resolve(argument) is null)
-            return $"Не знаю уровень «{argument}». Доступно: {string.Join(", ", setting.Selectable)}, reset.";
+            return $"Не знаю effort «{argument}». Доступно: {string.Join(", ", setting.Selectable)}, reset.";
 
         Agent().Apply("effort:" + argument, user, chat);
 

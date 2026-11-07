@@ -25,7 +25,7 @@ public sealed class AuditCommandHandler(IChatChannel channel, IAuditLog audit) :
 
         if (entries.Count == 0)
         {
-            await channel.SendAsync(context.Chat, new OutgoingMessage("Журнал пуст.", Rich: false), ct);
+            await channel.SayAsync(context.Chat, "Журнал пуст.", ct);
             return;
         }
 

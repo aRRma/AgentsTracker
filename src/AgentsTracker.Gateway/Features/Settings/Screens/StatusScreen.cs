@@ -1,6 +1,5 @@
 using System.Runtime.CompilerServices;
 using AgentsTracker.Gateway.Features.Chat;
-using AgentsTracker.Gateway.Infrastructure.Audit;
 using AgentsTracker.Gateway.Infrastructure.Chat;
 using AgentsTracker.Gateway.Infrastructure.Git;
 using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
@@ -13,7 +12,7 @@ namespace AgentsTracker.Gateway.Features.Settings.Screens;
 /// взгляда, а движение показывает, что шлюз жив. «Обновить» перерисовывает тем же способом.
 /// </summary>
 public sealed class StatusScreen(
-    SessionStore store, IAgentBackend agent, ChatWorker worker, IAgentLimits limits, GitRepository git, IAuditLog audit)
+    SessionStore store, IAgentBackend agent, ChatWorker worker, IAgentLimits limits, GitRepository git)
     : ISettingsScreen
 {
     public string Key => "status";
@@ -23,11 +22,7 @@ public sealed class StatusScreen(
         switch (argument)
         {
             case "stop":
-                var stopped = worker.Stop(chat);
-                var scope = store.For(chat);
-                audit.Write(AuditEvent.Now(AuditKinds.Gateway, "/stop", user, chat, scope.ProjectPath, scope.SessionId,
-                    stopped ? "stopped" : "idle"));
-                return stopped ? "Остановлено" : "Сейчас ничего не выполняется";
+                return worker.StopBy(chat, user) ? "Остановлено" : "Сейчас ничего не выполняется";
 
             case "refresh":
                 return "Обновлено";
@@ -78,9 +73,7 @@ public sealed class StatusScreen(
         // Вопрос идёт параллельно задаче: без своей строки и кнопки «Остановить» идущий вопрос
         // выглядел бы простоем, а остановить его со статуса было бы нечем.
         var answering = worker.IsAnsweringFor(chat);
-        var questions = answering
-            ? $"\n💬 Идёт вопрос{(worker.QuestionQueueLength > 0 ? $", ещё в очереди: {worker.QuestionQueueLength}" : "")}"
-            : "";
+        var questions = answering ? ScopeLabel.Answering(worker) : "";
 
         var effort = agent.Capabilities.Effort is null
             ? ""
@@ -101,7 +94,7 @@ public sealed class StatusScreen(
 
             {where}
             🧵 Сессия: {(session is null ? "<i>новая</i>" : $"<b>{E(session.Title)}</b> · {session.Turns} х")}
-            📦 Контекст: {(session is { ContextTokens: > 0, ContextWindow: > 0 } ? ContextScreen.Fill(session, bar: false) : "—")}
+            📦 Контекст: {ContextScreen.Line(session)}
             🧊 Кэш: {ContextScreen.Cache(session, ContextScreen.Mismatch(store, scope, agent, session))}
             🧠 {E(store.ModelLabel(scope.EffectiveModel, agent.Capabilities.Model) ?? "модель по умолчанию")}{effort} · 🔐 {E(scope.EffectivePermissionMode)}
             {rules}
@@ -113,8 +106,8 @@ public sealed class StatusScreen(
         var keyboard = new Keyboard(
         [
             busy || answering
-                ? [Button("🔄 Обновить", "status:refresh"), Button("🛑 Остановить", "status:stop")]
-                : [Button("🔄 Обновить", "status:refresh")],
+                ? [Button("🔄 Обновить", $"{Key}:refresh"), Button("🛑 Остановить", $"{Key}:stop")]
+                : [Button("🔄 Обновить", $"{Key}:refresh")],
             [Button("🧵 Сессии", "sess"), Button("🤖 Агент", "agent")],
             [BackButton],
         ]);

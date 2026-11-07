@@ -8,7 +8,7 @@ namespace AgentsTracker.Gateway.Features.Settings.Screens;
 /// <summary>
 /// Сессии текущего проекта: какая активна, переключение, новая, остановка идущего запуска,
 /// очистка списка. «Остановить» здесь же: запуск и сессия — одна рабочая единица,
-/// и прерывать его удобнее там, где видно, в какой ветке он идёт.
+/// и прерывать его удобнее там, где видно, в какой сессии он идёт.
 /// </summary>
 public sealed class SessionsScreen(
     SessionStore store, IAgentBackend agent, ChatWorker worker, AttachmentInbox inbox, IAuditLog audit) : ISettingsScreen
@@ -34,13 +34,7 @@ public sealed class SessionsScreen(
             return "Следующее сообщение начнёт новую сессию";
         }
 
-        if (argument == "stop")
-        {
-            var stopped = worker.Stop(chat);
-            audit.Write(AuditEvent.Now(AuditKinds.Gateway, "/stop", user, chat, project, previous,
-                stopped ? "stopped" : "idle"));
-            return stopped ? "Остановлено" : "Сейчас ничего не выполняется";
-        }
+        if (argument == "stop") return worker.StopBy(chat, user) ? "Остановлено" : "Сейчас ничего не выполняется";
 
         if (argument == "clear")
         {
@@ -97,15 +91,15 @@ public sealed class SessionsScreen(
             """;
 
         var buttons = sessions
-            .Select((s, i) => Button($"{(s.Id == active ? "▶ " : "")}{i + 1}", $"sess:{s.Id.ShortId}"))
+            .Select((s, i) => Button($"{Chosen(s.Id == active)}{i + 1}", $"{Key}:{s.Id.ShortId}"))
             .Chunk(4)
             .ToList();
 
         buttons.Add(busy
-            ? [Button("🆕 Новая", "sess:new"), Button("🛑 Остановить", "sess:stop")]
-            : [Button("🆕 Новая", "sess:new"), Button("🗑 Очистить", "sess:clear")]);
+            ? [Button("🆕 Новая", $"{Key}:new"), Button("🛑 Остановить", $"{Key}:stop")]
+            : [Button("🆕 Новая", $"{Key}:new"), Button("🗑 Очистить", $"{Key}:clear")]);
 
-        // Вопрос — соседняя по смыслу кнопка: спросить, не трогая выбранную ветку. Экран «Вопрос»
+        // Вопрос — соседняя по смыслу кнопка: спросить, не трогая выбранную сессию. Экран «Вопрос»
         // отменяет ожидание сам, поэтому переход отсюда ничего не ломает.
         buttons.Add([Button("💬 Вопрос вне сессии", "ask")]);
         buttons.Add([BackButton]);

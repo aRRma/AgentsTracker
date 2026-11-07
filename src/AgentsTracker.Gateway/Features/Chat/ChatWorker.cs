@@ -162,6 +162,19 @@ public sealed class ChatWorker(
         return stopped;
     }
 
+    /// <summary>
+    /// /stop из чата или меню: прервать и записать в журнал, кто и с каким итогом. Одно место
+    /// вместо трёх копий — иначе остановка из одного из экранов могла бы пропасть из журнала.
+    /// </summary>
+    public bool StopBy(ChatId chat, UserId user)
+    {
+        var stopped = Stop(chat);
+        var scope = store.For(chat);
+        audit.Write(AuditEvent.Now(AuditKinds.Gateway, "/stop", user, chat, scope.ProjectPath, scope.SessionId,
+            stopped ? "stopped" : "idle"));
+        return stopped;
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // Картинки прошлых суток переживают перезапуск: чистим их до первого сообщения.
@@ -865,7 +878,7 @@ public sealed class ChatWorker(
     /// Подпись под ответом: id сессии, которой отвечал агент. По нему ответ находится
     /// в <c>/sessions</c> и <c>/status</c>, и по нему же сессию можно продолжить
     /// из терминала в той же папке. Модель и effort — чтобы по ответу было видно, кто
-    /// и с каким усилием его дал: модель фактическая, со слов агента, а effort — переданный,
+    /// и с каким effort его дал: модель фактическая, со слов агента, а effort — переданный,
     /// агент его не сообщает. «Кэш до» — время, а не обратный отсчёт: сообщение не обновляется,
     /// и «ещё 50 мин» через полчаса читалось бы как неправда.
     /// </summary>

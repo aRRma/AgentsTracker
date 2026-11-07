@@ -1,3 +1,4 @@
+using AgentsTracker.Gateway.Features.Chat;
 using AgentsTracker.Gateway.Features.Settings.Screens;
 using static AgentsTracker.Gateway.Features.Settings.SettingsKeyboard;
 
@@ -12,6 +13,13 @@ public static class ScopeLabel
     /// <summary>Короткое имя в строку: «беседа», «работа» или имя проекта.</summary>
     public static string Name(SessionStore.ChatScope scope, string project) =>
         scope.IsTalk ? "беседа" : scope.IsWork ? "работа" : Path.GetFileName(project);
+
+    /// <summary>
+    /// Строка «идёт вопрос» для сводок: вопрос идёт параллельно задаче, и без неё «простаивает»
+    /// при идущем вопросе выглядело бы так, будто ответа не будет. Одна формулировка на «Корень» и «Статус».
+    /// </summary>
+    public static string Answering(ChatWorker worker) =>
+        $"\n💬 Идёт вопрос{(worker.QuestionQueueLength > 0 ? $", ещё в очереди: {worker.QuestionQueueLength}" : "")}";
 
     /// <summary>
     /// Блок «где» для сводок: тип, имя и путь. <paramref name="projectSuffix"/> дописывается только к
