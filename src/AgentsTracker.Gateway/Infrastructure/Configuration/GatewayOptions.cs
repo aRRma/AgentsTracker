@@ -140,6 +140,13 @@ public sealed class WorkOptions
                 if (Overlaps(root, ProjectCatalog.Normalize(project)))
                     errors.Add($"{key}:Folder ({root}) пересекается с проектом {project}.");
             }
+
+            // Корень обхода внутри корня «Работы»: список проектов молча опустел бы — папки «Работы»
+            // из него вычёркиваются. Обратное (корень «Работы» внутри обхода) — обычное дело.
+            if (options.ProjectsRoot is { Length: > 0 } projectsRoot
+                && ProjectCatalog.Normalize(projectsRoot) is var walked
+                && (ProjectCatalog.Same(walked, root) || ProjectCatalog.IsInside(walked, root)))
+                errors.Add($"{key}:Folder ({root}) содержит ProjectsRoot ({projectsRoot}): список проектов был бы пуст.");
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {

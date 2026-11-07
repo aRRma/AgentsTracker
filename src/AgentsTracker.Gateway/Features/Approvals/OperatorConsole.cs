@@ -260,7 +260,9 @@ public sealed class OperatorConsole(
         // запретов Claude на чтение. Папка данных шлюза исключена отдельно — она вне проекта,
         // но пусть отказ не зависит от того, куда её перенесли.
         if (!ProjectCatalog.IsInside(full, project) || ProjectCatalog.IsInside(full, DataDirectory))
-            return Refuse(run, full, $"Файл вне текущего проекта ({project}). Отправлять можно только файлы из него.");
+            return Refuse(run, full, run.Work
+                ? $"Файл вне папки темы «Работа» ({project}). Скопируйте его туда и отправьте оттуда."
+                : $"Файл вне текущего проекта ({project}). Отправлять можно только файлы из него.");
 
         var extension = Path.GetExtension(full);
         if (!AllowedExtensions.TryGetValue(extension, out var isImage))

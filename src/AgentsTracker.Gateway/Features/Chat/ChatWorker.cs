@@ -488,7 +488,8 @@ public sealed class ChatWorker(
                 request.RunId, prompt.Chat, prompt.ReplyTo,
                 question ? scope.ProjectPath : project,
                 question ? null : runSessionId,
-                Work: machine));
+                // Вопрос в теме «Работа» шлёт файлы из её папки — и «Всегда» ему тоже ни к чему.
+                Work: machine || (question && scope.IsWork)));
 
             result = await agent.RunAsync(
                 request, new RunObserver(store, scope, watched ? monitor : null, request, runSessionId, folder, status), runCts.Token);
