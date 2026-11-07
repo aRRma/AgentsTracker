@@ -1,10 +1,8 @@
 # How the gateway is built
 
-When to read this: you need to find where something lives, or why it is there. Checklists for adding
-a command, a screen, an agent or a channel — `extending.md`; the undocumented parts of the CLI
-contract — `cli-contract.md`; the words used in buttons, messages and here — `glossary.md`.
+When to read this: you need to find where something lives, or why it is there.
 
-## The projects
+## Code layout
 
 ```
 src/AgentsTracker.Agents.Abstractions/   agent contracts, no Telegram and no specific CLI
@@ -55,11 +53,7 @@ src/AgentsTracker.Gateway/
     Help/ Audit/ Monitor/   /start /help; /audit; the web page (index.html — EmbeddedResource) and /api/*
 ```
 
-Layering rules (also in CLAUDE.md — breaking one is an architecture error, not a typo): `Domain` and
-`Abstractions` do not open files and do not go over the network; `Gateway` knows a specific agent
-and channel only in `Program.cs`; the backend and the channel know nothing about each other or
-`GatewayOptions`; `Infrastructure` knows nothing about features (except the `Dispatch` contracts); a
-feature depends on a feature only through a public service (`Settings` → `ChatWorker.IsBusy(chat)`).
+Layering rules — CLAUDE.md, "Layout".
 
 ## How a message travels
 
@@ -72,8 +66,7 @@ is a rejection too). Text is processed in order:
    skill arguments (`SkillArgumentsTextHandler`) → the text of a вопрос after a bare `/ask` or the
    «Задать вопрос» button (`QuestionTextHandler`) → in a topic with no type yet, the «Тип темы»
    screen instead of a run (`TopicHandler`) → the agent's queue (`ChatEnqueueTextHandler`, always
-   `true`). That is why `ChatModule` is last. Unknown slash commands are Claude Code's own and go to
-   the CLI.
+   `true`). That is why `ChatModule` is last.
 
 The order holds for a caption too: `/stop` works with a picture attached; the picture is not saved
 and the dispatcher says so. A message with an attachment is not skill arguments —
@@ -102,14 +95,13 @@ the new ones are checked too. Why —
 `ChatWorker` has a task lane per chat — the лента and every тема (`ChatId.Key`), created with the
 chat's first task — and one shared вопрос lane. Each has its own queue and
 `CancellationTokenSource`. A chat's tasks (and `/context`, `/compact`) go one at a time; lanes of
-different chats and the вопрос lane run **in parallel** — otherwise a вопрос, asked precisely so as
-not to wait, would wait for a long task, and a topic would wait for another topic's project. The
-number of agent processes is not capped.
+different chats and the вопрос lane run **in parallel**, so a вопрос and a topic never wait for a
+long task elsewhere. The number of agent processes is not capped.
 
 - **One run per folder.** `LockFolderAsync` keeps a `SemaphoreSlim` per normalized folder: the
   session's folder (a worktree the agent moved it to), not the project, because that is what the
-  agent edits. The lock is taken right after the trust loop — the card waits outside it, up to a
-  quarter of an hour — and before the model, the limit and the session refresh: a long wait would
+  agent edits. The lock is taken right after the trust loop — the card waits outside it, up to
+  `ApprovalTimeoutMinutes` — and before the model, the limit and the session refresh: a long wait would
   make them stale, and on a limit exhausted meanwhile the CLI would go to credits. A waiting run
   says «⏳ В проекте идёт другой запуск…», and the message is deleted when the wait ends; `/stop`
   interrupts the wait too ("Details worth knowing", `Lane.RunCts`). Under the lock the run
@@ -117,7 +109,7 @@ number of agent processes is not capped.
   the same: a neighbour's run in the folder could have planted a hook, and `/new` could have moved
   the session to another folder. If anything changed, the lock is released and the trust loop runs
   again. The lock is released after the session and usage are recorded, before the answer is sent.
-  Known limit: the lock key is fixed at the start, so a session the agent moves into a worktree
+  Limit: the lock key is fixed at the start, so a session the agent moves into a worktree
   mid-run (`EnterWorktree`) does not lock that worktree.
 - `IsBusy(chat)`/`QueueLength(chat)` are about that chat's tasks only: the menu, a session switch
   and «Сжать» do not wait for a вопрос. `AnyBusy` — for the monitor. `IsAnswering`/`QuestionQueueLength`
@@ -125,15 +117,13 @@ number of agent processes is not capped.
   `/stop` there stops only its own.
 - `/stop` (`ChatWorker.Stop(chat)`) in a topic interrupts that topic's lane, its cards
   (`ApprovalBroker.Cancel(chat)`) and the вопрос if it came from that topic (`Lane.Chat`). `/stop` in
-  the лента interrupts everything, as before topics.
-- A limit refusal, `RateLimited` or a declined trust drains only its own lane: the вопрос has its
-  own model, and the other lanes check the limit before their own runs anyway. The вопрос lane is
-  shared, so every chat whose вопросы were dropped is told.
+  the лента interrupts everything.
+- A limit refusal, `RateLimited` or a declined trust drains only its own lane; the shared вопрос
+  lane tells every chat whose вопросы were dropped.
 - A вопрос stays out of `RunMonitor` (the current run and the queue there are tasks') but is in
   the run history and the journal. The monitor shows one run — the first of those in progress
   (`RunStarted` returns whether it took the slot); its queue holds every chat's tasks.
-- `state.json` keeps tasks in `ActiveRuns` (by chat key; the single `ActiveRun` of a previous version
-  is still read once after an update) and the вопрос in `ActiveQuestion`. After a restart
+- `state.json` keeps tasks in `ActiveRuns` (by chat key) and the вопрос in `ActiveQuestion`. After a restart
   `StartupNotice` reports every interrupted run; a topic gets only its «прерван», «запущен» goes to
   the лента.
 - A вопрос is answered as a **reply** to the user's message: «Вопрос принят», the status, every part
@@ -167,9 +157,8 @@ At startup `McpConfigFile` generates a token. Each run gets its own config file
 (`McpConfigFile.ForRun`): `mcp-gateway-<pid>-<run>.json` with the token and the
 `X-AgentsTracker-Run: <RunId>` header. `ClaudeBackend` deletes it when the process exits, the gateway
 deletes leftovers on shutdown. It is a file, not inline JSON in `--mcp-config`: the arguments go into
-the log, and the token would go with them. The name carries the PID: a shared file was overwritten
-and deleted by a second instance, and the working gateway then died on "mcp__tg__approve not found".
-Files of dead PIDs are swept at startup. `/mcp` is mounted with the `McpConfigFile.Authorizes` filter;
+the log, and the token would go with them. The name carries the PID: a second instance must not
+overwrite or delete another's file. Files of dead PIDs are swept at startup. `/mcp` is mounted with the `McpConfigFile.Authorizes` filter;
 the CLI gets `--mcp-config` and `--permission-prompt-tool mcp__tg__approve`. The server and tool names
 are `McpConfigFile` constants, `[McpServerTool]` takes the same ones.
 
@@ -179,8 +168,8 @@ The run id is how a call finds its run: the tools read the header through `IHttp
 up in `ApprovalBroker.Run(runId)`; an unknown or missing id (the run already ended) is a refusal,
 never a card in somebody else's chat. Subagents live in the same CLI process and send the same header.
 
-The MCP server's `timeout` in the config is `ApprovalTimeoutMinutes` plus one minute: without it the
-CLI aborted the call after 5 minutes of silence and the card was dead afterwards (`cli-contract.md`).
+The MCP server's `timeout` in the config is `ApprovalTimeoutMinutes` plus one minute
+(`cli-contract.md`, "Waiting for a response").
 
 The second tool, `mcp__tg__send_file` (`ClaudeSendFileTool`), goes `IOperatorConsole.SendFileAsync`
 → `OperatorConsole` (checks the folder, type and size, writes `file.send` into the journal) →
@@ -264,7 +253,7 @@ A «Работа» topic is the third type, for remote work on the whole compute
 default `%USERPROFILE%\AgentsTracker-work`), which is created before the run and never emptied; a
 session, the folder lock and the trust gate work as for a project. `ProjectCatalog.List` leaves the
 work folders out while «Работа» is enabled, or they would show up as projects. The run carries
-`AgentToolset.Machine`: every tool, the user's MCP servers (`cli-contract.md`, "«Работа»").
+`AgentToolset.Machine`: every tool, the user's MCP servers (`cli-contract.md`, «Работа»).
 
 - **Access.** Only the ids in `Gateway:Work:AllowedUserIds` (`WorkAccess`; empty list — the button
   is shown to nobody). It is checked on the «Работа» button (`TopicScreen.Apply`) and again before
@@ -290,13 +279,11 @@ that topic's task queue (not the вопрос lane). `run.start` is written only
 out. A 429 on the status is waited out once, like an answer part. The deleted topic's records stay
 in `state.json`, and its active sessions stay marked «🔒» on «Сессии».
 
-With topics on, the лента is a place for service messages: the client moves what is typed there
-into a new topic. Telegram Desktop lets only a command picked from «Меню» reach the лента itself;
-the mobile client moves even those. So «Шлюз запущен» goes to the лента,
-and `/stop` in the лента — «stop everything» — is reached only from «Меню» on Desktop; elsewhere
-`/stop` is given in each topic.
+With topics on, the client moves anything typed in the лента into a new topic, so the лента is for
+service messages («Шлюз запущен»). A command picked from «Меню» may still reach it, depending on the
+client; `/stop` for everything is reliable only there — elsewhere give `/stop` in each topic.
 
-### Context and run kinds
+## Context and run kinds
 
 `AgentRunRequest.Kind` tells the backend what the run is: a `Task` in the session, a `Question` (no
 `--resume`, nothing written to disk, `SessionId` in the result always `null` so the host never makes a
@@ -323,22 +310,22 @@ The session also remembers what the cache was written with: `CacheModel` (the an
 otherwise `null`, because the other modes share the cache. `CacheGuard` holds the rules:
 
 - `WillReset` — a step away from what the cache was written with, while the cache is alive and the
-  context is at least `MinContextTokens` (100k); a step back saves the cache and asks nothing. On the
+  context is at least `MinContextTokens`; a step back saves the cache and asks nothing. On the
   «Агент» screen such a button asks first through `PendingConfirmations`; a typed `/model` or `/mode`
   is a decision already, so it runs at once (`AgentScreen.Now`) and the warning is appended to the reply.
 - `Mismatch` adds «…следующий запуск запишет кэш заново» to the cache line when the menu selection
   already differs from the cache.
 - `Miss` — misses are counted, not guessed: `RunUsage.FirstCacheRead` is what the first main-thread
   request read from the cache; a continued task is a miss when that is under half of the session's
-  previous context (from `MissContextTokens`, 20k — below that only the shared tools and system prompt
+  previous context (from `MissContextTokens` — below that only the shared tools and system prompt
   are at stake). `UsageTotals.CacheMisses` goes to `/usage` and `/api/stats` (`total`, `byDay`).
 
 «Сжать» and «Новая сессия» on «Контекст» use `PendingConfirmations` too: «Да» works only for the same
-action, the same session and within 2 minutes; «Нет» or reopening the screen drops the question.
+action, the same session and within `PendingConfirmations.Lifetime`; «Нет» or reopening the screen drops the question.
 
 `ProjectCatalog`: the `Gateway:Projects` list, otherwise a walk of `Gateway:ProjectsRoot` down to
 `ProjectsRootDepth`, otherwise the neighbours of `ProjectPath`. `ProjectScreen` selects in two steps
-(folder → project) in pages of 12; after a selection the page resets to the first one, or the `▶`
+(folder → project) in pages (`SettingsKeyboard.PageSize`); after a selection the page resets to the first one, or the `▶`
 marker could end up off-screen.
 
 `GitRepository` gives the branch for «Статус», the project list, the run status, the footer,
@@ -362,7 +349,7 @@ absolute paths is still invisible to the gateway. Rules not to loosen:
 - only `ref: refs/heads/<name>` or a SHA is shown, and the class never throws — a failed caption
   must not cost the agent's answer.
 
-The caption (`GitHead.Label`) is cut to 40 characters; the caller escapes it, since git allows `<`,
+The caption (`GitHead.Label`) is cut; the caller escapes it, since git allows `<`,
 `&`, `_` and a backtick in a branch name. The footer compares the branch at the start and at the end
 of the run and shows `master → feature` if the agent switched it itself.
 
@@ -374,11 +361,9 @@ a run lives, `appsettings.Local.json` with the secrets, `inbox\`, `audit\audit-<
 `logs\gateway-<YYYY-MM-DD>.log`.
 
 `SessionStore.Save` writes `state.json.tmp` with `Flush(true)` and swaps it in with `File.Replace`,
-leaving the previous version in `state.json.bak`: without the flush, NTFS after a power cut keeps the
-rename but not the data, and the file comes back empty. A file that does not parse is moved aside as
-`state.json.corrupt-<time>` (never overwritten by the next save), the state comes from the `.bak`, and
-`SessionStore.LoadProblem` goes into «Шлюз запущен» — losing sessions, trust and rules silently is the
-failure this prevents.
+leaving the previous version in `state.json.bak` (a power cut must not leave an empty file). A file
+that does not parse is moved aside as `state.json.corrupt-<time>` (never overwritten by the next
+save), the state comes from the `.bak`, and `SessionStore.LoadProblem` goes into «Шлюз запущен».
 
 The config comes in layers: `appsettings.json` → `appsettings.Local.json` next to the exe (IDE) → the
 same file in the data directory (production) → environment variables. `dpapi:…` is decrypted on load
@@ -389,9 +374,7 @@ same file in the data directory (production) → environment variables. `dpapi:�
 — the host strips them from the environment in `ValidateStartup`. The user-facing side — `deployment.md`.
 
 Moved channel keys live in one list, `ChannelOptions.MovedKeys`: the startup check and
-`protect-secrets` both read it. Test on a copy of the old config: `protect-secrets <path>` must return
-1 with a hint, and `migrate-channel-settings.ps1 -Path <path>` must not touch what is already filled in
-under `Channel:Settings`.
+`protect-secrets` both read it.
 
 ## Audit
 
@@ -400,16 +383,16 @@ journal (`/audit`, the monitor) — "who, where, what". Addresses are stored as 
 strings ("channel:value"), not numbers: ids from different channels collide. `NowByKeys` writes by
 ready-made keys from `state.json`; `Now` goes through it, so masking sits in one place.
 
-No secrets and no full texts: a summary is at most 200 characters, the user's text is a `Text.Preview`
-excerpt of 80. `NowByKeys` masks every summary through `Text.ClipRedacted`: an approval writes the
+No secrets and no full texts: a summary is at most 200 characters, the user's text is an excerpt
+(`Text.Preview`). `NowByKeys` masks every summary through `Text.ClipRedacted`: an approval writes the
 command itself, a command carries a bot token from an environment variable or a curl header just as
-easily, and the monitor serves the journal without a password. `Text.Redact` knows token shapes
-(Telegram, `sk-`, GitHub, AWS, Slack, JWT), `Authorization`/`Bearer`, a password in a URL and the
-values of `token=`/`--password`-like keys; `Text.Preview` masks too (journal, monitor, run status).
+easily, and the monitor serves the journal without a password. `Text.Redact` knows common token
+shapes, `Authorization`/`Bearer`, a password in a URL and the values of `token=`/`--password`-like
+keys; `Text.Preview` masks too (journal, monitor, run status).
 
 The log is masked once, at the sink: `RingBufferLoggerProvider` builds one masked `LogEntry` for both
-the monitor's ring and `LogFile` (`logs\gateway-<YYYY-MM-DD>.log`, Information and above, 14 days by
-the date in the name). The file is written synchronously, so the `CRT` entry of an unhandled exception
+the monitor's ring and `LogFile` (`logs\gateway-<YYYY-MM-DD>.log`, Information and above, kept by
+the date in the name, `LogFile.KeptDays`). The file is written synchronously, so the `CRT` entry of an unhandled exception
 lands before the process exits; a write failure is swallowed. The console is not masked, so the
 rawest text (CLI output, the limits endpoint's error body) is also masked at its call site.
 
@@ -418,10 +401,10 @@ The kinds are in `AuditKinds`: `access.rejected`, `message`, `run.start`/`run.en
 `limit.refused`, `gateway`, `delivery`. Menu screens write through `SettingsAudit.Changed`. The journal gets what
 a human is answerable for, `ILogger` gets what is needed for debugging.
 
-What a run leaves, numbers first — the 200-character limit cuts the tail and `/audit` shows 160:
+What a run leaves — the tail of a long summary is cut, so the numbers come first:
 
 - `run.start` — the kind (`вопрос`, `контекст`, `сжатие`, `беседа`, `работа`), model, the mode actually used, effort, branch, and
-  `ждал другой запуск N` when the folder lock took a second or more. The queue wait is the gap
+  `ждал другой запуск N` when the folder lock made the run wait. The queue wait is the gap
   between `message` and `run.start` of the same chat.
 - `run.end` — time, turns, tokens in/out, `кэш` read/write (not part of the input) and the model
   that answered (a run without usage — only the
@@ -440,11 +423,10 @@ What a run leaves, numbers first — the 200-character limit cuts the tail and `
 ## Chat output
 
 `MarkdownRenderer` converts markdown into `ChatHtml` and cuts it to `IChatChannel.Limits`
-(`MessageLength`, 3800 for Telegram). Plain text is cut as the **source markdown before the
+(`MessageLength`). Plain text is cut as the **source markdown before the
 conversion**, otherwise tags get torn apart; a code block is measured as ready HTML, and one longer
 than the limit goes as a file. Lists use `•`/`◦`, a table is an aligned `<pre>`. Italics only for a
-`*` tight against the content on a word boundary (otherwise `*.cs` and `2 * 3` went italic); `_` is not
-parsed (`snake_case`). Cards and `/audit` rows escape within a budget through `ChatHtml.EscapeCapped`
+`*` tight against the content on a word boundary; `_` is not parsed (`snake_case`). Cards and `/audit` rows escape within a budget through `ChatHtml.EscapeCapped`
 (text that fits whole does not spend a character on the ellipsis).
 
 Any 400 from the channel except «chat not found» (an unsupported tag, "too long" after escaping — not
@@ -458,12 +440,12 @@ The footer under an answer (`ChatWorker.Footer`), in this order:
 
 - the session id, or «💬 вопрос»;
 - the project's branch in a code span (`🌿`);
-- the model that **actually** answered (`RunUsage.PrimaryModel`, shortened to `opus-5-5`/`haiku-4-5`):
+- the model that **actually** answered (`RunUsage.PrimaryModel`, shortened, e.g. `opus-5-5`):
   the `message.model` of the last main-thread turn, not the model with the most output tokens in
   `modelUsage` — a sonnet subagent easily outwrites the session itself (`cli-contract.md`, "Context").
   The chosen model's `ModelLabel` is the last resort, when the CLI said nothing;
 - right after the model, in brackets, the effort that was **passed**, as one to three letters
-  (`opus-5-5(H)`; `DisplayFormat.EffortShort`: L, M, H, XH, MAX — the CLI does not report it back);
+  (`opus-5-5(H)`; `DisplayFormat.EffortShort` — the CLI does not report it back);
 - turns and time, then «🧊 кэш до 15:42» (or «🧊 кэш остыл» when the lifetime is over).
 
 A context breakdown has no model in its footer: the model was not called.
@@ -471,8 +453,8 @@ A context breakdown has no model in its footer: the model was not called.
 ### Numbers
 
 Anything fractional is `decimal`, never `double`/`float` (`LimitWindow.Used`, `LimitGauge.Used`, the
-gauge frames, the divisors in `DisplayFormat`): `double` rounds where nobody expects it
-(`0.57 * 100` is `56.99999999999999`), and the limit share is compared against the edge of a window
+gauge frames, the divisors in `DisplayFormat`): `double` rounds where nobody expects it,
+and the limit share is compared against the edge of a window
 that stops a run. `double` stays only where the BCL itself counts that way (`TimeSpan.TotalSeconds`
 and its kin) and the result is immediately truncated to whole units for a caption; anything counted,
 rather than displayed, comes from `Ticks` (`RunStatusMessage`) or from `long`. The gateway holds no
@@ -489,20 +471,18 @@ remainder once put «67% · осталось 32%» in one message.
 
 - `Channel.CreateUnbounded` in `ChatWorker` lanes without `SingleReader`: with it `Reader.Count` throws
   and `/status` falls over.
-- `Lane.RunCts` in `ChatWorker` is set after the trust check and before the folder lock — otherwise
-  `/stop` could not interrupt the wait for the lock; the `finally` in `ConsumeAsync` clears it, so a
-  failure on any path (a deleted topic, a status that did not go out) does not leave `IsBusy` set.
-  The broker registration is set right before `agent.RunAsync`, after the status message, and the
-  run's own `finally` removes it.
+- `Lane.RunCts` is set after the trust check and before the folder lock, so `/stop` interrupts the
+  wait; the `finally` in `ConsumeAsync` clears it so no path leaves `IsBusy` set. The broker
+  registration is set right before `agent.RunAsync` and removed by the run's own `finally`.
 - `HttpClient` only through `IHttpClientFactory`. `ClaudeLimits.HttpClientName` — one timeout, no
   retries. The Telegram client (`TelegramClientFactory`) is a singleton, DNS is refreshed by
   `PooledConnectionLifetime`; retry only on `HttpRequestException`: Bot API methods are POSTs without
   idempotency (a retry after a 5xx is a duplicate in the chat), and a 429 is waited out by the caller
   per `retry_after`. Do not set `BaseAddress`. `RemoveAllLoggers()`: the token is part of the path.
-- Polling has its own pause on top (`TelegramChannel.PollingBackoff`, 1 s doubling to a minute, or the
+- Polling has its own pause on top (`TelegramChannel.PollingBackoff`, a pause that doubles up to a cap, or the
   channel's `retry_after`). Telegram.Bot repeats `getUpdates` right after an error, and an error
   *answer* (409 from a second instance on the same token, a 5xx, a 401) is not a network failure, so
   the resilience handler does not slow it down — without the pause it is dozens of requests a second
   and a stack trace each.
-- On startup `ChatGatewayService` retries a network failure forever (10 s doubling to 5 min). A
-  refused token gets 6 attempts 10 s apart, then the gateway exits with code 1.
+- On startup `ChatGatewayService` retries a network failure forever with a growing pause. A
+  refused token gets a few attempts (`UnauthorizedAttempts`), then the gateway exits with code 1.
